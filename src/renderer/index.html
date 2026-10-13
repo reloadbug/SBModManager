@@ -56,7 +56,7 @@
       </div>
       <button class="btn" id="btnRefresh">刷新</button>
       <button class="btn" id="btnNexusAccount">Nexus 账号</button>
-      <button class="btn p" id="btnImport">＋ 导入 Mod</button>
+      <button class="btn p" id="btnImport"><i class="plus" aria-hidden="true">＋</i> 导入 Mod</button>
     </div>
 
     <div class="body" id="body">
@@ -145,6 +145,29 @@
 </div>
 
 <div id="toast"></div>
+
+<!-- ---------------- 多语言 ----------------
+     顺序不能动：
+       1. i18n.js       先建好 window.I18N 与查表函数
+       2. locales/*.js  各语言包往里 register（缺一个就在那个语言下退回中文）
+       3. app.js        业务代码，启动时会 observe 整个界面做翻译
+     简体中文没有语言包 —— 界面原文就是简体中文，lookup() 直接原样返回。
+     全部走 <script> 是因为界面 CSP 是 `script-src 'self'`，
+     file:// 下 fetch 也读不了本地 json。 -->
+<script src="i18n.js"></script>
+<script src="locales/zh-TW.js"></script>
+<script src="locales/en-US.js"></script>
+<script src="locales/ja-JP.js"></script>
+<script src="locales/ko-KR.js"></script>
+<script src="locales/ru-RU.js"></script>
+<script src="locales/de-DE.js"></script>
+<script src="locales/fr-FR.js"></script>
+<script src="locales/es-ES.js"></script>
+<script src="locales/pt-BR.js"></script>
+<script src="locales/it-IT.js"></script>
+<script src="locales/pl-PL.js"></script>
+<script src="locales/tr-TR.js"></script>
+<script src="locales/th-TH.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

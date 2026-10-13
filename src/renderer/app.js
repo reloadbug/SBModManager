@@ -60,8 +60,17 @@ function fmtSize(n) {
   return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
 }
 
+/*
+ * 下载量 / 点赞数这类大数字。
+ *
+ * 「万」是中文独有量级，硬拼成 `${n/10000} 万` 在英文界面会变成 `1.3 万`。
+ * 交给 Intl 的 compact 记法各语言自己缩：中文「1.3万」、英文「13K」、
+ * 韩文「1.3만」、俄文「13 тыс.」—— 一套代码覆盖 14 种语言。
+ * 「万」只有 1 个字，走 DOM 翻译器的片段替换会被单字保护挡掉，所以必须从代码层解决。
+ */
 function fmtNum(n) {
   n = Number(n) || 0;
+  if (window.I18N) return window.I18N.compact(n);
   if (n >= 10000) return (n / 10000).toFixed(1) + ' 万';
   return String(n);
 }
@@ -342,8 +351,8 @@ function installedCard(m) {
       ${m.kind === 'prereq' ? '' : `<button class="sw${m.enabled ? '' : ' off'}" data-toggle="${esc(m.id)}" title="${m.enabled ? '点击禁用' : '点击启用'}"></button>`}
     </div>
     <div class="cbody">
-      <h3 title="${esc(m.name)}">${esc(m.name)}</h3>
-      <div class="zh" title="${esc(zh)}">${esc(zh || (m.kind === 'prereq' ? 'Mod 运行依赖' : '本地已安装'))}</div>
+      <h3 data-i18n-skip title="${esc(m.name)}">${esc(m.name)}</h3>
+      <div class="zh"${zh ? ' data-i18n-skip' : ''} title="${esc(zh)}">${esc(zh || (m.kind === 'prereq' ? 'Mod 运行依赖' : '本地已安装'))}</div>
       <div class="meta">
         ${modId ? `<span class="chip mid" title="Nexus Mod ID（Nexus 网址 /mods/ 后面那个数字）">#${esc(String(modId))}</span>` : ''}
         ${version ? `<span class="chip">${esc(verText(version))}</span>` : ''}
@@ -775,8 +784,8 @@ function browseCard(n) {
       ${n.adult ? `<span class="tag" style="color:#E88;border-color:#5A2A28;background:rgba(217,83,79,.16)">成人内容</span>` : ''}
     </div>
     <div class="cbody">
-      <h3 title="${esc(n.name)}">${esc(n.name)}</h3>
-      <div class="zh" title="${esc(n.summary)}">${esc(n.summary || '—')}</div>
+      <h3 data-i18n-skip title="${esc(n.name)}">${esc(n.name)}</h3>
+      <div class="zh" data-i18n-skip title="${esc(n.summary)}">${esc(n.summary || '—')}</div>
       <div class="meta">
         ${n.version ? `<span class="chip">v${esc(n.version)}</span>` : ''}
         ${n.author ? `<span>${esc(n.author)}</span>` : ''}
@@ -2035,6 +2044,14 @@ function renderDownload() {
   const doneCount = tasks.filter(t => t.status === 'installed' || t.status === 'cancelled').length;
   const reviewCount = tasks.filter(t => t.status === 'needs_review').length;
   const waitAuthCount = tasks.filter(t => t.status === 'awaiting_authorization').length;
+  // 「还能接着下」的任务：中断 / 下载失败，且手上**没有**安装包。
+  // 用户要求（2026-10-14）：「任务中断后支持全部恢复继续下载」——
+  // 十几条任务一条条点「重试」是折磨，给一个一键恢复。
+  // ⚠️ 排除有 `archivePath` 的：那种是**安装**失败，包已经下好了，
+  //     重新下载纯属白跑流量，该走「去处理」。
+  const resumeCount = tasks.filter(t =>
+    (t.status === 'interrupted' || t.status === 'failed') && !t.archivePath
+  ).length;
   // 「进行中」和「待处理」必须分开算 ——
   // 主进程的 `stats.active` 是「所有非终态」，把「待确认 / 等待授权」也含进去了。
   // 那两类是**在等你操作**（不该显示成正在跑，见 SKILL 铁律 42），口径混着显示会误导。
@@ -2049,6 +2066,7 @@ function renderDownload() {
       <span class="stat">已安装 <b>${s.installed || 0}</b></span>
       ${s.failed ? `<span class="stat" style="color:var(--red)">失败 <b style="color:var(--red)">${s.failed}</b></span>` : ''}
       <div class="spacer"></div>
+      ${resumeCount ? `<button class="btn p sm" data-dl-resumeall="1" title="把所有中断 / 下载失败的任务一次性重新排队：已经下过的部分会接着下，不用从头再来">↻ 全部恢复（${resumeCount}）</button>` : ''}
       ${waitAuthCount ? `<button class="btn p sm" data-dl-autoauthall="1" title="用已登录的 Nexus 会话逐个取得下载授权，不用再逐条去网页点下载按钮">⚡ 全部自动授权（${waitAuthCount}）</button>` : ''}
       ${reviewCount ? `<button class="btn sm" data-dl-refreshplans="1" title="安装规则升级后，之前识别不了的包可能已经能认出来了">重新识别${reviewCount ? `（${reviewCount}）` : ''}</button>` : ''}
       ${doneCount ? `<button class="btn sm" data-dl-cleardone="1">清理已完成记录（${doneCount}）</button>` : ''}
@@ -2209,6 +2227,63 @@ function onAutoAuthProgress(p) {
   if (!p || !p.total) return;
   const btn = document.querySelector('[data-dl-autoauthall]');
   if (btn && autoAuthRunning) btn.textContent = `授权中 ${p.done}/${p.total}…`;
+}
+
+/** 「全部恢复」是否在跑（挡住重复点） */
+let resumeAllRunning = false;
+
+/**
+ * 「全部恢复」——把中断 / 下载失败的任务一次性重新排队，**从断点接着下**。
+ *
+ * 用户要求（2026-10-14）：「任务中断后支持全部恢复继续下载」。
+ * 下载引擎把半截文件留在 `data/library/.dl-<modId>-<fileId>.part`，
+ * 恢复时会带 `Range` 头从已有字节继续（服务器不支持 Range 就自动从头下）。
+ *
+ * 两段流水线：
+ *   ① 逐个 `download.start(id)` —— 有授权就直接接着下
+ *   ② 程序重启过的话内存里的授权 key 早没了，任务会翻回「等待授权」，
+ *      这时**顺手接一次批量自动授权**，用户不用再点一下
+ */
+async function dlResumeAll() {
+  if (resumeAllRunning) { toast('正在恢复中，稍等…'); return null; }
+  resumeAllRunning = true;
+  const label = (document.querySelector('[data-dl-resumeall]') || {}).textContent || '';
+  const setBtn = (txt, disabled) => {
+    const b = document.querySelector('[data-dl-resumeall]');
+    if (b) { b.textContent = txt; b.disabled = !!disabled; }
+  };
+  setBtn('恢复中…', true);
+
+  try {
+    const ids = (state.downloads || [])
+      .filter(t => (t.status === 'interrupted' || t.status === 'failed') && !t.archivePath)
+      .map(t => t.id);
+    if (!ids.length) { toast('没有需要恢复的任务'); return null; }
+
+    let ok = 0, failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      setBtn(`恢复中 ${i + 1}/${ids.length}…`, true);
+      try { await call(window.api.download.start(ids[i]), { silent: true }); ok++; }
+      catch { failed++; }
+    }
+    await refreshDownloads();
+
+    const needAuth = (state.downloads || []).filter(t => t.status === 'awaiting_authorization').length;
+    if (needAuth) {
+      toast(`已恢复 ${ok} 项 · ${needAuth} 项要重新授权，正在自动授权…`, 'ok');
+      await dlAutoAuthorizeAll();
+    } else {
+      toast(`已恢复 ${ok} 项${failed ? `，${failed} 项没能启动` : ''}`, failed ? 'err' : 'ok');
+    }
+    return { ok, failed };
+  } catch (e) {
+    toast(e.message, 'err');
+    return null;
+  } finally {
+    resumeAllRunning = false;
+    await refreshDownloads();
+    setBtn(label || '↻ 全部恢复', false);
+  }
 }
 
 async function dlStart(id) {
@@ -2640,11 +2715,43 @@ function renderAuthLine() {
   }
 }
 
+/**
+ * 设置页「显示语言」下拉的选项。
+ *
+ * · 语言名一律用它**自己的写法**（native）：Deutsch 就写 Deutsch，别翻成「德语」——
+ *   用户在这种界面里找的是自己认得出的那串字，不是别人对他的称呼。
+ *   所以那些 option 打 `data-i18n-skip`，DOM 翻译器不碰它们。
+ * · 「跟随系统」反过来，要跟着界面语言走，就不打 skip，交给 DOM 翻译器查表。
+ *
+ * 兜底：i18n.js 没加载时退化成一个只有简体中文的下拉，不至于把设置页整塌。
+ */
+function uiLangOptions() {
+  if (!window.I18N) return '<option value="zh-CN">简体中文</option>';
+  const cur = window.I18N.getLang();
+  const rows = [`<option value="auto"${cur === 'auto' ? ' selected' : ''}>跟随系统</option>`];
+  for (const l of window.I18N.list()) {
+    rows.push(`<option value="${esc(l.code)}"${cur === l.code ? ' selected' : ''}` +
+      ` data-i18n-skip>${esc(l.native)}</option>`);
+  }
+  return rows.join('');
+}
+
 function renderSettings() {
   const c = state.config || {};
   const g = state.game || {};
   const w = state.watch || {};
   $('#settingsArea').innerHTML = `
+    <div class="frm">
+      <h3>界面语言</h3>
+      <div class="f">
+        <label>显示语言</label>
+        <select id="setUiLang" style="flex:none;min-width:180px">
+          ${uiLangOptions()}
+        </select>
+        <div class="hint">切换后立即生效</div>
+      </div>
+    </div>
+
     <div class="frm">
       <h3>游戏</h3>
       <div class="f">
@@ -3927,6 +4034,7 @@ function bindEvents() {
     }
     const dlAutoAuth = t.closest('[data-dl-autoauth]');
     if (dlAutoAuth) { await dlAutoAuthorize(dlAutoAuth.dataset.dlAutoauth); return; }
+    if (t.closest('[data-dl-resumeall]')) { await dlResumeAll(); return; }
     if (t.closest('[data-dl-autoauthall]')) { await dlAutoAuthorizeAll(); return; }
     const dlAuth = t.closest('[data-dl-auth]');
     if (dlAuth) { await dlAuthorize(dlAuth.dataset.dlAuth); return; }
@@ -4157,7 +4265,13 @@ function bindEvents() {
     }  });
 
   document.addEventListener('change', async (e) => {
-    if (e.target.id === 'setLang') {
+    if (e.target.id === 'setUiLang') {
+      // 界面语言：不走 IPC，纯前端的事（存 localStorage，下次启动自己读）。
+      // 重刷交给 main() 里注册的 onChange —— 一处收口，别的地方调 setLang 也生效。
+      if (!window.I18N) return;
+      window.I18N.setLang(e.target.value);
+      toast(window.I18N.t('切换后立即生效'), 'ok');
+    } else if (e.target.id === 'setLang') {
       try { state.config = await call(window.api.config.set({ targetLang: e.target.value })); toast('已切换目标语言', 'ok'); } catch { /* 已提示 */ }
     } else if (e.target.id === 'setAutoAuth') {
       try {
@@ -4294,6 +4408,20 @@ window.__batch = { batchDownload, selToggle, selSelectAll, selSetMode, selUpdate
 window.__refreshAll = refreshAll;
 
 (async function main() {
+  // ---------------- 多语言 ----------------
+  // 顺序有讲究：**先挂观察器，再整体翻一遍**。
+  //   1. observe() 盯住 body —— 界面是 innerHTML 整块重画的风格，没有它就是
+  //      「刷新一次列表，翻译全丢」；
+  //   2. apply() 立刻处理 index.html 里写死的静态结构（导航、标题、按钮），
+  //      这些节点不会再有 mutation 事件，不主动翻就永远停在中文字面量上。
+  // 放在 bindEvents() 之前，是为了保证首屏渲染出来的东西已经在观察范围内。
+  if (window.I18N) {
+    window.I18N.observe();
+    window.I18N.apply();
+    // 语言一变就全量重刷（节点原值都在，等价于「从中文重新翻一遍」）
+    window.I18N.onChange(() => window.I18N.refresh());
+  }
+
   bindEvents();
   selUpdateBar();   // 多选工具栏初始态（按钮文案/显隐）
   bindNxmProgress();

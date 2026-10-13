@@ -1,12 +1,20 @@
 {
-  "name": "starblade-mod-manager",
+  "name": "sbmodmanager",
   "productName": "剑星 Mod 管理器",
   "version": "0.1.0",
-  "description": "Stellar Blade 模组管理器：已装模组管理、Nexus 浏览、一键安装、说明中文化",
+  "description": "SBModManager — Stellar Blade 模组管理器：已装模组管理、Nexus 浏览、一键安装、说明中文化，支持 13 种语言",
   "main": "src/main/index.js",
   "author": "zilong",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/reloadbug/SBModManager.git"
+  },
+  "homepage": "https://github.com/reloadbug/SBModManager#readme",
+  "bugs": {
+    "url": "https://github.com/reloadbug/SBModManager/issues"
+  },
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
@@ -38,6 +46,9 @@
     "test:archive": "node _probe/archive-test.js",
     "test:pickdirs": "node _probe/pickdirs-e2e.js",
     "test:drawer-mask": "node _probe/drawer-mask-test.js",
+    "test:resume": "node _probe/resume-download-test.js",
+    "test:i18n": "node _probe/i18n-test.js",
+    "check:library": "node _probe/library-analyze-check.js",
     "test:real-stuck": "node _probe/real-stuck-check.js --all",
     "test:real-pick": "node _probe/real-pick-check.js",
     "test:real-cover": "node _probe/real-cover-check.js",
@@ -55,7 +66,7 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.zilong.starblade-mod-manager",
+    "appId": "com.reloadbug.sbmodmanager",
     "productName": "剑星 Mod 管理器",
     "copyright": "Copyright © 2026 zilong",
     "directories": {
@@ -95,10 +106,10 @@
       "createStartMenuShortcut": true,
       "shortcutName": "剑星 Mod 管理器",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "StarBlade-Mod-Manager-${version}-setup.${ext}"
+      "artifactName": "SBModManager-${version}-setup.${ext}"
     },
     "portable": {
-      "artifactName": "StarBlade-Mod-Manager-${version}-portable.${ext}"
+      "artifactName": "SBModManager-${version}-portable.${ext}"
     }
   }
 }
