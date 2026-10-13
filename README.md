@@ -3,6 +3,7 @@
 《剑星》(Stellar Blade) 的 Windows 桌面模组管理器。
 
 - 项目主页：<https://github.com/reloadbug/SBModManager>
+- 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 - 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
 
 > 仓库名 / 包名 / 安装包文件名是 **SBModManager**；程序内显示的标题仍是「剑星 Mod 管理器」
@@ -25,7 +26,7 @@
 语言包位于 `src/renderer/locales/*.js`，以 `<script>` 形式加载（受 CSP `script-src 'self'` 约束，
 `file://` 下无法用 `fetch` 读本地 JSON）。术语与键表以 `_probe/i18n-keys.json` 为唯一真源。
 
-## 现在能做什么（v0.1）
+## 现在能做什么（v0.2）
 
 | 功能 | 状态 |
 |---|---|
@@ -86,8 +87,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `SBModManager-0.1.0-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
-| `SBModManager-0.1.0-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
+| `SBModManager-0.2.0-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
+| `SBModManager-0.2.0-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
 
 两者都**不需要管理员权限**，也都**不会**在卸载时删你的数据。
 
@@ -194,7 +195,7 @@ build/           打包资源：make-icon.py（图标）、dist.js（打包入�
 data/            运行数据：配置、注册表、下载队列、归档、图片缓存、备份、日志
 dist/            打包产物（setup.exe / portable.exe / win-unpacked）
 _probe/          自动化探针与端到端脚本（launch.js 是 Electron 启动包装）
-docs/            架构设计与界面原型
+docs/            架构设计、每轮需求与修复记录、界面原型
 tests/           自检脚本
 ```
 
