@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>剑星 Mod 管理器 · 界面原型</title>
+<style>
+  :root{
+    --bg:#14161A; --panel:#1B1E24; --panel2:#22262E; --panel3:#2A2F38;
+    --border:#2C313A; --text:#E6E9EF; --dim:#8C94A3; --dim2:#666E7C;
+    --accent:#E8A33D; --accent-d:#C8852A; --red:#D9534F; --ok:#3FB950; --blue:#4A9EFF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Microsoft YaHei UI","Segoe UI",system-ui,sans-serif;
+    background:var(--bg);color:var(--text);height:100vh;overflow:hidden;
+    font-size:13px;-webkit-font-smoothing:antialiased;
+  }
+  .app{display:flex;height:100vh}
+
+  /* ---------- 侧栏 ---------- */
+  .side{width:220px;flex:none;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column}
+  .brand{padding:18px 16px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+  .logo{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--red));display:flex;align-items:center;justify-content:center;font-weight:700;color:#1A1206;font-size:15px}
+  .brand h1{font-size:14px;font-weight:600;letter-spacing:.3px}
+  .brand p{font-size:10.5px;color:var(--dim2);margin-top:2px}
+  nav{padding:10px 8px;flex:1}
+  .nav-i{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;color:var(--dim);cursor:pointer;margin-bottom:2px;transition:.13s;font-size:13px}
+  .nav-i:hover{background:var(--panel2);color:var(--text)}
+  .nav-i.on{background:linear-gradient(90deg,rgba(232,163,61,.16),rgba(232,163,61,.04));color:var(--accent);font-weight:600;box-shadow:inset 2px 0 0 var(--accent)}
+  .nav-i svg{width:16px;height:16px;flex:none}
+  .badge{margin-left:auto;background:var(--panel3);color:var(--dim);font-size:10px;padding:1px 7px;border-radius:9px;font-weight:600}
+  .nav-i.on .badge{background:rgba(232,163,61,.2);color:var(--accent)}
+  .side-foot{padding:12px;border-top:1px solid var(--border);font-size:11px}
+  .gamestat{display:flex;align-items:center;gap:7px;color:var(--dim);margin-bottom:6px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);flex:none}
+  .path{font-size:10px;color:var(--dim2);word-break:break-all;line-height:1.5;font-family:Consolas,monospace}
+
+  /* ---------- 主区 ---------- */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .top{height:52px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 18px;background:var(--panel)}
+  .top h2{font-size:15px;font-weight:600}
+  .top .sub{font-size:11px;color:var(--dim2)}
+  .search{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 11px;width:250px;color:var(--dim2)}
+  .search input{background:none;border:none;outline:none;color:var(--text);font-size:12px;width:100%;font-family:inherit}
+  .btn{border:1px solid var(--border);background:var(--panel2);color:var(--text);padding:7px 13px;border-radius:7px;cursor:pointer;font-size:12px;font-family:inherit;transition:.13s;white-space:nowrap}
+  .btn:hover{background:var(--panel3);border-color:#3A414D}
+  .btn.p{background:linear-gradient(180deg,var(--accent),var(--accent-d));border-color:var(--accent-d);color:#1A1206;font-weight:600}
+  .btn.p:hover{filter:brightness(1.08)}
+  .btn.d{border-color:#5A2A28;color:#E88;background:rgba(217,83,79,.1)}
+  .btn.d:hover{background:rgba(217,83,79,.2)}
+  .btn.sm{padding:4px 10px;font-size:11px}
+
+  .body{flex:1;overflow:auto;padding:18px;position:relative}
+  .page{display:none}
+  .page.on{display:block}
+
+  /* ---------- 卡片网格 ---------- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:11px;overflow:hidden;cursor:pointer;transition:.16s;position:relative}
+  .card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.45)}
+  .cover{height:124px;background:linear-gradient(135deg,#2B3038,#1E2228);position:relative;display:flex;align-items:center;justify-content:center}
+  .cover .ph{font-size:11px;color:var(--dim2);letter-spacing:1px}
+  .cover .tag{position:absolute;top:8px;left:8px;background:rgba(20,22,26,.85);border:1px solid var(--border);padding:2px 7px;border-radius:5px;font-size:10px;color:var(--dim)}
+  .cover .tag.pre{color:var(--accent);border-color:rgba(232,163,61,.45);background:rgba(232,163,61,.14)}
+  .cover .sw{position:absolute;top:8px;right:8px;width:32px;height:18px;border-radius:9px;background:var(--ok);cursor:pointer}
+  .cover .sw::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:2px;right:2px;transition:.15s}
+  .cover .sw.off{background:#4A5058}
+  .cover .sw.off::after{right:16px}
+  .cbody{padding:11px 12px 13px}
+  .cbody h3{font-size:13px;font-weight:600;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cbody .zh{font-size:11px;color:var(--dim);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .meta{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--dim2)}
+  .chip{background:var(--panel2);border:1px solid var(--border);padding:1px 6px;border-radius:4px}
+
+  /* ---------- 详情抽屉 ---------- */
+  .drawer{position:absolute;top:0;right:0;bottom:0;width:430px;background:var(--panel);border-left:1px solid var(--border);transform:translateX(100%);transition:.22s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-14px 0 34px rgba(0,0,0,.5);z-index:20}
+  .drawer.on{transform:translateX(0)}
+  .dh{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px}
+  .dh h3{font-size:14px;font-weight:600;line-height:1.4}
+  .dh .x{margin-left:auto;cursor:pointer;color:var(--dim);font-size:18px;line-height:1;padding:2px 6px;border-radius:5px}
+  .dh .x:hover{background:var(--panel2);color:var(--text)}
+  .dbody{flex:1;overflow:auto;padding:16px}
+  .shots{display:flex;gap:8px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px}
+  .shot{width:150px;height:88px;flex:none;border-radius:8px;background:linear-gradient(135deg,#31373F,#22262E);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--dim2);font-size:10px}
+  .lbl{font-size:11px;color:var(--dim2);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 7px;font-weight:600}
+  .txt{font-size:12.5px;line-height:1.75;color:#C8CEDA}
+  .kv{display:flex;gap:10px;padding:6px 0;border-bottom:1px dashed #262B33;font-size:12px}
+  .kv span:first-child{color:var(--dim2);width:82px;flex:none}
+  .kv span:last-child{color:var(--text);word-break:break-all}
+  .urlbox{background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:11px;color:var(--blue);font-family:Consolas,monospace;word-break:break-all;display:flex;gap:8px;align-items:center}
+  .langsw{display:inline-flex;background:var(--panel2);border:1px solid var(--border);border-radius:7px;overflow:hidden;margin-bottom:9px}
+  .langsw div{padding:4px 12px;font-size:11px;cursor:pointer;color:var(--dim)}
+  .langsw div.on{background:var(--accent);color:#1A1206;font-weight:600}
+  .dfoot{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px}
+
+  /* ---------- Nexus 浏览器 ---------- */
+  .browser{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--panel);height:calc(100vh - 122px);display:flex;flex-direction:column}
+  .bar{height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel2);border-bottom:1px solid var(--border)}
+  .bar .nav{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--dim);cursor:pointer;flex:none}
+  .bar .nav:hover{background:var(--panel3);color:var(--text)}
+  .addr{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:11.5px;color:var(--dim);font-family:Consolas,monospace;display:flex;align-items:center;gap:7px}
+  .addr .lock{color:var(--ok)}
+  .vp{flex:1;position:relative;overflow:hidden;background:#15171B}
+  .site{position:absolute;inset:0;overflow:auto;padding:0}
+  .sbar{background:#1F2329;border-bottom:1px solid #2C313A;padding:9px 14px;display:flex;align-items:center;gap:14px;font-size:11.5px;color:#9AA2B0}
+  .sbar b{color:#E6E9EF;font-size:13px}
+  .stab{display:flex;gap:16px;padding:10px 14px 0;border-bottom:1px solid #2C313A;font-size:11px;color:#7C8492;letter-spacing:.4px}
+  .stab div{padding-bottom:8px;border-bottom:2px solid transparent}
+  .stab div.on{color:#E6E9EF;border-bottom-color:#DA8E35}
+  .sbody{padding:16px}
+  .filebox{border:1px solid #2C313A;border-radius:8px;background:#1B1E24;margin-bottom:14px}
+  .filebox .h{padding:10px 14px;border-bottom:1px solid #2C313A;display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600}
+  .filebox .r{padding:11px 14px;border-bottom:1px solid #23272F;display:flex;align-items:center;gap:10px;font-size:11.5px;color:#8C94A3}
+  .filebox .r:last-child{border-bottom:none}
+  .sbtn{background:#2A2F38;border:1px solid #3A414D;color:#E6E9EF;padding:5px 11px;border-radius:6px;font-size:11px;cursor:pointer}
+  .sbtn.orange{background:#DA8E35;border-color:#C8852A;color:#1A1206;font-weight:600}
+  .inject{position:absolute;top:78px;right:22px;z-index:9;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+  .ibtn{background:linear-gradient(180deg,#E8A33D,#C8852A);color:#1A1206;font-weight:700;font-size:12.5px;padding:9px 15px;border-radius:9px;cursor:pointer;box-shadow:0 6px 20px rgba(232,163,61,.4);display:flex;align-items:center;gap:7px;border:1px solid #C8852A}
+  .ibtn:hover{filter:brightness(1.08)}
+  .ipanel{width:268px;background:#1B1E24;border:1px solid #3A414D;border-radius:11px;padding:12px;box-shadow:0 14px 40px rgba(0,0,0,.65)}
+  .ipanel h4{font-size:12px;margin-bottom:9px;color:#E6E9EF}
+  .iopt{border:1px solid #2C313A;background:#22262E;border-radius:8px;padding:9px 10px;margin-bottom:7px;cursor:pointer;transition:.13s}
+  .iopt:hover{border-color:#E8A33D;background:#262B33}
+  .iopt b{font-size:11.5px;display:block;margin-bottom:2px;color:#E6E9EF}
+  .iopt span{font-size:10.5px;color:#8C94A3;line-height:1.5}
+  .callout{margin-top:12px;background:rgba(74,158,255,.09);border:1px solid rgba(74,158,255,.32);border-radius:8px;padding:9px 11px;font-size:11px;color:#A8C8F0;line-height:1.65}
+  .callout.warn{background:rgba(232,163,61,.09);border-color:rgba(232,163,61,.34);color:#E8C98A}
+
+  /* ---------- 队列 ---------- */
+  .task{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:13px 15px;margin-bottom:11px;display:flex;align-items:center;gap:14px}
+  .task .ic{width:36px;height:36px;border-radius:9px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+  .task .inf{flex:1;min-width:0}
+  .task .inf h4{font-size:12.5px;font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:8px}
+  .task .inf p{font-size:11px;color:var(--dim2);margin-bottom:7px}
+  .pbar{height:5px;background:var(--panel3);border-radius:3px;overflow:hidden}
+  .pbar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-d));border-radius:3px}
+  .pbar i.done{background:var(--ok)}
+
+  /* ---------- 前置组件 ---------- */
+  .pre{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:13px}
+  .pre-h{display:flex;align-items:center;gap:11px;margin-bottom:11px}
+  .pre-h .ic{width:40px;height:40px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:17px}
+  .pre-h h3{font-size:13.5px;font-weight:600}
+  .pre-h p{font-size:11px;color:var(--dim2);margin-top:2px}
+  .st{margin-left:auto;font-size:11px;padding:3px 10px;border-radius:6px;font-weight:600}
+  .st.ok{background:rgba(63,185,80,.14);color:var(--ok);border:1px solid rgba(63,185,80,.34)}
+  .st.no{background:rgba(217,83,79,.14);color:var(--red);border:1px solid rgba(217,83,79,.34)}
+  .pre .row{display:flex;gap:9px;align-items:center;padding:7px 0;border-top:1px dashed #262B33;font-size:11.5px;color:var(--dim)}
+  .pre .row code{color:#C8CEDA;font-family:Consolas,monospace;font-size:11px;background:var(--panel2);padding:2px 7px;border-radius:4px}
+
+  /* ---------- 设置 ---------- */
+  .frm{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:17px;margin-bottom:13px}
+  .frm h3{font-size:13px;font-weight:600;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+  .f{display:flex;align-items:center;gap:14px;padding:9px 0}
+  .f>label{width:140px;flex:none;font-size:12px;color:var(--dim)}
+  .f input[type=text],.f select{flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:7px 11px;color:var(--text);font-size:12px;font-family:inherit;outline:none}
+  .f input[type=text]:focus,.f select:focus{border-color:var(--accent)}
+  .f .hint{font-size:10.5px;color:var(--dim2);margin-top:5px;line-height:1.5}
+  .sw2{width:38px;height:21px;border-radius:11px;background:var(--ok);position:relative;cursor:pointer;flex:none;transition:.15s}
+  .sw2::after{content:"";position:absolute;width:17px;height:17px;border-radius:50%;background:#fff;top:2px;right:2px;transition:.15s}
+  .sw2.off{background:#4A5058}
+  .sw2.off::after{right:19px}
+
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#333943;border-radius:5px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#414856}
+
+  .note{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent);color:var(--text);padding:8px 16px;border-radius:9px;font-size:11.5px;box-shadow:0 10px 30px rgba(0,0,0,.6);opacity:0;pointer-events:none;transition:.2s;z-index:99}
+  .note.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ 侧栏 ============ -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">SB</div>
+      <div>
+        <h1>剑星 Mod 管理器</h1>
+        <p>Stellar Blade · v1.0 原型</p>
+      </div>
+    </div>
+    <nav>
+      <div class="nav-i on" data-p="p1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        已安装 Mod <span class="badge">3</span>
+      </div>
+      <div class="nav-i" data-p="p2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18"/></svg>
+        浏览 Nexus
+      </div>
+      <div class="nav-i" data-p="p3">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+        安装队列 <span class="badge">1</span>
+      </div>
+      <div class="nav-i" data-p="p4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        前置组件
+      </div>
+      <div class="nav-i" data-p="p5">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2V21a2 2 0 11-4 0v-.1A1.7 1.7 0 006 19.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 13.7H3a2 2 0 110-4h.1A1.7 1.7 0 004.6 6L4.5 6a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010.3 3V3a2 2 0 114 0v.1a1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 001.2 2.9H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
+        设置
+      </div>
+    </nav>
+    <div class="side-foot">
+      <div class="gamestat"><i class="dot"></i>游戏已就绪</div>
+      <div class="path">D:\games\Star Blade<br>UE4SS v3.1.0-6 ✓</div>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <div class="main">
+    <div class="top">
+      <h2 id="ttl">已安装 Mod</h2>
+      <span class="sub" id="sub">共 3 个 · 3 个已启用</span>
+      <div class="search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input placeholder="搜索已安装的 Mod…">
+      </div>
+      <button class="btn p" onclick="toast('打开导入对话框：支持粘贴 Nexus 链接 / 选择本地压缩包')">＋ 导入 Mod</button>
+    </div>
+
+    <div class="body" id="body">
+
+      <!-- ===== ① 已安装 ===== -->
+      <div class="page on" id="p1">
+        <div class="grid">
+          <div class="card" onclick="openDrawer()">
+            <div class="cover">
+              <span class="ph">封面图 · 缓存自 Nexus</span>
+              <span class="tag pre">前置组件</span>
+              <span class="sw"></span>
+            </div>
+            <div class="cbody">
+              <h3>Custom Nanosuit System</h3>
+              <div class="zh">自定义纳米战衣系统</div>
+              <div class="meta"><span class="chip">v2.2</span><span>Dekita</span><span>·</span><span>7.9 MB</span></div>
+            </div>
+          </div>
+          <div class="card" onclick="openDrawer()">
+            <div class="cover">
+              <span class="ph">封面图 · 缓存自 Nexus</span>
+              <span class="tag">外观</span>
+              <span class="sw"></span>
+            </div>
+            <div class="cbody">
+              <h3>Dance Night Outfit</h3>
+              <div class="zh">夜舞套装</div>
+              <div class="meta"><span class="chip">v1.0</span><span>Miroboku</span><span>·</span><span>42 MB</span></div>
+            </div>
+          </div>
+          <div class="card" onclick="openDrawer()">
+            <div class="cover">
+              <span class="ph">封面图 · 缓存自 Nexus</span>
+              <span class="tag">脚本</span>
+              <span class="sw off"></span>
+            </div>
+            <div class="cbody">
+              <h3>Camera Control (FOV)</h3>
+              <div class="zh">摄像机视野控制</div>
+              <div class="meta"><span class="chip">已禁用</span><span>MrPleb</span><span>·</span><span>12 KB</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ② 浏览 Nexus ===== -->
+      <div class="page" id="p2">
+        <div class="browser">
+          <div class="bar">
+            <div class="nav">‹</div><div class="nav">›</div><div class="nav">⟳</div>
+            <div class="addr"><span class="lock">🔒</span>https://www.nexusmods.com/stellarblade/mods/1496?tab=files</div>
+            <button class="btn sm">收藏</button>
+            <button class="btn sm p" onclick="toast('已登录：子龙 (免费账号)')">账号</button>
+          </div>
+          <div class="vp">
+            <!-- 模拟 Nexus 页面 -->
+            <div class="site">
+              <div class="sbar">
+                <b>Stellar Blade</b><span>Mods ▾</span><span>Collections ▾</span>
+                <span style="margin-left:auto">搜索</span><span>登录</span>
+              </div>
+              <div class="sbody">
+                <div style="font-size:10.5px;color:#7C8492;margin-bottom:6px">stellarblade » mods » 1496</div>
+                <div style="font-size:19px;font-weight:600;margin-bottom:8px">Custom Nanosuit System</div>
+                <div style="display:flex;gap:7px;margin-bottom:14px">
+                  <span style="background:#2A2F38;border:1px solid #3A414D;border-radius:5px;padding:2px 8px;font-size:10px;color:#9AA2B0">Modder's Resource</span>
+                  <span style="background:#2A2F38;border:1px solid #3A414D;border-radius:5px;padding:2px 8px;font-size:10px;color:#9AA2B0">User Interface</span>
+                  <span style="background:#2A2F38;border:1px solid #3A414D;border-radius:5px;padding:2px 8px;font-size:10px;color:#9AA2B0">Utilities for Modders</span>
+                </div>
+                <div class="stab">
+                  <div>DESCRIPTION</div><div class="on">FILES</div><div>IMAGES</div><div>POSTS</div><div>LOGS</div>
+                </div>
+                <div class="filebox" style="margin-top:16px">
+                  <div class="h">Main files</div>
+                  <div class="r">
+                    <div style="flex:1">
+                      <div style="color:#E6E9EF;font-size:12.5px;font-weight:600;margin-bottom:4px">✓ CustomNanoSuitSystem</div>
+                      <div>See pinned comment for changelog &lt;3</div>
+                    </div>
+                    <div style="text-align:right;font-size:10.5px;line-height:1.6">7.9 MB<br>v2.2</div>
+                    <div style="display:flex;gap:6px;margin-left:10px">
+                      <span class="sbtn orange">Mod manager download</span>
+                      <span class="sbtn">Manual download</span>
+                    </div>
+                  </div>
+                  <div class="r" style="background:#191C21">
+                    <div style="flex:1"><div style="color:#E6E9EF;font-size:12.5px;font-weight:600">Optional files</div></div>
+                    <div style="display:flex;gap:6px">
+                      <span class="sbtn orange">Mod manager download</span>
+                      <span class="sbtn">Manual download</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 注入的按钮 -->
+            <div class="inject">
+              <div class="ibtn" onclick="document.getElementById('ip').style.display='block'">⬇ 安装到本地</div>
+              <div class="ipanel" id="ip" style="display:none">
+                <h4>安装 Custom Nanosuit System</h4>
+                <div class="iopt" onclick="toast('已触发 Mod manager download → 通过 nxm:// 接管下载')">
+                  <b>① Mod 管理器下载（推荐）</b>
+                  <span>自动点击页面上的 Mod manager download，通过 nxm:// 协议接管，全程无需手动保存文件</span>
+                </div>
+                <div class="iopt" onclick="toast('已触发 Manual download，下载完成后将自动导入')">
+                  <b>② 手动下载 + 自动导入</b>
+                  <span>自动触发 Manual download，文件落到「下载」目录后由管理器监听并自动安装</span>
+                </div>
+                <div class="iopt" onclick="toast('已加入队列，等待你手动下载')">
+                  <b>③ 仅登记到队列</b>
+                  <span>记录该 Mod 信息与说明，稍后自己下载好再拖进管理器</span>
+                </div>
+                <div class="callout warn">检测到当前为免费账号：请确保已在浏览器登录 Nexus，否则下载按钮不可用。</div>
+                <div class="callout" style="margin-top:7px">推荐用法：在你的 Edge/Chrome 里逛 Nexus，扩展会注入同样的「安装到本地」按钮。内置浏览器遇到人机验证时，请手动点一下复选框即可，管理器不会代你破解。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ③ 安装队列 ===== -->
+      <div class="page" id="p3">
+        <div class="task">
+          <div class="ic">⬇</div>
+          <div class="inf">
+            <h4>Custom Nanosuit System <span class="chip" style="font-size:10px;color:var(--dim)">Main file</span></h4>
+            <p>正在下载 · 5.2 / 7.9 MB · 1.8 MB/s · 剩余 2 秒</p>
+            <div class="pbar"><i style="width:66%"></i></div>
+          </div>
+          <button class="btn sm">暂停</button>
+          <button class="btn sm d">取消</button>
+        </div>
+        <div class="task">
+          <div class="ic" style="color:var(--ok)">✓</div>
+          <div class="inf">
+            <h4>Dance Night Outfit</h4>
+            <p>安装完成 · 4 个文件 → SB\Content\Paks\~Mods\ · 用时 3 秒</p>
+            <div class="pbar"><i class="done" style="width:100%"></i></div>
+          </div>
+          <button class="btn sm">查看日志</button>
+        </div>
+        <div class="task">
+          <div class="ic" style="color:var(--dim2)">⏸</div>
+          <div class="inf">
+            <h4>Camera Control (FOV)</h4>
+            <p>等待手动下载 · 已监听下载目录，发现匹配压缩包后自动安装</p>
+            <div class="pbar"><i style="width:0%"></i></div>
+          </div>
+          <button class="btn sm">重新下载</button>
+        </div>
+        <div class="callout">安装日志会记录每一步的目标路径与结果，出问题时可一键复制给作者排查。</div>
+      </div>
+
+      <!-- ===== ④ 前置组件 ===== -->
+      <div class="page" id="p4">
+        <div class="pre">
+          <div class="pre-h">
+            <div class="ic">🧩</div>
+            <div>
+              <h3>UE4SS（Mod 加载器本体）</h3>
+              <p>脚本注入运行时 · Chrisr0/RE-UE4SS · Stellar Blade 专用分支</p>
+            </div>
+            <span class="st ok">已安装 v3.1.0-6</span>
+          </div>
+          <div class="row">dwmapi.dll <code>SB\Binaries\Win64\dwmapi.dll</code> ✓ SHA256 已校验</div>
+          <div class="row">ue4ss 运行时 <code>SB\Binaries\Win64\ue4ss\</code> ✓</div>
+          <div style="display:flex;gap:9px;margin-top:12px">
+            <button class="btn sm">重新安装</button>
+            <button class="btn sm">修复文件</button>
+            <button class="btn sm">检查更新</button>
+          </div>
+        </div>
+
+        <div class="pre">
+          <div class="pre-h">
+            <div class="ic">👗</div>
+            <div>
+              <h3>Custom Nanosuit System（CNS）</h3>
+              <p>服装/外观系统框架 · 绝大多数服装 Mod 的前置 · Nexus #1496</p>
+            </div>
+            <span class="st no">未安装</span>
+          </div>
+          <div class="row">目标路径 <code>SB\Binaries\ + SB\Content\</code></div>
+          <div class="row">来源 <code>nexusmods.com/stellarblade/mods/1496</code></div>
+          <div class="callout warn">该 Mod 需要 Nexus 登录后下载。点下方按钮打开页面，或直接把下载好的压缩包拖进窗口。</div>
+          <div style="display:flex;gap:9px;margin-top:12px">
+            <button class="btn sm p" onclick="toast('已在内置浏览器打开 Nexus 页面')">打开下载页</button>
+            <button class="btn sm">选择本地压缩包</button>
+            <button class="btn sm">从队列安装</button>
+          </div>
+        </div>
+
+        <div class="pre">
+          <div class="pre-h">
+            <div class="ic">📁</div>
+            <div>
+              <h3>Mod 落点目录</h3>
+              <p>UE4 引擎加载 Mod 的标准位置</p>
+            </div>
+            <span class="st ok">已就绪</span>
+          </div>
+          <div class="row">~Mods <code>SB\Content\Paks\~Mods\</code> ✓ 已创建</div>
+          <div class="row">脚本 Mods <code>SB\Binaries\Win64\ue4ss\Mods\</code> ✓</div>
+        </div>
+      </div>
+
+      <!-- ===== ⑤ 设置 ===== -->
+      <div class="page" id="p5">
+        <div class="frm">
+          <h3>游戏</h3>
+          <div class="f">
+            <label>游戏目录</label>
+            <input type="text" value="D:\games\Star Blade">
+            <button class="btn sm">浏览</button>
+          </div>
+          <div class="f">
+            <label>启动方式</label>
+            <select><option>直接启动 SB-Win64-Shipping.exe</option><option>通过 Steam 启动</option></select>
+          </div>
+          <div class="f" style="align-items:flex-start">
+            <label></label>
+            <div style="font-size:11px;color:var(--dim2)">自动探测结果：找到 <code style="color:#C8CEDA">SB\Binaries\Win64\SB-Win64-Shipping.exe</code>，引擎 UE4 / IoStore</div>
+          </div>
+        </div>
+
+        <div class="frm">
+          <h3>Nexus Mods</h3>
+          <div class="f">
+            <label>API Key</label>
+            <input type="text" value="••••••••••••••••••••••••" >
+            <button class="btn sm" onclick="toast('打开 nexusmods.com/users/myaccount?tab=api')">获取</button>
+          </div>
+          <div class="f">
+            <label>账号状态</label>
+            <span style="font-size:12px;color:var(--ok)">● 已登录（免费账号）</span>
+            <button class="btn sm" style="margin-left:auto">在内置浏览器登录</button>
+          </div>
+          <div class="f">
+            <label>自动接管 nxm://</label>
+            <div class="sw2" onclick="this.classList.toggle('off')"></div>
+            <span class="hint" style="flex:1">开启后，网页上点「Mod manager download」会直接交给本管理器下载</span>
+          </div>
+        </div>
+
+        <div class="frm">
+          <h3>下载与导入</h3>
+          <div class="f">
+            <label>监听下载目录</label>
+            <div class="sw2" onclick="this.classList.toggle('off')"></div>
+            <span class="hint" style="flex:1">发现新的 Mod 压缩包时自动识别并安装</span>
+          </div>
+          <div class="f">
+            <label>下载目录</label>
+            <input type="text" value="C:\Users\Administrator\Downloads">
+            <button class="btn sm">浏览</button>
+          </div>
+          <div class="f">
+            <label>同时下载数</label>
+            <select style="flex:none;width:80px"><option>1</option><option selected>2</option><option>3</option></select>
+            <span class="hint" style="flex:1">Nexus 对并发有限制，建议 1–2</span>
+          </div>
+          <div class="f">
+            <label>安装前自动备份</label>
+            <div class="sw2" onclick="this.classList.toggle('off')"></div>
+            <span class="hint" style="flex:1">覆盖原版文件前先备份，支持一键还原</span>
+          </div>
+        </div>
+
+        <div class="frm">
+          <h3>翻译</h3>
+          <div class="f">
+            <label>翻译后端</label>
+            <select><option>MyMemory（免费 · 无需 Key）</option><option>Bing 翻译（免费）</option><option>大模型 API（需 Key · 质量最佳）</option></select>
+          </div>
+          <div class="f">
+            <label>目标语言</label>
+            <select style="flex:none;width:130px"><option>简体中文</option><option>繁體中文</option></select>
+            <span class="hint" style="flex:1">原文始终保留，UI 上可随时切回英文</span>
+          </div>
+          <div class="f">
+            <label>自动翻译</label>
+            <div class="sw2" onclick="this.classList.toggle('off')"></div>
+            <span class="hint" style="flex:1">打开 Mod 详情时自动翻译说明文字（结果会永久缓存）</span>
+          </div>
+        </div>
+
+        <div class="frm">
+          <h3>存储</h3>
+          <div class="f">
+            <label>数据目录</label>
+            <input type="text" value="D:\AI game\StarBladeModManager\data">
+          </div>
+          <div class="f">
+            <label>缓存占用</label>
+            <span style="font-size:12px;color:var(--dim)">元数据 1.2 MB · 图片 8.4 MB · 归档 156 MB · 备份 12 MB</span>
+            <button class="btn sm" style="margin-left:auto" onclick="toast('已清理缓存（归档与备份保留）')">清理缓存</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 详情抽屉 -->
+      <div class="drawer" id="drawer">
+        <div class="dh">
+          <div>
+            <h3>Custom Nanosuit System</h3>
+            <div style="font-size:11.5px;color:var(--dim);margin-top:3px">自定义纳米战衣系统 · v2.2 · Dekita</div>
+          </div>
+          <div class="x" onclick="document.getElementById('drawer').classList.remove('on')">✕</div>
+        </div>
+        <div class="dbody">
+          <div class="shots">
+            <div class="shot">预览图 1</div><div class="shot">预览图 2</div><div class="shot">预览图 3</div>
+          </div>
+
+          <div class="lbl">说明</div>
+          <div class="langsw">
+            <div class="on" onclick="swLang(this)">中文</div>
+            <div onclick="swLang(this)">English</div>
+          </div>
+          <div class="txt" id="desc">
+            自定义纳米战衣系统（CNS）是一个面向 Mod 作者的服装框架，允许在游戏内通过按 <b>N</b> 键呼出菜单，实时切换任意已安装的服装 Mod。它是绝大多数《剑星》服装类 Mod 的前置依赖。<br><br>
+            <b>安装要求：</b>需要先安装 UE4SS。<br>
+            <b>注意：</b>本 Mod 会写入 <code>SB\Binaries</code> 与 <code>SB\Content</code>，安装时管理器会自动备份被覆盖的原版文件。
+          </div>
+
+          <div class="lbl">来源</div>
+          <div class="urlbox">
+            <span style="flex:1">https://www.nexusmods.com/stellarblade/mods/1496</span>
+            <button class="btn sm">打开</button>
+          </div>
+
+          <div class="lbl">信息</div>
+          <div class="kv"><span>文件</span><span>CustomNanoSuitSystem-1496-2-2.zip</span></div>
+          <div class="kv"><span>版本</span><span>2.2</span></div>
+          <div class="kv"><span>安装时间</span><span>2026-10-10 18:31</span></div>
+          <div class="kv"><span>安装策略</span><span>GAME_SB_ROOT（Binaries + Content → SB\）</span></div>
+          <div class="kv"><span>写入文件</span><span>42 个</span></div>
+          <div class="kv"><span>冲突</span><span style="color:var(--ok)">无</span></div>
+
+          <div class="lbl">文件清单</div>
+          <div class="txt" style="font-family:Consolas,monospace;font-size:11px;color:var(--dim);line-height:1.9">
+            SB\Binaries\Win64\...  ×12<br>
+            SB\Content\Paks\...    ×30
+          </div>
+        </div>
+        <div class="dfoot">
+          <button class="btn p" style="flex:1" onclick="toast('已重新下载并覆盖安装')">重新安装</button>
+          <button class="btn" onclick="toast('已禁用：文件已重命名为 .pak.disabled')">禁用</button>
+          <button class="btn d" onclick="toast('确认后将按安装清单精确卸载并还原备份')">卸载</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="note" id="note"></div>
+
+<script>
+  const T = {
+    p1:['已安装 Mod','共 3 个 · 3 个已启用'],
+    p2:['浏览 Nexus','内置浏览器 · 页面内可直接安装'],
+    p3:['安装队列','1 个进行中'],
+    p4:['前置组件','UE4SS ✓ · CNS 待安装'],
+    p5:['设置','路径 / 账号 / 下载 / 翻译']
+  };
+  document.querySelectorAll('.nav-i').forEach(n=>{
+    n.onclick=()=>{
+      document.querySelectorAll('.nav-i').forEach(x=>x.classList.remove('on'));
+      n.classList.add('on');
+      document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+      document.getElementById(n.dataset.p).classList.add('on');
+      document.getElementById('ttl').textContent=T[n.dataset.p][0];
+      document.getElementById('sub').textContent=T[n.dataset.p][1];
+      document.getElementById('drawer').classList.remove('on');
+      document.getElementById('body').scrollTop=0;
+    };
+  });
+  function openDrawer(){document.getElementById('drawer').classList.add('on');}
+  function swLang(el){
+    el.parentNode.querySelectorAll('div').forEach(d=>d.classList.remove('on'));
+    el.classList.add('on');
+    const d=document.getElementById('desc');
+    if(el.textContent==='English'){
+      d.innerHTML='Custom Nanosuit System (CNS) is a costume framework for mod authors. Press <b>N</b> in-game to open the menu and switch between any installed outfit mods in real time. It is a required dependency for most Stellar Blade outfit mods.<br><br><b>Requirement:</b> UE4SS must be installed first.<br><b>Note:</b> This mod writes into <code>SB\\Binaries</code> and <code>SB\\Content</code>; the manager backs up any overwritten vanilla files automatically.';
+    }else{
+      d.innerHTML='自定义纳米战衣系统（CNS）是一个面向 Mod 作者的服装框架，允许在游戏内通过按 <b>N</b> 键呼出菜单，实时切换任意已安装的服装 Mod。它是绝大多数《剑星》服装类 Mod 的前置依赖。<br><br><b>安装要求：</b>需要先安装 UE4SS。<br><b>注意：</b>本 Mod 会写入 <code>SB\\Binaries</code> 与 <code>SB\\Content</code>，安装时管理器会自动备份被覆盖的原版文件。';
+    }
+  }
+  let nt;
+  function toast(m){
+    const n=document.getElementById('note');
+    n.textContent=m;n.classList.add('on');
+    clearTimeout(nt);nt=setTimeout(()=>n.classList.remove('on'),2200);
+  }
+</script>
+</body>
+</html>

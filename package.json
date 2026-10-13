@@ -1,0 +1,104 @@
+{
+  "name": "starblade-mod-manager",
+  "productName": "剑星 Mod 管理器",
+  "version": "0.1.0",
+  "description": "Stellar Blade 模组管理器：已装模组管理、Nexus 浏览、一键安装、说明中文化",
+  "main": "src/main/index.js",
+  "author": "zilong",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "electron tests/selftest.js",
+    "test:install": "node _probe/installer-test.js",
+    "test:deps": "node _probe/installer-deps-test.js",
+    "test:cns": "node _probe/cns-detect-test.js",
+    "test:logger": "node _probe/logger-test.js",
+    "test:queue": "node _probe/download-queue-test.js",
+    "test:engine": "node _probe/download-engine-test.js",
+    "test:images": "node _probe/image-cache-test.js",
+    "test:gallery": "node _probe/gallery-test.js",
+    "test:archive-name": "node _probe/archive-name-test.js",
+    "test:watch": "node _probe/watch-test.js",
+    "test:github": "node _probe/github-test.js",
+    "test:filter": "node _probe/nexus-filter-test.js",
+    "test:local": "node _probe/local-state-test.js",
+    "test:pick": "node _probe/pickdir-test.js",
+    "test:browse-scroll": "node _probe/browse-scroll-test.js",
+    "test:file-download": "node _probe/file-download-test.js",
+    "test:desc-default": "node _probe/desc-default-test.js",
+    "test:browse-onlynew": "node _probe/browse-onlynew-test.js",
+    "test:batch-download": "node _probe/batch-download-test.js",
+    "test:autoauth": "node _probe/autoauth-test.js",
+    "test:variant-cover": "node _probe/variant-cover-test.js",
+    "test:conflicts": "node _probe/conflict-detail-test.js",
+    "test:blacklist": "node _probe/blacklist-test.js",
+    "test:top-account": "node _probe/top-account-test.js",
+    "test:archive": "node _probe/archive-test.js",
+    "test:pickdirs": "node _probe/pickdirs-e2e.js",
+    "test:drawer-mask": "node _probe/drawer-mask-test.js",
+    "test:real-stuck": "node _probe/real-stuck-check.js --all",
+    "test:real-pick": "node _probe/real-pick-check.js",
+    "test:real-cover": "node _probe/real-cover-check.js",
+    "test:e2e-ue4ss": "node _probe/e2e-ue4ss-install.js",
+    "test:inject": "node _probe/launch.js _probe/nexus-inject-test.js",
+    "test:all": "npm run test:install && npm run test:deps && npm run test:cns && npm run test:logger && npm run test:queue && npm run test:engine && npm run test:images && npm run test:gallery && npm run test:archive-name && npm run test:watch && npm run test:github && npm run test:filter && npm run test:local && npm run test:pick && npm run test:variant-cover && npm run test:conflicts && npm run test:blacklist && npm run test:top-account && npm run test:archive && npm run test:pickdirs && npm run test:drawer-mask && npm run test:browse-scroll && npm run test:file-download && npm run test:desc-default && npm run test:browse-onlynew && npm run test:batch-download && npm run test:autoauth && npm run test:e2e-ue4ss && npm run test:inject",
+    "probe:nxm": "electron _probe/nxm-download.js",
+    "shot": "electron . --shot=_shots/preview.png --shot-page=p-browse --shot-delay=8000",
+    "icon": "python build/make-icon.py",
+    "dist": "node build/dist.js --win",
+    "dist:dir": "node build/dist.js --win --dir"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.zilong.starblade-mod-manager",
+    "productName": "剑星 Mod 管理器",
+    "copyright": "Copyright © 2026 zilong",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "!src/**/*.map",
+      "!**/.DS_Store"
+    ],
+    "asar": true,
+    "compression": "normal",
+    "npmRebuild": false,
+    "electronDownload": {
+      "mirror": "https://registry.npmmirror.com/-/binary/electron/"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "剑星 Mod 管理器",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "StarBlade-Mod-Manager-${version}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "StarBlade-Mod-Manager-${version}-portable.${ext}"
+    }
+  }
+}

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>剑星 Mod 管理器</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">SB</div>
+      <div>
+        <h1>剑星 Mod 管理器</h1>
+        <p id="verLine">Stellar Blade</p>
+      </div>
+    </div>
+    <nav>
+      <div class="nav-i on" data-p="p-installed">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        已安装 Mod <span class="badge" id="navCountInstalled">0</span>
+      </div>
+      <div class="nav-i" data-p="p-browse">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18"/></svg>
+        浏览 Mod
+      </div>
+      <div class="nav-i" data-p="p-download">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+        下载 <span class="badge" id="navCountDownload">0</span>
+      </div>
+      <div class="nav-i" data-p="p-prereq">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        前置组件
+      </div>
+      <div class="nav-i" data-p="p-settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2V21a2 2 0 11-4 0v-.1A1.7 1.7 0 006 19.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 13.7a2 2 0 110-4h.1A1.7 1.7 0 004.6 6L4.5 6a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010.3 3a2 2 0 114 0v.1a1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 001.2 2.9H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
+        设置
+      </div>
+    </nav>
+    <div class="side-foot">
+      <div class="gamestat"><i class="dot" id="gameDot"></i><span id="gameStat">正在检测游戏…</span></div>
+      <div class="path" id="gamePath">—</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="top">
+      <h2 id="ttl">已安装 Mod</h2>
+      <span class="sub" id="sub"></span>
+      <div class="spacer"></div>
+      <div class="search" id="searchBox" style="display:none">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input id="searchInput" placeholder="搜索 Mod 名称，回车确认">
+      </div>
+      <button class="btn" id="btnRefresh">刷新</button>
+      <button class="btn" id="btnNexusAccount">Nexus 账号</button>
+      <button class="btn p" id="btnImport">＋ 导入 Mod</button>
+    </div>
+
+    <div class="body" id="body">
+
+      <!-- 已安装 -->
+      <div class="page on" id="p-installed">
+        <div id="installedArea"></div>
+      </div>
+
+      <!-- 浏览 -->
+      <div class="page" id="p-browse">
+        <!-- 吸顶区：排序 / 范围 / 筛选 / 统计 —— 滚动时不消失（用户 2026-10-13 要求） -->
+        <div class="bhead" id="browseHead">
+          <div class="toolbar">
+            <div class="tabs" id="sortTabs">
+              <button data-sort="downloads" class="on">下载最多</button>
+              <button data-sort="endorsements">最多点赞</button>
+              <button data-sort="newest">最新发布</button>
+              <button data-sort="updated">最近更新</button>
+            </div>
+            <button class="btn sm" id="btnOpenSite">在浏览器中打开 Nexus</button>
+            <div class="tabs adult" id="adultTabs" title="成人内容显示范围">
+              <button data-adult="hide">隐藏成人内容</button>
+              <button data-adult="all" class="on">全部内容</button>
+              <button data-adult="only">只显示成人内容</button>
+            </div>
+            <div class="tabs newonly" id="newOnlyTabs" title="过滤掉已安装的 Mod（本地判定，已下载但未安装的仍会显示）">
+              <button data-onlynew="1">只显示未安装</button>
+            </div>
+            <div class="tabs blocked" id="blockTabs" title="黑名单：点卡片上的「不喜欢」加入，默认不显示">
+              <button data-block="hide" class="on">隐藏黑名单</button>
+              <button data-block="all">显示全部</button>
+              <button data-block="only">只看黑名单</button>
+            </div>
+            <div class="tabs batch" id="batchBar" title="多选模式：勾选多个 Mod，一次性加入下载队列（默认下载各自的第一个主文件）">
+              <button id="btnBatchMode">多选</button>
+              <button id="btnSelectAll" style="display:none">全选</button>
+              <button id="btnBatchDownload" class="bdl" style="display:none">批量下载</button>
+            </div>
+            <div class="spacer"></div>
+            <button class="btn sm" id="btnLoadMore" style="display:none">加载更多</button>
+          </div>
+          <div class="filters" id="browseFilters"></div>
+          <div class="stats" id="browseStats"></div>
+        </div>
+        <div id="browseArea"></div>
+      </div>
+
+      <!-- 下载管理 -->
+      <div class="page" id="p-download">
+        <div id="downloadArea"></div>
+      </div>
+
+      <!-- 前置组件 -->
+      <div class="page" id="p-prereq">
+        <div id="prereqArea"></div>
+      </div>
+
+      <!-- 设置 -->
+      <div class="page" id="p-settings">
+        <div id="settingsArea"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dmask" id="drawerMask" title="点这里关闭"></div>
+<div class="drawer" id="drawer">
+  <div class="dh">
+    <div style="min-width:0;flex:1">
+      <h3 id="dTitle">—</h3>
+      <div class="sub" id="dSub"></div>
+    </div>
+    <button class="x" id="dClose">✕</button>
+  </div>
+  <div class="dbody" id="dBody"></div>
+  <div class="dfoot" id="dFoot"></div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="mbox">
+    <h3 id="mTitle">—</h3>
+    <div class="mbody" id="mBody"></div>
+    <div class="mfoot" id="mFoot"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

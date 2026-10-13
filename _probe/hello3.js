@@ -1,0 +1,11 @@
+const {app}=require('electron');
+const path=require('path');
+app.setName('剑星 Mod 管理器');
+app.setPath('userData', path.join(process.env.APPDATA||'', '剑星 Mod 管理器'));
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-gpu-compositing');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+console.log('SWITCHES_OK');
+app.whenReady().then(()=>{console.log('READY');app.exit(0);});

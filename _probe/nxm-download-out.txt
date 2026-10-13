@@ -1,0 +1,13 @@
+== 下载 https://challenges.cloudflare.com/turnstile/v0/api.js
+   结果: size=86732 total=0 filename=null
+   进度采样: null% (65536/0) | null% (86732/0)
+   文件存在: true，磁盘大小=86732
+   耗时 534ms
+== 取消测试
+   ✓ 抛出: 已取消
+   取消后残留文件: false（应为 false）
+== parseNxm
+   {"raw":"nxm://stellarblade/mods/1496/files/13020?key=ABC&expires=123&user_id=42","game":"stellarblade","modId":1496,"fileId":13020,"key":"ABC","expires":123,"userId":"42"}
+   非法链接 → null
+   从 argv 提取 → {"raw":"nxm://stellarblade/mods/1/files/2","game":"stellarblade","modId":1,"fileId":2,"key":null,"expires":null,"userId":null}
+   协议已注册: false

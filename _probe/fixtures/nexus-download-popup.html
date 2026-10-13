@@ -1,0 +1,149 @@
+<div class="widget-download popup-download popup mfp-with-anim col-1-1 popup mfp-with-anim col-1-1">
+            <div class="col-1-1 flex clearfix">
+                    <script src="https://www.nexusmods.com/Contents/Scripts/poprotator.js" type="text/javascript" ></script>
+        <div class="col-1-2 download-left-panel">
+            <div class="download-top-left-panel">
+                <h2>CNS_ShadowKunoichi725</h2>
+                                <p>
+                    Your download should automatically begin within a few seconds.
+                </p>
+                <p>
+                                            Your file is being prepared for download from
+                        <span class="dl_location_label">your mod manager</span>.
+
+                                                Your download will be capped at 2MB/second.
+                                        </p>
+
+                <p id="emergency-button" style="display:none;">
+                    Should the download not start automatically, you can use the button below.
+                    <a class="btn inline-flex" id="dl_button" onclick="download_file();" style="">
+                        <svg title="" class="icon icon-manual"><use xlink:href="https://www.nexusmods.com/assets/images/icons/icons.svg#icon-manual"></use></svg>                        <span class="flex-label"> Download </span>
+                    </a>
+                </p>
+                <script>
+                    $(function()
+                    {
+                        $( '#emergency-button' ).fadeIn( 5000 );
+                    });
+                </script>
+                
+            </div>
+
+                
+        </div>
+        <div class="col-1-2">
+            <div class="download-right-panel">
+                <h2>Premium benefits</h2>
+                                <p>
+                    Please consider purchasing Premium Membership. It helps to support the sites
+                    and also provides you with some added perks, including:
+                </p>
+
+                <ul class="premium-benefits">
+                    <li>
+                        <svg title="" class="color-icon-rocket dl-icons"><use xlink:href="https://www.nexusmods.com/assets/images/icons/icons.svg#color-icon-rocket"></use></svg>                        <div>
+                            <h3>A choice of servers to download from</h3>
+                            <p>
+                                Additional servers in Europe and North America just for premium Members to use
+                            </p>
+                        </div>
+                    </li>
+                    <li>
+                        <svg title="" class="color-icon-lock dl-icons"><use xlink:href="https://www.nexusmods.com/assets/images/icons/icons.svg#color-icon-lock"></use></svg>                        <div>
+                            <h3>Unlimited download speeds</h3>
+                            <p>
+                                We remove the 3MB/sec download speed cap for Premium Members so you can download
+                                as fast as your connection allows.
+                            </p>
+                        </div>
+                    </li>
+                    <li>
+                        <svg title="" class="color-icon-award dl-icons"><use xlink:href="https://www.nexusmods.com/assets/images/icons/icons.svg#color-icon-award"></use></svg>                        <div>
+                            <h3>Plus many more benefits</h3>
+                            <p>
+                                Find out more about what Premium Membership offers on our <a href="https://users.nexusmods.com/account/billing/premium">Go Premium</a> page.
+                            </p>
+                        </div>
+                    </li>
+                </ul>
+
+                <a id='go-premium-button' class="btn inline-flex" href="https://users.nexusmods.com/account/billing/premium">
+                    <span class="flex-label">Go Premium</span>
+                </a>
+
+                            </div>
+        </div>
+
+        <!-- Scripts etc -->
+        <input type="hidden" id="dl_link" value="nxm://stellarblade/mods/1461/files/8509?key=FIXTUREKEY_NOT_REAL&expires=1792056281&user_id=123456789">
+        <script language="javascript" type="text/javascript">
+
+        const isDisplayingDonationOptions = false;
+
+        if (isDisplayingDonationOptions) {
+          mixpanel.track('donate_popup_opened', {
+            source: 'premium_donate'
+          });
+        }
+
+        $('#donate-form').on('submit', function () {
+          mixpanel.track('donate_popup_cta_click', {
+            source: 'premium_donate'
+          });
+        });
+
+            $(function()
+            {
+                $("ul").on("click", ".change-dl-location", function( event )
+                {
+                    event.stopImmediatePropagation();
+
+                    var link = $(this).data('link');
+                    var label = $(this).data('label');
+                    var description = $(this).data('description');
+                    var save = $(this).data('save');
+                    var premium_chosen = $(this).data('premiumChosen');
+
+                    $( '#dl_link' ).val( link );
+                    $( '.dl_location_label').html( description );
+
+                    if ( save == 1 )
+                    {
+                         $.ajax(
+                        {
+                            type: "POST",
+                            url: "/Core/Libs/Common/Managers/Downloads?SaveDownloadLocation",
+                            data:
+                            {
+                                label: label,
+                                premium_chosen: premium_chosen
+                            },
+                            success: function(msg){}
+                        });
+                    }
+
+                    download_file();
+
+                });
+
+                var topLeftHeight = $( '.download-top-left-panel' ).height();
+                var donationHeight = $( '.download-donation-panel' ).height();
+                var totalHeight = topLeftHeight + donationHeight + 50;
+
+                $( '.download-right-panel' ).css( { minHeight: totalHeight + "px" } );
+
+            });
+
+            function download_file()
+            {
+                var dl_link = $( '#dl_link' ).val();
+                window.location.href = dl_link;
+            }
+
+                            download_file();
+                
+        </script>
+
+                </div>
+        </div>
+    
