@@ -3,6 +3,8 @@
 《剑星》(Stellar Blade) 的 Windows 桌面模组管理器。
 
 - 项目主页：<https://github.com/reloadbug/SBModManager>
+- **下载安装包**：<https://github.com/reloadbug/SBModManager/releases/latest>
+  （`SBModManager-0.2.0-setup.exe` 安装版 / `SBModManager-0.2.0-portable.exe` 免安装版，需 Windows 10/11 x64）
 - 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 - 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
 
