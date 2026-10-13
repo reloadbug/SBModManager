@@ -18,7 +18,9 @@ const SRC = path.join(ROOT, 'src', 'renderer', 'app.js');
 const IPC = path.join(ROOT, 'src', 'main', 'ipc.js');
 const QUEUE = path.join(ROOT, 'src', 'main', 'downloadQueue.js');
 
-const code = fs.readFileSync(SRC, 'utf8');
+// ⚠️ 必须把 CRLF 归一成 LF：下面用 indexOf('\n}\n') 找函数的结束花括号，
+//    而工作区的 app.js 是 CRLF（\r\n），不归一的话这个模式永远匹配不上。
+const code = fs.readFileSync(SRC, 'utf8').replace(/\r\n/g, '\n');
 const ipcCode = fs.readFileSync(IPC, 'utf8');
 const queueCode = fs.readFileSync(QUEUE, 'utf8');
 

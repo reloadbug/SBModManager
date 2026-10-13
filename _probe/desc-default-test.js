@@ -17,7 +17,8 @@ const vm = require('vm');
 const assert = require('assert');
 
 const SRC = path.join(__dirname, '..', 'src', 'renderer', 'app.js');
-const code = fs.readFileSync(SRC, 'utf8');
+// ⚠️ 归一 CRLF → LF：下面靠 indexOf('\n}\n') 抽函数真身，行尾不归一就会落空
+const code = fs.readFileSync(SRC, 'utf8').replace(/\r\n/g, '\n');
 
 let pass = 0, fail = 0;
 function t(name, fn) {
