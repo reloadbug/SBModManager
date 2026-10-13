@@ -29,6 +29,14 @@ _shots/*.txt
 *.part
 .cache/
 
-# 说明：.workbuddy-ai/ 是 AI 助手的项目级记忆与 skill，含本机绝对路径与工作日志，
-# 不随仓库发布（想公开其中的经验总结，请先人工删掉机器相关路径再放开这一行）
+# ============ i18n 开发期中间产物 ============
+# 语言包备份、翻译暂存、抽取的原始键表、待办清单 —— 都能由 _probe/ 下脚本重新生成
+_probe/_locales-backup*/
+_probe/_new-keys.json
+_probe/_todo.json
+_probe/i18n-keys.json.bak
+
+# 说明：.workbuddy-ai/ 与 .workbuddy/ 是 AI 助手的项目级记忆与 skill，含本机绝对路径与工作日志，
+# 不随仓库发布（想公开其中的经验总结，请先人工删掉机器相关路径再放开这两行）
 .workbuddy-ai/
+.workbuddy/

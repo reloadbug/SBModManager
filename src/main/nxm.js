@@ -169,19 +169,54 @@ async function resolveDownloadLink(info) {
 /* ---------------- 下载 ---------------- */
 
 /**
- * 下载到本地文件，带进度回调与取消支持。
+ * 下载到本地文件，带进度回调、取消支持与**断点续传**。
+ *
+ * 续传（用户 2026-10-14 要求「任务中断后支持全部恢复继续下载」）：
+ *   · `destPath` 已存在且非空 → 带 `Range: bytes=<已有字节>-` 发请求
+ *   · 服务器回 **206** → 以追加方式写，进度从已有字节起算
+ *   · 服务器回 **200**（不支持 Range）→ 丢掉旧字节从头写。
+ *     ⚠️ 这一步不能省：把 200 的完整响应追加到旧字节后面，会得到一个
+ *        「前半截 + 完整一份」的坏包 —— 比从零下还糟，且解压时才暴露。
+ *   · 服务器回 **416**（Range 越界）→ 本地那份多半已经完整，把它挪开再让上层重试
+ *
+ * ⚠️ **失败时不再删半截文件** —— 那是下次续传的本钱。
+ *    只有用户主动「取消」才清掉（那时是真要丢弃）。
+ *
  * @param {string} uri
  * @param {string} destPath
- * @param {{onProgress?:Function, shouldCancel?:Function}} opts
+ * @param {{onProgress?:Function, shouldCancel?:Function, resume?:boolean}} opts
  */
 async function downloadToFile(uri, destPath, opts = {}) {
-  const { onProgress, shouldCancel } = opts;
+  const { onProgress, shouldCancel, resume = true } = opts;
   const ses = auth().nexusSession();
 
-  const res = await ses.fetch(uri, { headers: { 'User-Agent': auth().cleanUA() } });
+  // 已有半截文件 → 从它的长度接着下
+  let startAt = 0;
+  if (resume) {
+    try {
+      const st = fs.statSync(destPath);
+      if (st.isFile() && st.size > 0) startAt = st.size;
+    } catch { /* 文件不在 → 从头下 */ }
+  }
+
+  const headers = { 'User-Agent': auth().cleanUA() };
+  if (startAt) headers.Range = 'bytes=' + startAt + '-';
+
+  const res = await ses.fetch(uri, { headers });
+
+  if (res.status === 416) {
+    // 本地那份已经 >= 服务端长度（多半上次其实下完了，只是没来得及改名）
+    try { fs.renameSync(destPath, destPath + '.stale-' + Date.now()); } catch { /* 忽略 */ }
+    throw new Error('本地半截文件与服务端不一致（HTTP 416），已重置，请重试');
+  }
   if (!res.ok) throw new Error('下载失败（HTTP ' + res.status + '）');
 
-  const total = Number(res.headers.get('content-length')) || 0;
+  // 只有真拿到 206 才算续上（见函数头对 200 的说明）
+  const canResume = startAt > 0 && res.status === 206;
+  if (startAt > 0 && !canResume) startAt = 0;
+
+  const bodyLen = Number(res.headers.get('content-length')) || 0;
+  const total = canResume ? startAt + bodyLen : bodyLen;
 
   // 优先用 Content-Disposition 里的文件名
   let filename = null;
@@ -193,15 +228,21 @@ async function downloadToFile(uri, destPath, opts = {}) {
 
   await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
 
-  const out = fs.createWriteStream(destPath);
+  const out = fs.createWriteStream(destPath, { flags: canResume ? 'a' : 'w' });
   const body = Readable.fromWeb(res.body);
-  let received = 0;
+  let received = canResume ? startAt : 0;
   let cancelled = false;
   let settled = false;
 
-  const cleanup = () => {
+  // 一上来先报一次已有进度：续传时界面上不该又从 0% 爬
+  if (canResume && typeof onProgress === 'function') {
+    onProgress({ received, total, percent: total ? Math.min(100, Math.round((received / total) * 100)) : null, resumed: true });
+  }
+
+  /** removeFile=true 只在**用户主动取消**时给 —— 意外中断要留半截文件给下次续传 */
+  const cleanup = (removeFile) => {
     try { out.destroy(); } catch { /* 忽略 */ }
-    try { fs.unlinkSync(destPath); } catch { /* 忽略 */ }
+    if (removeFile) { try { fs.unlinkSync(destPath); } catch { /* 忽略 */ } }
   };
 
   await new Promise((resolve, reject) => {
@@ -234,12 +275,14 @@ async function downloadToFile(uri, destPath, opts = {}) {
 
     body.pipe(out);
   }).catch((e) => {
-    cleanup();
+    // 用户主动取消 → 半截文件没意义，清掉；
+    // 其它失败（网络抖动 / 进程被杀）→ **留着**，之后「全部恢复」从这儿接着下。
+    cleanup(cancelled);
     if (cancelled) throw new Error('已取消');
     throw e;
   });
 
-  return { path: destPath, size: received, total, filename };
+  return { path: destPath, size: received, total, filename, resumed: canResume };
 }
 
 /* ---------------- 待处理队列 ---------------- */

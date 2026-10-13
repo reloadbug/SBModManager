@@ -451,13 +451,30 @@ function createDownloadEngine(opts = {}) {
       // 「Nexus Global Content Delivery Network」且没扩展名，直接拿来当文件名，
       // 8 个 mod 会长得一模一样。下载完再由 finalizeArchive() 嗅探真实格式、
       // 按 <modId>_<模组名>_<版本>.<ext> 规范命名。
-      const partName = '.dl-' + (modId || 'unknown') + '-' + (a.fileId || Date.now()) + '-' + Date.now() + '.part';
+      // ⚠️ 名字**不带时间戳**（原来是 `.dl-<modId>-<fileId>-<ts>.part`）。
+      //
+      // 用户 2026-10-14 要求「任务中断后支持全部恢复继续下载」——
+      // 要续传就得能在重新排队时**找回上一次那半截文件**，而带时间戳的名字
+      // 每次算出来都不一样，等于每恢复一次就从 0 重下。
+      // 同一 (modId, fileId) 在队列里天然唯一（入队会按 mod+file 去重），
+      // 所以不需要时间戳防撞名。
+      const partName = '.dl-' + (modId || 'unknown') + '-' + (a.fileId || 'x') + '.part';
       const dest = path.join(libraryDir, partName);
 
+      // 续传时先把**已有字节数**报上去，界面不会又从 0% 爬一遍
+      let partBytes = 0;
+      try { const st = fs.statSync(dest); if (st.isFile() && st.size > 0) partBytes = st.size; } catch { /* 没有半截文件 */ }
+      const knownTotal = Number(meta.fileSize) || 0;
+      if (partBytes) logEvent('download:resume', { id, modId, fileId: a.fileId, from: partBytes });
       patch(id, {
         status: 'downloading',
         filename: safeFileName(meta.fileName || meta.name || chosen.name, 'mod-' + modId + '-' + (a.fileId || 'x') + '.zip'),
-        progress: { received: 0, total: Number(meta.fileSize) || 0, percent: 0 }
+        progress: {
+          received: partBytes,
+          total: knownTotal,
+          percent: knownTotal && partBytes ? Math.min(100, Math.round((partBytes / knownTotal) * 100)) : 0,
+          resumed: partBytes > 0
+        }
       });
 
       let r;
@@ -943,22 +960,44 @@ function createDownloadEngine(opts = {}) {
   }
 
   /**
-   * 清扫 `data/library/` 里**残留的半截下载**（`.dl-<modId>-<fileId>-<ts>.part`）。
+   * 清扫 `data/library/` 里**残留的半截下载**（`.dl-<modId>-<fileId>.part`）。
    *
-   * 正常路径下取消/失败会自己删掉临时文件，但**进程被强杀**时（关窗口、
+   * 正常路径下**用户主动取消**会自己删掉半截文件；但**进程被强杀**时（关窗口、
    * 任务管理器结束、崩溃）没人收尾 —— 实测残留了两个：一个 147MB、一个 3.9MB。
-   * 它们不会被任何逻辑复用（本引擎没有断点续传），纯粹占地方。
    *
-   * ⚠️ 只删**足够旧**的（默认 6 小时）：正在下载的那个 `.part` 一直在被写入，
-   *    mtime 始终是新的，不会被误删。
+   * 🔴 口径变了（2026-10-14）：**这些半截文件现在是续传的本钱，不能随手删**。
+   *    用户要求「任务中断后支持全部恢复继续下载」，而那批文件正是接着下的起点。
+   *
+   * 所以只清「**队列里已经没有对应任务**」且**足够旧**的：
+   *   · 队列里还有 downloading / interrupted / failed / awaiting_authorization 的任务
+   *     → 对应 `.part` 一个都不动 —— 用户可能过好几天才回来点「全部恢复」
+   *   · 任务已被移除（记录删了），或压根没有对应任务 → 过 24 小时再清
+   *
+   * ⚠️ 正在下载的那个 `.part` 一直在被写入，mtime 始终是新的，本来也不会被误删。
    */
-  function sweepStaleParts(maxAgeMs = 6 * 60 * 60 * 1000) {
+  function sweepStaleParts(maxAgeMs = 24 * 60 * 60 * 1000) {
     const swept = [];
     let items = [];
     try { items = fs.readdirSync(libraryDir); } catch { return swept; }
     const now = Date.now();
+
+    // 队列里「还可能续传」的任务 → 保住它们的 .part
+    const keep = new Set();
+    try {
+      for (const t of queue.list()) {
+        const m = (t && t.meta) || {};
+        if (!m.modId) continue;
+        if (t.status === 'downloading' || t.status === 'interrupted' ||
+            t.status === 'failed' || t.status === 'awaiting_authorization' ||
+            t.status === 'resolving' || t.status === 'queued') {
+          keep.add('.dl-' + m.modId + '-' + (m.fileId || 'x') + '.part');
+        }
+      }
+    } catch { /* 队列读不到就别清，宁可留着 */ return swept; }
+
     for (const name of items) {
       if (!/^\.dl-.*\.part$/.test(name)) continue;
+      if (keep.has(name)) continue;
       const p = path.join(libraryDir, name);
       let mtime = 0;
       try { mtime = fs.statSync(p).mtimeMs; } catch { continue; }

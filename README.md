@@ -1,6 +1,29 @@
-# 剑星 Mod 管理器
+# SBModManager — 剑星 Mod 管理器
 
 《剑星》(Stellar Blade) 的 Windows 桌面模组管理器。
+
+- 项目主页：<https://github.com/reloadbug/SBModManager>
+- 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
+
+> 仓库名 / 包名 / 安装包文件名是 **SBModManager**；程序内显示的标题仍是「剑星 Mod 管理器」
+> （保留显示名是为了不改 `userData` 目录名 —— 改了老用户的设置与 Nexus 登录态就会「消失」）。
+
+## 界面语言（14 种）
+
+简体中文是原文语言，其余 13 种提供完整语言包，跟随系统语言自动选择，也可在设置页手动切换：
+
+| 语言 | 代码 | 语言 | 代码 |
+|---|---|---|---|
+| 简体中文（原文） | `zh-CN` | 意大利语 | `it-IT` |
+| 繁體中文 | `zh-TW` | 波兰语 | `pl-PL` |
+| English | `en-US` | 土耳其语 | `tr-TR` |
+| 日本語 | `ja-JP` | ไทย | `th-TH` |
+| 한국어 | `ko-KR` | Deutsch | `de-DE` |
+| Русский | `ru-RU` | Français | `fr-FR` |
+| Español | `es-ES` | Português (Brasil) | `pt-BR` |
+
+语言包位于 `src/renderer/locales/*.js`，以 `<script>` 形式加载（受 CSP `script-src 'self'` 约束，
+`file://` 下无法用 `fetch` 读本地 JSON）。术语与键表以 `_probe/i18n-keys.json` 为唯一真源。
 
 ## 现在能做什么（v0.1）
 
@@ -26,6 +49,12 @@
 | **顶部栏吸顶**：排序 / 显示范围 / 筛选 / 统计固定在顶部，往下翻时不消失 | ✅ |
 | **「不喜欢」黑名单**：点卡片上的「🚫 不喜欢」**立刻**加入黑名单并从列表消失；顶部可切「隐藏黑名单（默认）/ 显示全部 / 只看黑名单」 | ✅ |
 | **结构识别兜底**：根级 pak 一律能装（自动剔掉 `modinfo.ini` 等管理器记账文件；只有真·多变体包才让你挑一套） | ✅ |
+| **裸包 / 非常规结构也能装**：CNS 服装数据（`.dekcns` / `.dekani`）、`~Mods` 直投包、`SB\` 原样落盘包，都不再报「无法识别这个压缩包的结构」 | ✅ |
+| **覆盖前对比**：需要覆盖的安装任务带「对比」按钮，**左右并列**显示将被覆盖的已安装模组与本包的封面图、名称、版本，确认后再装 | ✅ |
+| **详情抽屉点空白即关**：Mod 详情打开后，点抽屉外的任何空白处自动关闭（`Esc` 同样可关） | ✅ |
+| **点击即下载**：点「⬇ 下载」不会再弹出浏览器窗口，任务直接进队列开始下载 | ✅ |
+| **中断后一键全部续传**：下载中断/失败后，「全部恢复」一次把所有可续传任务接着下（HTTP Range 续传，不重头来） | ✅ |
+| **多语言界面**：14 种语言（简体中文为原文，另 13 种语言包），跟随系统语言、可手动切换 | ✅ |
 | **不打扰的自动安装**：重装/升级自己、以及「同名同大小」的共用底座 pak，都不算冲突、直接装（覆盖前照旧备份） | ✅ |
 | **变体选择框默认选好**：按互斥组预选（每组一套、互不相关的全选），点开即可直接装 | ✅ |
 | **变体预览图**：从压缩包里按需解出每套的封面图（`Cooling suit_A` ↔ `Cooling Suit_A.jpg`），挑配色不用靠猜 | ✅ |
@@ -57,8 +86,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `StarBlade-Mod-Manager-0.1.0-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
-| `StarBlade-Mod-Manager-0.1.0-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
+| `SBModManager-0.1.0-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
+| `SBModManager-0.1.0-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
 
 两者都**不需要管理员权限**，也都**不会**在卸载时删你的数据。
 
@@ -158,6 +187,9 @@ src/main/        Electron 主进程
   bbcode.js      Nexus BBCode → HTML / 纯文本
   ipc.js         渲染层 ↔ 主进程通道
 src/renderer/    界面（原生 HTML/CSS/JS），5 个页面
+  i18n.js        多语言运行时（中文原文即 key，渲染后按字典替换 DOM 文本）
+  locales/*.js   13 种语言包（zh-TW / en-US / ja-JP / ko-KR / ru-RU / de-DE / fr-FR /
+                 es-ES / pt-BR / it-IT / pl-PL / tr-TR / th-TH）
 build/           打包资源：make-icon.py（图标）、dist.js（打包入口）、icon.ico
 data/            运行数据：配置、注册表、下载队列、归档、图片缓存、备份、日志
 dist/            打包产物（setup.exe / portable.exe / win-unpacked）
@@ -208,7 +240,7 @@ tests/           自检脚本
 ## 打包
 
 ```bash
-npm run dist        # → dist/StarBlade-Mod-Manager-<版本>-setup.exe   + -portable.exe
+npm run dist        # → dist/SBModManager-<版本>-setup.exe   + -portable.exe
 npm run dist:dir    # → dist/win-unpacked/（不生成安装包，快）
 ```
 
