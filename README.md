@@ -4,7 +4,7 @@
 
 - 项目主页：<https://github.com/reloadbug/SBModManager>
 - **下载安装包**：<https://github.com/reloadbug/SBModManager/releases/latest>
-  （`SBModManager-0.2.9-setup.exe` 安装版 / `SBModManager-0.2.9-portable.exe` 免安装版，需 Windows 10/11 x64）
+  （`SBModManager-0.2.10-setup.exe` 安装版 / `SBModManager-0.2.10-portable.exe` 免安装版，需 Windows 10/11 x64）
 - 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 - 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
 
@@ -28,14 +28,15 @@
 语言包位于 `src/renderer/locales/*.js`，以 `<script>` 形式加载（受 CSP `script-src 'self'` 约束，
 `file://` 下无法用 `fetch` 读本地 JSON）。术语与键表以 `_probe/i18n-keys.json` 为唯一真源。
 
-## 现在能做什么（v0.2.9）
+## 现在能做什么（v0.2.10）
 
 | 功能 | 状态 |
 |---|---|
 | 游戏目录自动探测与校验 | ✅ |
 | UE4SS（Mod 加载器）状态检测 | ✅ |
 | CNS（服装框架）按**特征文件**确定性检测（不再是猜测） | ✅ |
-| **已安装 Mod 列表**：Pak 模组 / 脚本模组 / 前置组件统一展示 | ✅ |
+| **已安装 Mod 列表**：Pak 模组 / 脚本模组 / 前置组件 / **LogicMod** 统一展示 | ✅ |
+| **LogicMod（UE4SS 蓝图模组，如 ATOOL）装好后正确显示「已安装」**：它的落点 `SB\Content\Paks\LogicMods\` 既不在 `~Mods` 也没有脚本目录特征，靠注册表清单兜底识别；同一个 Mod 先后装过多个版本时**只显示一条**（留最近装的那份） | ✅ |
 | **已安装页只管「已安装」**：顶部实时条只显示正在下载 / 安装的任务；「待确认」这类等你动手的任务统一在下载页处理（带原因说明和按钮） | ✅ |
 | **已安装 Mod 排序**：顶部一排按钮切换 —— 安装时间（默认，最新装的在最上面）/ 名称 / Mod ID / 类型；**支持正序 / 倒序**（点右侧方向按钮，或再点一次当前排序名）；每种模式都带兜底键，顺序稳定可复现 | ✅ |
 | **同一个 Mod 的多个文件合并成一张卡**（与浏览页口径一致）：卡片标「N 个已装文件」，点开在抽屉里**逐个文件**启用 / 禁用 / 卸载；开关三态（全开 / 全关 / 部分启用） | ✅ |
@@ -106,8 +107,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `SBModManager-0.2.9-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
-| `SBModManager-0.2.9-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
+| `SBModManager-0.2.10-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
+| `SBModManager-0.2.10-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
 
 两者都**不需要管理员权限**，也都**不会**在卸载时删你的数据。
 
@@ -147,7 +148,8 @@ npm start
 
 ```bash
 npm test              # 主进程模块自检（游戏探测 / 扫描 / Nexus / 翻译）
-npm run test:all      # 全部探针套件（37 套 / 2490 断言，见下）
+npm run test:all      # 全部探针套件（38 套 / 2589 断言，见下）
+npm run test:atool    # ATOOL（LogicMod 框架）自检（落点规则 / 特征判定 / **装好后进「已安装」列表** / 同 Mod 多版本去重）
 npm run test:engine   # 下载引擎自检（状态机 / 自动安装 / 授权不落盘 / 取消 / 复用记录）
 npm run test:autoauth # 免点击自动授权（弹层端点解析 / 失败分类 / 刚上传未就绪判定 / 串行流水线 / 挑战页冷却续跑）
 npm run test:conflicts # 覆盖明细（归属三态 / 多主路径 / 大小对比 / 排序 / limit / 对比入口去重 / 抽屉内容顺序）

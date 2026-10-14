@@ -264,18 +264,56 @@ function scan(root, registry) {
   //
   //    ~Mods 与 ue4ss\Mods 之外的落点没有可靠的磁盘特征，只能靠注册表里的 manifest 认领。
   //    要求 manifest 里至少还有一个文件真实存在，避免把已被手动删掉的 mod 一直挂在列表里。
+  //
+  //    ⚠️ 前置组件**不能一概跳过**（0.2.10 修复；实测 mod 1662「Animation Tool (ATOOL)」
+  //       装好之后浏览页不显示「已安装」）：
+  //       上面 1)/2) 步只代表「落点有可靠特征」的两个框架 —— UE4SS 与 CNS。
+  //       ATOOL 这类 LogicMod 框架落在 `SB\Content\Paks\LogicMods\`，①②③④ 步**都不扫它**，
+  //       第 5) 步是唯一通路。旧代码在这里对所有 `prereqModIds` 一律 `continue`，
+  //       于是 ATOOL 被两头排除：注册表里明明有记录、三件套也躺在 LogicMods\ 里，
+  //       scan() 却一条都不返回 → 它永远进不了「已安装」。
+  //       判据改成**按事实**：只有「这一轮已经有条目代表它了」才跳过（CNS 就是这种情况）。
   const seen = new Set(out.map(m => m.id));
   const prereqModIds = new Set(prereqs.all().filter(p => p.modId).map(p => Number(p.modId)));
+  // 已经出现在 out 里的前置组件 modId（例如第 2) 步的 CNS）—— 它们不必再列一条
+  const representedPrereqs = new Set(
+    out.filter(m => m.meta && m.meta.source)
+      .map(m => Number(m.meta.source.modId))
+      .filter(id => id > 0)
+  );
+  // 同一 modId 的多条注册记录（作者更新后 fileId 变了、或用户先后装了互斥版本）
+  // 指向的是**同一组落点文件**，逐条 push 会让「已安装」里冒出好几个同名条目。
+  // 按「modId + 落点签名」去重，只留最近装的那条。
+  // ⚠️ 只对**同一 modId** 去重：不同 mod 共用同一个 pak 文件名是真实存在的
+  //    （`minervha_master_P` 那组被 4 个 mod 同时登记，见 `registry.byTargetAll` 的注释），
+  //    那些必须各列一条，否则界面上就分不清文件到底属于谁了。
+  const claimedTarget = new Map();          // `${modId}|${落点签名}` → 已 push 的注册表记录
+
   for (const reg of registry.all()) {
     if (seen.has(reg.id)) continue;
     if (/^builtin:/.test(reg.id)) continue;              // 前置组件已单独处理
     // 前置组件（如 CNS）已由第 2) 步代表，不再重复列一条
-    if (reg.source && prereqModIds.has(Number(reg.source.modId))) continue;
+    if (reg.source && prereqModIds.has(Number(reg.source.modId))
+      && representedPrereqs.has(Number(reg.source.modId))) continue;
 
-    const alive = (reg.manifest || []).filter(f => {
+    const entries = (reg.manifest || []).filter(f => f && f.path);
+    const alive = entries.filter(f => {
       try { return fs.existsSync(f.path); } catch { return false; }
     });
     if (!alive.length) continue;
+
+    // —— 同一 modId 的重复登记：落点签名相同就只留 installedAt 更晚的那条 ——
+    const modId = reg.source && reg.source.modId != null ? Number(reg.source.modId) : 0;
+    if (modId > 0) {
+      const sig = modId + '|' + entries.map(f => String(f.path).toLowerCase()).sort().join('|');
+      const prev = claimedTarget.get(sig);
+      if (prev) {
+        if (String(reg.installedAt || '') <= String(prev.installedAt || '')) continue;
+        const at = out.findIndex(m => m.id === prev.id);   // 新的一条更晚 → 摘掉旧的那条
+        if (at >= 0) out.splice(at, 1);
+      }
+      claimedTarget.set(sig, reg);
+    }
 
     out.push({
       id: reg.id,
