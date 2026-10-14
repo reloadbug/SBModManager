@@ -86,10 +86,93 @@ t('挑战页优先于「没有 nxm」判定', () => {
 });
 
 console.log('');
+console.log('=== A3b. 失败分类：「文件刚上传、还没同步好」===');
+// 现场：作者 13:41:28 传完文件，13:44:00 去要链接就是 no_nxm（文件才 2.5 分钟大），
+// 而同作者 3.7 小时前上传的另一个文件一次就拿到。老逻辑把这句说成「作者只开了手动下载」。
+t('站方原话（being uploaded to our file servers）→ file_not_ready', () =>
+  aa.parsePopup('<p>The file is currently being uploaded to our file servers and it will be ready to be downloaded soon.</p>').code === 'file_not_ready'
+    ? true : '没认出');
+t('「ready to be downloaded soon」单独出现也能认', () =>
+  aa.parsePopup('<div>It will be ready to be downloaded soon.</div>').code === 'file_not_ready' ? true : '没认出');
+t('「not yet available for download」也能认', () =>
+  aa.parsePopup('<div>This file is not yet available for download</div>').code === 'file_not_ready' ? true : '没认出');
+t('大小写变体也能认', () =>
+  aa.parsePopup('<div>THE FILE IS NOT READY</div>').code === 'file_not_ready' ? true : '没认出');
+t('★ 真·没有链接也没说「未就绪」→ 仍是 no_nxm（不能把作者的锅一并洗掉）', () =>
+  aa.parsePopup('<div class="widget-download"><h2>X</h2></div>').code === 'no_nxm' ? true : '被误判成未就绪');
+t('挑战页优先于「未就绪」判定（顺序反了会把 CF 拦截图说成等几分钟）', () =>
+  aa.parsePopup('<title>Just a moment...</title><p>file is not ready</p>').code === 'challenge' ? true : '顺序错了');
+t('未登录优先于「未就绪」判定', () =>
+  aa.parsePopup('<h2>Please login or signup</h2><p>file is not ready</p>').code === 'not_logged_in' ? true : '顺序错了');
+t('导出 NOT_READY_RE（探针可离线断言）', () => aa.NOT_READY_RE instanceof RegExp ? true : '没导出');
+t('失败时带回 snippet 供日志排查（剥标签、压空白）', () => {
+  const r = aa.parsePopup('<html><body>\n  <h1>Whatever</h1>\n  <p>第二行</p>\n</body></html>');
+  return (typeof r.snippet === 'string' && /Whatever/.test(r.snippet)
+    && !/<[a-z]/i.test(r.snippet) && !/\n/.test(r.snippet)) ? true : JSON.stringify(r.snippet);
+});
+t('snippetOf 会砍掉 <script>（页面里的大块 JS 不该进日志）', () => {
+  const s = aa.snippetOf('<p>hi</p><script>var a=1;</script>');
+  return (!/var a/.test(s) && /hi/.test(s)) ? true : s;
+});
+t('snippetOf 有长度上限', () => {
+  const s = aa.snippetOf('<p>' + 'x'.repeat(5000) + '</p>');
+  return s.length <= aa.SNIPPET_MAX ? true : String(s.length);
+});
+t('成功解析时不带 snippet（省得日志里混进正常响应）', () =>
+  aa.parsePopup(FIXTURE).snippet === undefined ? true : '多带了 snippet');
+
+console.log('');
+console.log('=== A5. 纯函数：「刚上传」判定与等待时长（settleDecision）===');
+// 现场数据：任务创建于 13:43:59.678Z，文件上传于 13:41:28Z —— 差值 151 秒。
+const S = aa.settleDecision;
+t('★ no_nxm + 文件才 151 秒大 → 按未就绪处理（复现用户现场）', () => {
+  const d = S({ code: 'no_nxm', ageMs: 151 * 1000 });
+  const want = aa.FILE_SETTLE_MS - 151 * 1000;
+  return (d.notReady === true && d.wait === want) ? true : JSON.stringify(d);
+});
+t('★ no_nxm + 文件已经 3.7 小时大（同作者那个成功的）→ 不按未就绪', () => {
+  const d = S({ code: 'no_nxm', ageMs: 3.7 * 3600 * 1000 });
+  return (d.notReady === false && d.wait === 0) ? true : JSON.stringify(d);
+});
+t('★★ 查不到上传时间（null）→ 不按未就绪（不能把「作者关了」说成「稍后再试」）', () => {
+  const d = S({ code: 'no_nxm', ageMs: null });
+  return (d.notReady === false && d.wait === 0) ? true : JSON.stringify(d);
+});
+t('刚好卡在宽限边界（= FILE_SETTLE_MS）→ 不再等', () => {
+  const d = S({ code: 'no_nxm', ageMs: aa.FILE_SETTLE_MS });
+  return (d.notReady === false && d.wait === 0) ? true : JSON.stringify(d);
+});
+t('wait 被上限截断（刚上传 5 秒也不会等满 3 分钟）', () => {
+  const d = S({ code: 'no_nxm', ageMs: 5000 });
+  return d.wait === aa.FILE_SETTLE_WAIT_MAX_MS ? true : String(d.wait);
+});
+t('等待上限 < 宽限期（否则「等满再问一次」是空话）', () =>
+  aa.FILE_SETTLE_WAIT_MAX_MS < aa.FILE_SETTLE_MS ? true : '上限不小于宽限期');
+t('页面写明「还没就绪」→ 即使查不到时间也按未就绪（只是不等）', () => {
+  const d = S({ code: 'file_not_ready', ageMs: null });
+  return (d.notReady === true && d.wait === 0) ? true : JSON.stringify(d);
+});
+t('其余失败码一律不按未就绪', () =>
+  ['challenge', 'not_logged_in', 'network', 'http', 'bad_link', 'bad_args'].every(c => {
+    const d = S({ code: c, ageMs: 10 * 1000 });
+    return d.notReady === false && d.wait === 0;
+  }) ? true : '有码被误判成未就绪');
+t('负数 / NaN / 缺参不炸', () =>
+  [-1, NaN, undefined, {}, null].every(v => typeof S({ code: 'no_nxm', ageMs: v }).notReady === 'boolean')
+    ? true : '炸了');
+t('未知码不炸（走 notReady=false）', () => S({ code: 'whatever', ageMs: 1000 }).notReady === false ? true : '误判');
+
+console.log('');
 console.log('=== A4. 失败文案 humanize ===');
 t('not_logged_in 提到登录', () => /登录/.test(aa.humanize('not_logged_in')) ? true : '文案没提登录');
 t('challenge 提到稍后再试 / 手动', () => /手动|稍后/.test(aa.humanize('challenge')) ? true : '文案不对');
 t('no_nxm 指向手动授权', () => /手动/.test(aa.humanize('no_nxm')) ? true : '文案不对');
+t('★ file_not_ready 说的是「过几分钟再点自动授权」，不再甩锅给作者', () => {
+  const s = aa.humanize('file_not_ready');
+  return (/再点|过几分钟|稍后/.test(s) && !/作者/.test(s)) ? true : s;
+});
+t('★ 两种成因的文案必须不同（一个是「作者关了」，一个是「等同步」）', () =>
+  aa.humanize('no_nxm') !== aa.humanize('file_not_ready') ? true : '两条文案一样，等于没区分');
 t('network 带上原始原因', () => aa.humanize('network', '请求超时').includes('请求超时') ? true : '原因丢了');
 t('未知码不炸', () => typeof aa.humanize('whatever') === 'string' ? true : '不是字符串');
 
@@ -127,6 +210,48 @@ t('连续 3 次挑战才认定「真被拦」', () => /MAX_CHALLENGE_STREAK = 3/
 t('撞挑战后额外冷却（叠在正常间隔上）', () => /CHALLENGE_COOLDOWN_MS = 2600/.test(ipc) ? true : '没冷却');
 t('授权失败会写回任务原因', () => /engine\.markAuthFailed\(id, reason\)/.test(ipc) ? true : '没写回');
 t('自动授权复用 handleIncomingNxm', () => /const task = await handleIncomingNxm\(info\)/.test(ipc) ? true : '没复用');
+
+console.log('');
+console.log('=== C2. 「文件刚上传、还没同步好」的处理（第三十一轮）===');
+t('ipc 用 nexusAutoAuth.settleDecision 判定（判定逻辑只有一处）', () =>
+  /nexusAutoAuth\.settleDecision\(\{ code: r\.code, ageMs: age \}\)/.test(ipc) ? true : '没调纯函数');
+t('★ 上传时间只查一次（两条路径各查一次会白打两次接口）', () => {
+  const n = (ipc.match(/await fileAgeMs\(modId, fileId\)/g) || []).length;
+  return n === 1 ? true : '查了 ' + n + ' 次';
+});
+t('fileAgeMs 走 getModFiles 的文件 date', () =>
+  /await nexus\.getModFiles\(Number\(modId\)\)/.test(ipc) && /Number\(f\.date\)/.test(ipc) ? true : '没查上传时间');
+t('★ fileAgeMs 查不到返回 null，不用 0 兜底', () => {
+  const i = ipc.indexOf('async function fileAgeMs');
+  const seg = ipc.slice(i, i + 420);
+  return (/if \(!d\) return null;/.test(seg) && !/return 0/.test(seg)) ? true : '用了 0 兜底（老文件会被误判成刚上传）';
+});
+t('★ 只有 no_nxm / file_not_ready 两种码才去查上传时间', () =>
+  /if \(!r\.ok && \(notReady \|\| r\.code === 'no_nxm'\)\)/.test(ipc) ? true : '判定条件不对');
+t('★ 判过「刚上传」后，最终错误码统一成 file_not_ready（重试后仍失败也别再说作者）', () =>
+  /const code = notReady \? 'file_not_ready' : r\.code;/.test(ipc) ? true : '没统一错误码');
+t('重试前真的睡了（不是立刻再打一次）', () =>
+  /if \(d\.wait > 0\) \{[\s\S]{0,200}?await sleep\(d\.wait\);[\s\S]{0,120}?fetchNxm/.test(ipc) ? true : '没等就重试');
+t('「刚上传」事件进日志，带上上传时长与等待时长', () =>
+  /logger\.event\('download:fileNotReady'/.test(ipc) && /ageMs: age, waitMs: d\.wait/.test(ipc) ? true : '没记日志');
+t('失败日志带上响应片段（下次 Nexus 改措辞也有据可查）', () =>
+  /snippet: r\.snippet \|\| null/.test(ipc) ? true : '没记片段');
+t('fetchNxm 不对 file_not_ready 做无谓重试（等多久都一样）', () =>
+  /p\.code === 'file_not_ready'\) return p;/.test(read('src/main/nexusAutoAuth.js')) ? true : '还在重试');
+t('★ markAuthFailed 只改 error、保持「等待授权」——按钮还能再点', () =>
+  /if \(t\.status !== 'awaiting_authorization'\) return queue\.get\(id\);/.test(eng) ? true : '会改状态');
+t('★ 新文案已进键表与 13 个语言包（否则界面回退成中文原文）', () => {
+  const KEYS2 = JSON.parse(read('_probe/i18n-keys.json'));
+  const msg = aa.humanize('file_not_ready');
+  if (!KEYS2.includes(msg)) return '键表里没有';
+  const dir = path.join(__dirname, '..', 'src', 'renderer', 'locales');
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.js'));
+  const miss = files.filter(f => !fs.readFileSync(path.join(dir, f), 'utf8').includes("'" + msg + "'"));
+  if (miss.length) return '缺：' + miss.join(',');
+  return files.length === 13 ? true : '语言包数不是 13：' + files.length;
+});
+t('旧文案没被顺手删掉（作者确实关了管理器下载时还得靠它）', () =>
+  JSON.parse(read('_probe/i18n-keys.json')).includes(aa.humanize('no_nxm')) ? true : '键表里找不到 no_nxm 文案');
 t('引擎导出 markAuthFailed', () => /markAuthFailed,/.test(eng) ? true : '没导出');
 t('引擎有下载并发闸门', () => /acquireSlot\(\)/.test(eng) && /releaseSlot\(\)/.test(eng) ? true : '缺闸门');
 t('闸门在 finally 里释放（异常也不漏名额）', () => /finally \{\s*\n\s*releaseSlot\(\);\s*\n\s*running\.delete\(id\);/.test(eng) ? true : '不在 finally');

@@ -312,6 +312,24 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 const STALE_FILE_CODES = new Set(['no_nxm', 'bad_link', 'http']);
 
 /**
+ * 这个文件上传至今多久（毫秒）。**查不到返回 null**。
+ *
+ * ⚠️ 不能用 0 兜底：那样任何查不到时间的文件都会被当成「刚上传」，
+ *    把「作者确实关了管理器下载」也一并说成「稍后再试」。
+ *
+ * 判定与等待时长见 `nexusAutoAuth.settleDecision()`（纯函数，可离线断言）。
+ */
+async function fileAgeMs(modId, fileId) {
+  try {
+    const files = await nexus.getModFiles(Number(modId));
+    const f = (files || []).find(x => Number(x.fileId) === Number(fileId));
+    const d = f && Number(f.date);
+    if (!d) return null;
+    return Date.now() - d * 1000;
+  } catch { return null; }
+}
+
+/**
  * 查一个 Mod 的主文件（供「自动授权前补 fileId」使用）。
  *
  * 永不抛：**查不到** 与 **连不上** 是两回事，交给调用方去说不同的话。
@@ -399,12 +417,35 @@ async function autoAuthorizeTask(id) {
     }
   }
 
+  // —— 「文件刚上传，Nexus 还没同步好」 ——
+  // 作者传完新文件后，站内要过一会儿才签发 nxm 链接。这期间弹层里没有 dl_link，
+  // 表现为 `no_nxm`（老逻辑）或 `file_not_ready`（认得出页面措辞时）。
+  // 老逻辑会直接报「作者只开了手动下载」——把锅甩给作者，而且用户点「手动授权」
+  // 同样拿不到链接（文件确实还没就绪，不是作者关了什么）。
+  let notReady = r.code === 'file_not_ready';
+  if (!r.ok && (notReady || r.code === 'no_nxm')) {
+    const age = await fileAgeMs(modId, fileId);
+    const d = nexusAutoAuth.settleDecision({ code: r.code, ageMs: age });
+    notReady = d.notReady;
+    if (d.wait > 0) {
+      logger.event('download:fileNotReady', {
+        id, modId, fileId, ageMs: age, waitMs: d.wait, rawCode: r.code
+      });
+      await sleep(d.wait);
+      r = await nexusAutoAuth.fetchNxm({ game: 'stellarblade', modId, fileId });
+    }
+  }
+
   if (!r.ok) {
-    const reason = nexusAutoAuth.humanize(r.code, r.reason);
+    // 已经确认过是「刚上传」的，即使重试后拿到的还是 `no_nxm`，也要按「稍后再试」说
+    const code = notReady ? 'file_not_ready' : r.code;
+    const reason = nexusAutoAuth.humanize(code, r.reason);
     engine.markAuthFailed(id, reason);
     broadcastDownloads(null);
-    logger.event('download:autoauthFailed', { id, modId, fileId, code: r.code, reason: r.reason });
-    return { ok: false, code: r.code, reason, taskId: id };
+    logger.event('download:autoauthFailed', {
+      id, modId, fileId, code, rawCode: r.code, reason: r.reason, snippet: r.snippet || null
+    });
+    return { ok: false, code, reason, taskId: id };
   }
 
   // 弹层里那个 <h2> 就是文件名 —— 队列卡片能显示得更准
