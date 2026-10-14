@@ -5,6 +5,7 @@
 - 项目主页：<https://github.com/reloadbug/SBModManager>
 - **下载安装包**：<https://github.com/reloadbug/SBModManager/releases/latest>
   （`SBModManager-0.2.10-setup.exe` 安装版 / `SBModManager-0.2.10-portable.exe` 免安装版，需 Windows 10/11 x64）
+- **一键安装**：双击仓库里的 **`安装.bat`**（或命令行跑 `install.ps1`）—— 自动下载最新版并静默安装，详见 [安装](#安装)
 - 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 - 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
 
@@ -99,18 +100,91 @@
 | 运行日志落盘（`data/logs/`，按天轮转），设置页可直接查看 | ✅ |
 | **打包成 exe**：安装版 + 便携版，带应用图标 | ✅ |
 
-## 启动
+## 安装
 
-### 用打包好的 exe（推荐）
+### 系统要求
 
-到 `dist/` 里拿：
-
-| 文件 | 说明 |
+| 项 | 要求 |
 |---|---|
-| `SBModManager-0.2.10-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
-| `SBModManager-0.2.10-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
+| 系统 | **Windows 10 / 11（64 位）** |
+| 游戏 | 《剑星》(Stellar Blade) Steam 版已安装 —— 程序会自动探测目录，也可以手动指定 |
+| 权限 | **不需要管理员权限**（装到当前用户目录） |
+| 依赖 | 运行本身不需要装任何东西；要用 Mod 再按程序提示装 UE4SS / CNS 前置 |
 
-两者都**不需要管理员权限**，也都**不会**在卸载时删你的数据。
+> 本程序基于 Electron 44，**不再支持 Windows 7 / 8 / 8.1**。
+
+### 方式一：一键安装脚本（推荐）
+
+仓库里有 `install.ps1`（配一个双击入口 **`安装.bat`**）：自动去 GitHub 取最新版安装包 → 校验大小 → 静默安装 → 装完直接启动。
+
+**双击 `安装.bat` 就行**（会弹一个控制台窗口，装完之前别关它）。
+
+想在命令行里用或加参数：
+
+```powershell
+# 装最新版（安装版）
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
+
+# 免安装的便携版
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Portable
+
+# 指定版本 + 指定安装目录
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Version 0.2.10 -InstallDir "D:\Tools\SBModManager"
+
+# 只看它会干什么，不下载、不安装
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -DryRun
+
+# 用本地已经下好的 exe（完全不联网）
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\下载\SBModManager-0.2.10-setup.exe"
+```
+
+| 参数 | 作用 |
+|---|---|
+| `-Version <版本>` | 指定版本（`0.2.10` 或 `v0.2.10`），默认取最新 |
+| `-Portable` | 下载便携版而不是安装版 |
+| `-InstallDir <目录>` | 安装目录（安装版透传给安装程序，便携版作为落地目录） |
+| `-LocalFile <文件>` | 用本地已有的 exe，不联网 |
+| `-Mirror <前缀>` | 下载加速前缀，例如 `-Mirror https://ghfast.top/` |
+| `-NoLaunch` | 装完不自动启动 |
+| `-DryRun` | 只显示计划，不做任何改动 |
+
+> **中国大陆网络**：直连 `github.com` 下 release 往往很慢甚至超时，三种办法 ——
+> ① 加 `-Mirror <加速前缀>`（这类加速服务的地址常变，用前先确认它能打开）；
+> ② 用别的工具把 exe 下好，再用 `-LocalFile` 指定；
+> ③ 走下面的方式二手动下载。
+>
+> 脚本本身不需要管理员权限；如果 PowerShell 拦了脚本执行，用上面命令里的
+> `-ExecutionPolicy Bypass` 即可（只对这一次生效，不改系统设置）。
+
+### 方式二：手动下载安装版
+
+到 [Releases 页](https://github.com/reloadbug/SBModManager/releases/latest) 下载 `SBModManager-<版本>-setup.exe`（约 106 MB），双击安装。
+
+- 可以**自选安装目录**（默认 `%LOCALAPPDATA%\Programs\剑星 Mod 管理器`）
+- 装完有桌面 / 开始菜单快捷方式
+- **不需要管理员权限**
+
+### 方式三：便携版（免安装）
+
+下载 `SBModManager-<版本>-portable.exe`（约 106 MB），**双击即用** —— 不写注册表、不建快捷方式，放哪都行（U 盘也可以）。
+
+便携版和安装版**共用同一份数据目录**（`%APPDATA%\剑星 Mod 管理器`），换着用不会丢配置。
+
+### 第一次启动
+
+1. 程序会**自动探测**《剑星》游戏目录；没探到就在设置页手动选 —— 选包含 `SB\Content\Paks` 的那一层（例如 `D:\games\Star Blade`）。
+2. 要用 Mod 一般还需要两个前置，缺的时候程序会提示，也可以提前手动装：
+   - **UE4SS**（Mod 加载器）：设置页 → 一键安装 UE4SS（直接从 GitHub 下）
+   - **CNS**（服装框架）：装服装类 Mod 时会提示，内置了安装助手窗口
+3. 想用「点一下自动下载」的话，需要登录 Nexus 账号（顶栏 → 登录，内置浏览器，登录态会保存）。
+
+### 更新与卸载
+
+- **更新**：再跑一次 `安装.bat`（或重新下新版 exe 装一遍）即可覆盖升级，**配置与 Mod 数据都在**，不用重来。
+- **卸载**：Windows 设置 → 应用 → 「剑星 Mod 管理器」→ 卸载。
+- **数据不会跟着删**：`%APPDATA%\剑星 Mod 管理器`（配置 / 已安装 Mod 注册表 / 下载队列 / 图片缓存 / 日志）在卸载时**保留**（打包配置里 `deleteAppDataOnUninstall: false`）。想彻底清干净就手动删掉这个目录。
+
+## 从源码运行（开发者）
 
 ### 从源码跑
 
@@ -187,6 +261,10 @@ npm run icon          # 重新生成应用图标（build/icon.png + build/icon.i
 ## 目录说明
 
 ```
+install.ps1        一键安装脚本（查 GitHub Release → 校验大小 → 静默安装，支持 -Portable / -LocalFile / -Mirror）
+安装.bat           上面那个脚本的双击入口
+启动.bat           从源码启动（双击）
+启动-兼容模式.bat  从源码启动，兼容模式（--no-sandbox + 软件渲染）
 src/main/        Electron 主进程
   game.js        游戏目录探测与结构检查（含 CNS 特征文件判定）
   scanner.js     扫描已安装的 Mod
@@ -274,8 +352,10 @@ npm run dist:dir    # → dist/win-unpacked/（不生成安装包，快）
 - **打包入口是 `build/dist.js`，不是直接调 electron-builder。** 它负责设好两个镜像：
   `ELECTRON_MIRROR` 与 `ELECTRON_BUILDER_BINARIES_MIRROR`（都指向 npmmirror）。
   本机 `github.com` 直连不通，不换镜像的话 nsis / winCodeSign 这些打包辅助二进制根本拉不下来。
-- **重新打包前先 `rm -rf dist`。** electron-builder 会删掉上次的 `dist/win-unpacked`，
-  在受限沙箱里可能触发批量删除保护而直接失败。
+- **重新打包前先清掉旧的 `dist/`。** electron-builder 会删掉上次的 `dist/win-unpacked`（73 个文件），
+  在受限沙箱里会撞上批量删除保护（单次护栏 50 个文件）而直接失败。
+  Windows 上 `mv dist <别处>` 如果报 `EPERM`，通常是某个进程把 `dist` 当工作目录占着 ——
+  不用管它，改成**逐项搬走 `dist` 里的 6 个顶层项**，再让 electron-builder 重建 `dist/` 即可。
 - 图标由 `build/make-icon.py`（纯 Pillow 矢量绘制）生成，改完设计跑 `npm run icon` 即可。
 - 打包产物约 106 MB/个，主要是 Electron 运行时（`app.asar` 本身只有 400 KB 左右）。
 
