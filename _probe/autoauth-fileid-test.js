@@ -1,0 +1,225 @@
+'use strict';
+/**
+ * 「自动授权前现场补 fileId」断言套件（第二十七轮）。
+ *
+ * ## 这一轮修的是什么
+ *
+ * 任务入队时 `fileId` 为空是**常态** —— 浏览页卡片直接点「下载」时抽屉还没加载
+ * 文件列表，批量下载时那次 `nexus.files()` 也可能失败。而 Nexus 的站内下载弹层
+ * 端点**必须按 fileId 走**，所以老逻辑直接把这类任务判成
+ * 「缺少 Mod ID / 文件 ID，无法自动授权」推到用户手上点「手动」。
+ *
+ * 新逻辑：**只要有 modId**，就在授权前现场查一次该 mod 的主文件补上 fileId
+ * （`ipc.js :: autoAuthorizeTask` → `resolvePrimaryFile` → `engine.patchMeta`）。
+ *
+ * ## 覆盖
+ *   A. `nexus.pickPrimaryFile` 的挑选口径（纯函数，真调用）
+ *   B. 它与渲染层 `app.js` 的 `pickPrimaryFile` **行为完全一致**（同用例跑两边）
+ *   C. 接线：补齐发生在 `fetchNxm` **之前**，且写回 meta
+ *   D. 一刀切的老判定已消失
+ *   E. `engine.patchMeta` 存在 / 已导出 / 只动 meta 不动状态
+ *   F. 三条分层文案同时存在于源码、keys.json 与 13 个语言包
+ *
+ * 用法：node _probe/autoauth-fileid-test.js
+ */
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const ROOT = path.resolve(__dirname, '..');
+const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');
+
+const nexus = require('../src/main/nexus');
+const IPC = read('src/main/ipc.js').replace(/\r\n/g, '\n');
+const ENGINE = read('src/main/downloadEngine.js').replace(/\r\n/g, '\n');
+// ⚠️ 工作区的 app.js 是 CRLF —— 下面要按 `\n}` 抽函数，必须先归一
+const APP = read('src/renderer/app.js').replace(/\r\n/g, '\n');
+const KEYS = JSON.parse(read('_probe/i18n-keys.json'));
+
+let pass = 0, fail = 0;
+function t(label, fn) {
+  try {
+    const r = fn();
+    if (r === true || r === undefined) { pass++; console.log('  ✓ ' + label); }
+    else { fail++; console.log('  ✗ ' + label + '  → ' + r); }
+  } catch (e) { fail++; console.log('  ✗ ' + label + '  → ' + e.message); }
+}
+
+const NEW_KEYS = [
+  '这条任务没有来源 Mod ID，无法自动授权（可点「手动」）。',
+  '这个 Mod 在 Nexus 上没有可下载的文件，无法自动授权（可点「手动」）。',
+  '取不到这个 Mod 的文件列表（网络或接口问题），稍后再试或点「手动」。'
+];
+const OLD_KEY = '这条任务缺少 Mod ID / 文件 ID，无法自动授权（可点「手动」）。';
+
+/* ================= A. pickPrimaryFile 挑选口径 ================= */
+
+const CASES = [
+  { label: '空数组 → null', files: [], want: null },
+  { label: '非数组（null）→ null', files: null, want: null },
+  { label: '非数组（对象）→ null', files: { fileId: 1 }, want: null },
+  { label: 'primary 标记优先', files: [{ fileId: 1 }, { fileId: 2, primary: true }], want: 2 },
+  { label: 'primary 在首位也认它', files: [{ fileId: 9, primary: true }, { fileId: 8 }], want: 9 },
+  { label: '无 primary 时退到 MAIN', files: [{ fileId: 1 }, { fileId: 2, categoryRaw: 'MAIN' }], want: 2 },
+  { label: 'primary 与 MAIN 并存时 primary 赢', files: [{ fileId: 3, categoryRaw: 'MAIN' }, { fileId: 4, primary: true }], want: 4 },
+  { label: '什么都没有就取第一个', files: [{ fileId: 5 }, { fileId: 6 }], want: 5 },
+  { label: '数组里有空洞（null 项）不炸', files: [null, { fileId: 7 }], want: 7 }
+];
+
+console.log('=== A. nexus.pickPrimaryFile 挑选口径 ===');
+t('已从 nexus.js 导出', () => typeof nexus.pickPrimaryFile === 'function' ? true : typeof nexus.pickPrimaryFile);
+for (const c of CASES) {
+  t(c.label, () => {
+    const f = nexus.pickPrimaryFile(c.files);
+    const got = f ? f.fileId : null;
+    return got === c.want ? true : '得到 ' + JSON.stringify(got);
+  });
+}
+
+/* ================= B. 与渲染层同口径 ================= */
+
+console.log('');
+console.log('=== B. 与渲染层 app.js 的 pickPrimaryFile 行为一致 ===');
+
+const m = APP.match(/function pickPrimaryFile\(files\) \{[\s\S]*?\n\}/);
+t('能从 app.js 抽出该函数', () => m ? true : '没匹配到');
+
+let rendererPick = null;
+if (m) {
+  const body = m[0].slice(m[0].indexOf('{') + 1, m[0].lastIndexOf('}'));
+  rendererPick = new Function('files', body);
+}
+for (const c of CASES) {
+  t('两端一致：' + c.label, () => {
+    if (!rendererPick) return '拿不到渲染层实现';
+    const a = nexus.pickPrimaryFile(c.files);
+    const b = rendererPick(c.files);
+    const av = a ? a.fileId : null, bv = b ? b.fileId : null;
+    return av === bv ? true : ('主进程 ' + av + ' vs 渲染层 ' + bv);
+  });
+}
+
+/* ================= C. 接线：补齐在 fetchNxm 之前 ================= */
+
+console.log('');
+console.log('=== C. autoAuthorizeTask 的接线 ===');
+
+const fnStart = IPC.indexOf('async function autoAuthorizeTask(');
+const fnEnd = IPC.indexOf('\n}\n', fnStart);
+const FN = fnStart >= 0 && fnEnd > fnStart ? IPC.slice(fnStart, fnEnd) : '';
+
+t('找得到 autoAuthorizeTask 函数体', () => FN ? true : '没匹配到（源码结构变了？）');
+t('函数体里定义了 resolvePrimaryFile 调用', () => /await\s+resolvePrimaryFile\(modId\)/.test(FN) ? true : '没调用');
+t('补齐分支确实以「缺 fileId」为条件', () => /if\s*\(!fileId\)\s*\{/.test(FN) ? true : '没找到 if (!fileId)');
+t('补齐后写回任务 meta', () => /engine\.patchMeta\(id,\s*\{[\s\S]{0,200}?fileId/.test(FN) ? true : '没写回');
+t('写回的字段含 fileName', () => /engine\.patchMeta\(id,\s*\{[\s\S]{0,300}?fileName/.test(FN) ? true : '没写 fileName');
+t('写回后立刻广播（界面马上能看到补上的文件）', () => {
+  const i = FN.indexOf('engine.patchMeta');
+  const j = FN.indexOf('broadcastDownloads', i);
+  return (i >= 0 && j > i && j - i < 400) ? true : '没有紧随的 broadcast';
+});
+
+t('★ 补齐发生在 fetchNxm **之前**（顺序错了就白补）', () => {
+  const iResolve = FN.search(/await\s+resolvePrimaryFile\(modId\)/);
+  const iFetch = FN.indexOf('nexusAutoAuth.fetchNxm');
+  if (iResolve < 0 || iFetch < 0) return '找不到关键调用';
+  return iResolve < iFetch ? true : '补齐在 fetchNxm 之后（顺序颠倒）';
+});
+
+t('fileId 是可变绑定（let），补齐后能带到 fetchNxm', () => /let\s+fileId\s*=/.test(FN) ? true : '不是 let');
+t('fetchNxm 用的是补齐后的 fileId', () => {
+  const i = FN.indexOf('nexusAutoAuth.fetchNxm');
+  const seg = FN.slice(i, i + 200);
+  return /\bmodId\b/.test(seg) && /\bfileId\b/.test(seg) ? true : '调用参数里没带 fileId';
+});
+
+console.log('');
+console.log('=== C2. resolvePrimaryFile 的实现 ===');
+const rpStart = IPC.indexOf('async function resolvePrimaryFile(');
+const rpEnd = IPC.indexOf('\n}\n', rpStart);
+const RP = rpStart >= 0 && rpEnd > rpStart ? IPC.slice(rpStart, rpEnd) : '';
+t('找得到 resolvePrimaryFile', () => RP ? true : '没匹配到');
+t('用 nexus.getModFiles 拉文件列表', () => /nexus\.getModFiles\(/.test(RP) ? true : '没用 getModFiles');
+t('挑文件走 nexus.pickPrimaryFile（与渲染层同口径）', () => /nexus\.pickPrimaryFile\(/.test(RP) ? true : '没走 pickPrimaryFile');
+t('永不抛：catch 里返回结构化失败', () => /catch\s*\(e\)\s*\{[\s\S]{0,120}?ok:\s*false/.test(RP) ? true : 'catch 里没有 ok:false');
+
+/* ================= D. 老的一刀切判定已消失 ================= */
+
+console.log('');
+console.log('=== D. 一刀切判定已移除 ===');
+t('不再有 `if (!modId || !fileId)` 这种合并判定', () =>
+  /if\s*\(!modId\s*\|\|\s*!fileId\)/.test(FN) ? '还在（会把能补的任务也判死）' : true);
+t('缺 modId 有单独分支', () => /if\s*\(!modId\)\s*\{/.test(FN) ? true : '没有单独处理缺 modId');
+t('缺 modId 的文案与缺文件的文案不同', () => {
+  const a = IPC.includes('这条任务没有来源 Mod ID');
+  const b = IPC.includes('这个 Mod 在 Nexus 上没有可下载的文件');
+  const c = IPC.includes('取不到这个 Mod 的文件列表');
+  return (a && b && c) ? true : JSON.stringify({ a, b, c });
+});
+
+/* ================= E. engine.patchMeta ================= */
+
+console.log('');
+console.log('=== E. downloadEngine.patchMeta ===');
+t('定义了 patchMeta', () => /function patchMeta\(id,\s*partial\)/.test(ENGINE) ? true : '没定义');
+t('patchMeta 已导出', () => /markAuthFailed,\s*patchMeta,/.test(ENGINE) ? true : '导出列表里没有');
+// ⚠️ 只截到 patchMeta 自己的结束花括号 —— 多截一点就会把后面 `retry` 里的
+//    `status` 当成 patchMeta 的（这个坑本套件自己先踩过一次）。
+const pmStart = ENGINE.indexOf('function patchMeta(');
+const pmEndRaw = ENGINE.indexOf('\n  }\n', pmStart);
+const PM = pmStart < 0 ? '' : ENGINE.slice(pmStart, pmEndRaw > pmStart ? pmEndRaw : pmStart + 600);
+t('patchMeta 只合并 meta（浅合并，不覆盖整块）', () => {
+  return /meta:\s*\{\s*\.\.\.\(t\.meta\s*\|\|\s*\{\}\),\s*\.\.\.partial\s*\}/.test(PM)
+    ? true : '没有用浅合并写法';
+});
+t('patchMeta 不碰 status', () => /status/.test(PM) ? '里面出现了 status（不该改状态）' : true);
+t('patchMeta 对不存在的任务安静返回 null', () =>
+  /if\s*\(!t\)\s*return\s+null/.test(PM) ? true : '没做存在性检查');
+
+/* ================= F. 分层文案 × 源码 / keys / 13 语言包 ================= */
+
+console.log('');
+console.log('=== F. 分层文案落位 ===');
+for (const k of NEW_KEYS) {
+  t('源码里有：「' + k.slice(0, 12) + '…」', () => IPC.includes(k) ? true : 'ipc.js 里没有');
+  t('keys.json 里有：「' + k.slice(0, 12) + '…」', () => KEYS.includes(k) ? true : 'keys.json 里没有');
+}
+t('旧的笼统键已从 keys.json 移除', () => KEYS.includes(OLD_KEY) ? '还在' : true);
+t('旧的笼统键已从 ipc.js 移除', () => IPC.includes(OLD_KEY) ? '还在' : true);
+
+const LANGS = ['zh-TW', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU',
+  'de-DE', 'fr-FR', 'es-ES', 'pt-BR', 'it-IT', 'pl-PL', 'tr-TR', 'th-TH'];
+/** 这两种语言的译文天然含汉字，不能拿「含 CJK」当漏翻判据 */
+const HAN_NATIVE = new Set(['zh-TW', 'ja-JP']);
+
+function loadPack(lang) {
+  const src = read('src/renderer/locales/' + lang + '.js');
+  const captured = [];
+  const sandbox = {
+    window: { I18N: { register(code, dict) { captured.push({ code, dict }); } } },
+    module: { exports: {} },
+    console
+  };
+  sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(src, sandbox, { filename: lang, timeout: 10000 });
+  if (!captured.length) throw new Error(lang + ' 没有调用 I18N.register()');
+  return captured[0].dict;
+}
+
+for (const lang of LANGS) {
+  t(lang + '：3 条新文案齐全且非空、非照抄原文', () => {
+    const dict = loadPack(lang);
+    for (const k of NEW_KEYS) {
+      const v = dict[k];
+      if (typeof v !== 'string' || !v.trim()) return '缺或空：' + k.slice(0, 12);
+      if (!HAN_NATIVE.has(lang) && v === k) return '照抄了中文原文：' + k.slice(0, 12);
+    }
+    return true;
+  });
+}
+
+console.log('');
+console.log('---');
+console.log(pass + ' 通过 / ' + fail + ' 失败');
+process.exit(fail ? 1 : 0);

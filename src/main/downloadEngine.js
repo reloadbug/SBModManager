@@ -812,6 +812,22 @@ function createDownloadEngine(opts = {}) {
     return queue.get(id);
   }
 
+  /**
+   * 只更新任务的 `meta`（浅合并），**不改状态**。
+   *
+   * 用途：自动授权前现场补齐 `fileId`。入队时拿不到文件列表是常事
+   * （浏览页卡片直接点「下载」时抽屉还没加载 files、批量下载时那次请求失败…），
+   * 而 Nexus 的站内下载弹层端点**必须按 fileId 走** —— 既然手里有 modId，
+   * 就该当场查出来补上，而不是把用户推去点「手动」。
+   */
+  function patchMeta(id, partial) {
+    const t = queue.get(id);
+    if (!t) return null;
+    if (!partial || typeof partial !== 'object') return queue.get(id);
+    patch(id, { meta: { ...(t.meta || {}), ...partial } });
+    return queue.get(id);
+  }
+
   /** 重试 / 手动开始 */
   function retry(id) {
     const t = queue.get(id);
@@ -1086,7 +1102,7 @@ function createDownloadEngine(opts = {}) {
     list, get, stats, activeCount,
     enqueueNexus, enqueueLocal, attachNxm,
     retry, cancel, confirmInstall, remove, planOf,
-    markAuthFailed,
+    markAuthFailed, patchMeta,
     ensureImages, syncFromInstalled,
     refreshUnknownPlans,
     reviveBrokenInstalls,
