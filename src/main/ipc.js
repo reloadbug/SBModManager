@@ -299,6 +299,17 @@ function sendAutoAuth(x) { sendToMain('download:autoauth', x || {}); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /**
+ * 哪些失败码意味着「**是文件本身不行**」，而不是「会话 / 网络不行」。
+ *
+ * 最典型的场景：作者更新了 mod，把旧文件归档或删掉 —— 任务里存的 fileId 就成了死号，
+ * 弹层端点拿不到 nxm 链接（`no_nxm` / `http` 404）。这种情况下**重查一次主文件就能救回来**，
+ * 不该把「作者只开了手动下载」这种话甩给用户。
+ *
+ * 刻意**不含** `not_logged_in`（换文件也没用）与 `challenge` / `network`（是频控或网络，重试要等）。
+ */
+const STALE_FILE_CODES = new Set(['no_nxm', 'bad_link', 'http']);
+
+/**
  * 查一个 Mod 的主文件（供「自动授权前补 fileId」使用）。
  *
  * 永不抛：**查不到** 与 **连不上** 是两回事，交给调用方去说不同的话。
@@ -336,11 +347,13 @@ async function autoAuthorizeTask(id) {
   // 入队时没钉上 fileId 是常事 —— 浏览页卡片直接点「下载」时抽屉还没加载文件列表，
   // 批量下载时那次 `nexus.files()` 也可能失败。但 Nexus 的站内下载弹层端点**必须按 fileId 走**，
   // 所以这里现场补一次：只要 modId 在，多半能查出来，不该把用户推去点「手动」。
+  let fileIdResolved = false;
   if (!fileId) {
     const r = await resolvePrimaryFile(modId);
     const f = r.ok ? r.file : null;
     if (f && Number(f.fileId) > 0) {
       fileId = Number(f.fileId);
+      fileIdResolved = true;
       engine.patchMeta(id, {
         fileId,
         fileName: f.name || (t.meta && t.meta.fileName) || '',
@@ -360,7 +373,30 @@ async function autoAuthorizeTask(id) {
     }
   }
 
-  const r = await nexusAutoAuth.fetchNxm({ game: 'stellarblade', modId, fileId });
+  let r = await nexusAutoAuth.fetchNxm({ game: 'stellarblade', modId, fileId });
+
+  // —— fileId 失效自愈 ——
+  // 任务自带的 fileId 可能是**死号**：作者更新 mod 后把旧文件归档 / 删掉是常事，
+  // 此时弹层端点给不出 nxm（`no_nxm` / `http`），老逻辑会直接失败并说「作者只开了手动下载」——
+  // 把锅甩给作者，而任务永远卡住。既然手里有 modId，就重查一次主文件、换新 fileId 再试一次。
+  // 只在「这次是自己查出来的」以外的情形才做，且新旧 fileId 必须真的不同，避免空转。
+  if (!r.ok && !fileIdResolved && STALE_FILE_CODES.has(r.code)) {
+    const rr = await resolvePrimaryFile(modId);
+    const nf = rr.ok && rr.file ? Number(rr.file.fileId) || 0 : 0;
+    if (nf && nf !== fileId) {
+      logger.event('download:fileIdStale', { id, modId, oldFileId: fileId, newFileId: nf, cause: r.code });
+      fileId = nf;
+      engine.patchMeta(id, {
+        fileId,
+        fileName: rr.file.name || '',
+        fileVersion: rr.file.version || '',
+        fileSize: rr.file.sizeInBytes || 0
+      });
+      broadcastDownloads(null);
+      r = await nexusAutoAuth.fetchNxm({ game: 'stellarblade', modId, fileId });
+    }
+  }
+
   if (!r.ok) {
     const reason = nexusAutoAuth.humanize(r.code, r.reason);
     engine.markAuthFailed(id, reason);
