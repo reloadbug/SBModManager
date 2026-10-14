@@ -299,6 +299,21 @@ function sendAutoAuth(x) { sendToMain('download:autoauth', x || {}); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /**
+ * 查一个 Mod 的主文件（供「自动授权前补 fileId」使用）。
+ *
+ * 永不抛：**查不到** 与 **连不上** 是两回事，交给调用方去说不同的话。
+ * @returns {Promise<{ok:true, file:object|null}|{ok:false, error:string}>}
+ */
+async function resolvePrimaryFile(modId) {
+  try {
+    const files = await nexus.getModFiles(Number(modId));
+    return { ok: true, file: nexus.pickPrimaryFile(files) };
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || String(e) };
+  }
+}
+
+/**
  * 给**一条**任务自动授权：用已登录会话直接向 Nexus 站内下载弹层端点要 nxm 链接，
  * 拿到后走与「用户点了一下」**完全相同**的后续链路（handleIncomingNxm）。
  *
@@ -309,12 +324,40 @@ async function autoAuthorizeTask(id) {
   if (!t) return { ok: false, code: 'no_task', reason: '任务不存在', taskId: id };
 
   const modId = Number(t.meta && t.meta.modId);
-  const fileId = Number(t.meta && t.meta.fileId) || null;
-  if (!modId || !fileId) {
-    const reason = '这条任务缺少 Mod ID / 文件 ID，无法自动授权（可点「手动」）。';
+  let fileId = Number(t.meta && t.meta.fileId) || null;
+
+  if (!modId) {
+    const reason = '这条任务没有来源 Mod ID，无法自动授权（可点「手动」）。';
     engine.markAuthFailed(id, reason);
     broadcastDownloads(null);
     return { ok: false, code: 'bad_args', reason, taskId: id };
+  }
+
+  // 入队时没钉上 fileId 是常事 —— 浏览页卡片直接点「下载」时抽屉还没加载文件列表，
+  // 批量下载时那次 `nexus.files()` 也可能失败。但 Nexus 的站内下载弹层端点**必须按 fileId 走**，
+  // 所以这里现场补一次：只要 modId 在，多半能查出来，不该把用户推去点「手动」。
+  if (!fileId) {
+    const r = await resolvePrimaryFile(modId);
+    const f = r.ok ? r.file : null;
+    if (f && Number(f.fileId) > 0) {
+      fileId = Number(f.fileId);
+      engine.patchMeta(id, {
+        fileId,
+        fileName: f.name || (t.meta && t.meta.fileName) || '',
+        fileVersion: f.version || (t.meta && t.meta.fileVersion) || '',
+        fileSize: f.sizeInBytes || (t.meta && t.meta.fileSize) || 0
+      });
+      broadcastDownloads(null);
+      logger.event('download:resolvedFile', { id, modId, fileId, how: 'autoauth' });
+    } else {
+      const reason = r.ok
+        ? '这个 Mod 在 Nexus 上没有可下载的文件，无法自动授权（可点「手动」）。'
+        : '取不到这个 Mod 的文件列表（网络或接口问题），稍后再试或点「手动」。';
+      engine.markAuthFailed(id, reason);
+      broadcastDownloads(null);
+      logger.event('download:resolveFileFailed', { id, modId, ok: r.ok, error: r.error || null });
+      return { ok: false, code: 'bad_args', reason, taskId: id };
+    }
   }
 
   const r = await nexusAutoAuth.fetchNxm({ game: 'stellarblade', modId, fileId });

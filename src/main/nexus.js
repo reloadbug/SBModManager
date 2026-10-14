@@ -362,4 +362,17 @@ function createNexus({ getApiKey, timeout = 20000 } = {}) {
   return { listMods, getFacets, getMod, getModFiles, clearCache: () => cache.clear(), GAME_DOMAIN, GAME_ID };
 }
 
-module.exports = { createNexus, buildModsFilter, ADULT_MODES, GAME_DOMAIN, GAME_ID, SORTS, CATEGORIES, TAGS, collectModImages };
+/**
+ * 从文件列表里挑「第一个主文件」—— 与渲染层 `src/renderer/app.js` 的 `pickPrimaryFile` **同口径**。
+ *
+ * `getModFiles` 已经按「primary → MAIN → UPDATE → …」排好序，这里再兜一层是为了：
+ *   · 让**主进程**也能独立挑（自动授权前现场补 fileId 要用，见 ipc.js `autoAuthorizeTask`）；
+ *   · 保证主进程与渲染层挑出来的**永远是同一个文件**，不会出现「卡片上写 A、实际下 B」。
+ */
+function pickPrimaryFile(files) {
+  const list = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (!list.length) return null;
+  return list.find(f => f.primary) || list.find(f => f.categoryRaw === 'MAIN') || list[0];
+}
+
+module.exports = { createNexus, buildModsFilter, ADULT_MODES, GAME_DOMAIN, GAME_ID, SORTS, CATEGORIES, TAGS, collectModImages, pickPrimaryFile };
