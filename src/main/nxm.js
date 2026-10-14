@@ -182,12 +182,16 @@ async function resolveDownloadLink(info) {
  * ⚠️ **失败时不再删半截文件** —— 那是下次续传的本钱。
  *    只有用户主动「取消」才清掉（那时是真要丢弃）。
  *
+ * 🔴 但「暂停」走的是**同一个中止通道**，语义却相反：暂停必须**保留**半截文件，
+ *    否则「继续」就只能从头重下（用户 2026-10-14 明确要求暂停要能续传）。
+ *    所以调用方可以用 `keepPartialOnCancel()` 单独告诉这里「这次中止别删」。
+ *
  * @param {string} uri
  * @param {string} destPath
- * @param {{onProgress?:Function, shouldCancel?:Function, resume?:boolean}} opts
+ * @param {{onProgress?:Function, shouldCancel?:Function, resume?:boolean, keepPartialOnCancel?:Function}} opts
  */
 async function downloadToFile(uri, destPath, opts = {}) {
-  const { onProgress, shouldCancel, resume = true } = opts;
+  const { onProgress, shouldCancel, resume = true, keepPartialOnCancel = null } = opts;
   const ses = auth().nexusSession();
 
   // 已有半截文件 → 从它的长度接着下
@@ -277,7 +281,14 @@ async function downloadToFile(uri, destPath, opts = {}) {
   }).catch((e) => {
     // 用户主动取消 → 半截文件没意义，清掉；
     // 其它失败（网络抖动 / 进程被杀）→ **留着**，之后「全部恢复」从这儿接着下。
-    cleanup(cancelled);
+    //
+    // ⚠️ 「暂停」也走这条中止通道，但它必须**保留**半截文件 —— 由调用方通过
+    //    `keepPartialOnCancel()` 表态。判定失败一律当「不保留」（宁可清掉也别留错文件）。
+    let keepPartial = false;
+    if (cancelled && typeof keepPartialOnCancel === 'function') {
+      try { keepPartial = !!keepPartialOnCancel(); } catch { keepPartial = false; }
+    }
+    cleanup(cancelled && !keepPartial);
     if (cancelled) throw new Error('已取消');
     throw e;
   });

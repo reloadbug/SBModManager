@@ -6,7 +6,12 @@ const { readJson, writeJson } = require('./store');
 const STATUSES = new Set([
   'awaiting_authorization', 'queued', 'resolving', 'downloading',
   'downloaded', 'analyzing', 'needs_review', 'installing', 'installed',
-  'failed', 'cancelled', 'interrupted'
+  'failed', 'cancelled', 'interrupted',
+  // 用户主动暂停（2026-10-14 新增）。与 `interrupted` 的区别：
+  //   · `paused`      —— 用户点的，**半截文件必须留着**，随时能接着下
+  //   · `interrupted` —— 进程被强杀 / 崩溃留下的，用户没表过态
+  // 两者恢复路径一样（都走「继续」），分开是为了界面文案与按钮不一样。
+  'paused'
 ]);
 
 const ACTIVE_DUPLICATE_STATUSES = new Set([

@@ -454,6 +454,47 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
     return [...groups.values()].filter(g => g.length > 1);
   }
 
+  /**
+   * 「默认选择」：每个互斥组取**第一套**，不在任何组里的**全部选中**。
+   *
+   * ⚠️ 口径必须与界面 `openVariantPicker()` 的预选**逐条一致**（组内取 `[0]`）——
+   *    两处不一样就会出现「界面看着选好了、实际装的是另一套」。
+   *
+   * 主进程也要算一遍的原因（2026-10-14 用户要求「不冲突的直接全部安装」）：
+   * `exclusiveGroups` 为空的包（那几套互不相关）可以直接按这个集合**全部装掉**，
+   * 根本不用弹选择框，用户也不用逐条点确认。
+   */
+  function defaultPickOf(options, groups) {
+    const pick = [];
+    const grouped = new Set();
+    for (const g of (Array.isArray(groups) ? groups : [])) {
+      if (!Array.isArray(g) || !g.length) continue;
+      pick.push(g[0]);
+      for (const d of g) grouped.add(d);
+    }
+    for (const o of (Array.isArray(options) ? options : [])) {
+      if (o && o.dir && !grouped.has(o.dir)) pick.push(o.dir);
+    }
+    return pick;
+  }
+
+  /**
+   * 变体包那组公共字段：候选清单 / 互斥分组 / 默认选择 / **有没有真冲突**。
+   *
+   * `hasConflicts` 是给上层判断「要不要停下来问用户」用的。
+   * 真正的判据是 `exclusiveGroups.length > 0`，但让调用方自己去摸数组长度很容易写错
+   * （`[]` 与 `undefined` 的区别在 `openVariantPicker` 那个老 bug 里踩过），这里一次算清楚。
+   */
+  function variantFields(options) {
+    const groups = exclusiveGroups(options);
+    return {
+      options,
+      exclusiveGroups: groups,
+      defaultPick: defaultPickOf(options, groups),
+      hasConflicts: groups.length > 0
+    };
+  }
+
   // ---- 第一轮：原始路径 ----
   let plan = structuralRules(L, meaningful);
   let wrapper = null;             // 被剥掉的包装目录（相对原始路径）
@@ -555,8 +596,7 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
         needsTargetPick: true,
         reason: `选中的内容里有 ${names.length} 处会互相覆盖（${shown}${names.length > 4 ? ' 等' : ''}），` +
           '一起装只有其中一套会生效 —— 请少选一套（列表里 ID 标签相同的，就是同一件东西）',
-        options: clashOpts,
-        exclusiveGroups: exclusiveGroups(clashOpts),
+        ...variantFields(clashOpts),
         archivePath,
         tool: tool.label,
         entries: meaningful.slice(0, 200).map(f => f.path),
@@ -616,10 +656,10 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
       diagnosis: sourceOnly
         ? `这是作者的工程源文件（${srcExts.join(' / ')}），不是能装进游戏的 Mod，装到哪个目录都不会生效`
         : null,
-      // 让界面能列出「装哪一套」—— 多选一变体包全靠这个
-      options: optsOut,
-      // 互斥分组：界面据此「每组默认预选一套」，用户不改也能直接装
-      exclusiveGroups: exclusiveGroups(optsOut),
+      // 让界面能列出「装哪一套」—— 多选一变体包全靠这个。
+      // 顺带给出 `defaultPick`（每组第一套 + 互不相关的全选）与 `hasConflicts`：
+      // 「不冲突的直接全装、冲突的才停下来问」全靠这两个字段判断。
+      ...variantFields(optsOut),
       // 🔴 **有候选时必须给出 reason**（2026-10-13 用户报「提示结构无法识别」）。
       //
       // 实测 mod 1430「BP Cooling suit」：包里 7 个目录各一套配色，

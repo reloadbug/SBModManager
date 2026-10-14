@@ -128,6 +128,22 @@ contextBridge.exposeInMainWorld('api', {
     start: (id) => invoke('download:start', id),
     cancel: (id) => invoke('download:cancel', id),
     confirmInstall: (id, opts) => invoke('download:confirmInstall', id, opts),
+    /**
+     * ⏸ 暂停 —— 中止下载但**保留半截文件**，之后 `start()` 就是「继续」（从断点续传）。
+     * 与 `cancel()` 的分界：暂停留 .part，取消清 .part。
+     */
+    pause: (id) => invoke('download:pause', id),
+    /** ⏸ 全部停止 —— 把正在跑的任务一次性暂停（同样保留进度） */
+    pauseAll: () => invoke('download:pauseAll'),
+    /**
+     * 一键安装（默认选择）—— 不弹选择框，直接按「每组第一套 + 互不相关的全选」装。
+     * 界面「确认安装」在有默认集时走这条；想改组合仍可打开选择框手动改。
+     */
+    confirmDefault: (id) => invoke('download:confirmDefault', id),
+    /** 批量一键安装：把队列里所有「待确认」任务按默认选择装掉 */
+    confirmAllDefault: (opts) => invoke('download:confirmAllDefault', opts),
+    /** 🗑 彻底删除：记录 + 安装包 + 半截下载 + 缓存图（**不动游戏目录**） */
+    purge: (id) => invoke('download:purge', id),
     /** 重新分析任务结构 —— 老任务的 plan 可能缺 `options`（变体候选）等后加字段 */
     plan: (id) => invoke('download:plan', id),
     /** 重算所有「待确认」任务的安装方案（规则升级后让老任务活过来） */
@@ -151,6 +167,12 @@ contextBridge.exposeInMainWorld('api', {
       const h = (_e, p) => cb(p);
       ipcRenderer.on('download:autoauth', h);
       return () => ipcRenderer.removeListener('download:autoauth', h);
+    },
+    /** 批量「一键安装」的进度（done / total / name），返回取消订阅函数 */
+    onConfirmProgress: (cb) => {
+      const h = (_e, p) => cb(p);
+      ipcRenderer.on('download:confirmprogress', h);
+      return () => ipcRenderer.removeListener('download:confirmprogress', h);
     }
   },
 
