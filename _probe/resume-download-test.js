@@ -201,8 +201,19 @@ async function main() {
     t('按钮只在有可恢复任务时出现（resumeCount）', () => /const resumeCount = tasks\.filter/.test(app));
     t('点击委托接上了', () => /closest\('\[data-dl-resumeall\]'\)\) \{ await dlResumeAll\(\); return; \}/.test(app));
     t('同一时间只跑一个（resumeAllRunning 守卫）', () => /let resumeAllRunning = false;/.test(app));
-    t('只看「中断/失败且没有安装包」的任务（安装失败的不重下）',
-      () => /\(t\.status === 'interrupted' \|\| t\.status === 'failed'\) && !t\.archivePath/.test(app));
+    // ⚠️ 口径统一到了 `DL_RESUMABLE`：老写法是手抄的
+    //    `(t.status === 'interrupted' || t.status === 'failed')`，
+    //    但工具栏计数那时已经含 `paused` 了 —— 会出现「按钮写着（3）点下去只恢复 1 条」。
+    //    现在计数与点击都走同一个集合，断言也盯着这一点。
+    t('「可恢复」集合含 中断 / 失败 / 暂停 三种',
+      () => /const DL_RESUMABLE = new Set\(\['interrupted', 'failed', 'paused'\]\)/.test(app)
+        || 'DL_RESUMABLE 定义变了（漏了 paused 就会少恢复一类）');
+    t('只看「中断/失败/暂停且没有安装包」的任务（安装失败的不重下）',
+      () => /DL_RESUMABLE\.has\(t\.status\) && !t\.archivePath/.test(app)
+        || 'dlResumeAll 的过滤条件没走 DL_RESUMABLE');
+    t('计数与点击用**同一个**口径（都走 DL_RESUMABLE）',
+      () => (app.match(/DL_RESUMABLE\.has\(t\.status\) && !t\.archivePath/g) || []).length >= 2
+        || 'resumeCount 与 dlResumeAll 的过滤条件不一致（按钮数字会与实际恢复数对不上）');
     t('恢复后会顺手批量授权（重启后 key 没了的情况）', () => /await dlAutoAuthorizeAll\(\)/.test(app));
   }
 

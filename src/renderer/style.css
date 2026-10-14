@@ -279,7 +279,20 @@ body.sel .cover .tag{left:38px}
 @keyframes ind{0%{margin-left:-34%}100%{margin-left:100%}}
 
 /* ---- 下载管理 ---- */
-.dl-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
+/* 工具条**吸顶**（用户 2026-10-14 要求：「下载管理顶部的工具按钮始终在最上面不随滚动消失」）。
+   ⚠️ 与 `.bhead` 同一套路，两处必须一致：sticky 约束的是 **margin box**，
+      而负 margin 又把 border box 推回原位 —— 所以 `top:-16px` 配 `margin-top:-16px`
+      才真的贴住可视区顶部（只写 `top:0` 会停在距顶 16px 处，露出下面滚过去的卡片）。
+      背景必须**不透明**，否则卡片会从底下透出来。
+   ⚠️ z-index 要比卡片高、比侧栏与抽屉低：它得盖住列表，但不能盖住抽屉。 */
+.dl-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px;
+  position:sticky;top:-16px;z-index:18;background:var(--bg);
+  /* 负 margin 抵消 .body 的 16px padding；再用 padding 补回内边距 */
+  margin:-16px -16px 13px;padding:14px 16px 11px;border-bottom:1px solid var(--border)}
+/* 吸顶时给底部一点存在感，滚动时能看出「这是浮在上面的一层」 */
+.dl-bar::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(232,163,61,.28),transparent);opacity:0;transition:.2s}
+.dl-bar:hover::after{opacity:1}
 .dl-bar .stat{font-size:11.5px;color:var(--dim2)}
 .dl-bar .stat b{color:var(--accent);font-weight:600}
 .dl-list{display:flex;flex-direction:column;gap:9px}

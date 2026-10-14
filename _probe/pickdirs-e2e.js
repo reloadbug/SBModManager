@@ -209,8 +209,14 @@ async function main() {
   console.log('\n[5] 源码级接线（防止再退化）');
   {
     const engine = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'downloadEngine.js'), 'utf8');
+    // 签名里必须同时有 `pickDirs`（用户选了哪几套）与 `_autoPicked`（自动全选的防套娃守卫）。
+    // ⚠️ 用「包含」而不是整条精确匹配：签名后面还会加参数，精确匹配会让每次扩展都误报。
     t('installPhase 解构里就有 pickDirs', () =>
-      /installPhase\(id, \{ auto = false, onConflict = 'overwrite', pickDir = '', pickDirs = null \} = \{\}\)/.test(engine) || '签名里没有');
+      /installPhase\(id, \{[^}]*pickDirs = null[^}]*\} = \{\}\)/.test(engine) || '签名里没有');
+    t('installPhase 解构里有 _autoPicked（无冲突自动全装的防套娃守卫）', () =>
+      /installPhase\(id, \{[^}]*_autoPicked[^}]*\} = \{\}\)/.test(engine) || '签名里没有');
+    t('无冲突变体包会带默认选择集递归自装（不再停下来等用户点）', () =>
+      /plan\.hasConflicts === false && !_autoPicked/.test(engine) || '没找到无冲突自动装的分支');
     t('installPhase 调 runInstallFn 时把 pickDirs 一起传了', () =>
       /pickDir,\s*\n\s*\/\*\*|pickDirs,\s*\n\s*onConflict/.test(engine)
       || /pickDirs,/.test(engine.split('runInstallFn({')[1].split('});')[0] || '') || 'runInstallFn 调用里没有 pickDirs');

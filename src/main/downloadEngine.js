@@ -27,11 +27,20 @@ const fsPromises = require('fs').promises;
  *   · 下载好的压缩包保留在 `data/library/`，可重复安装。
  */
 
-const TERMINAL = new Set(['installed', 'failed', 'cancelled', 'interrupted']);
+const TERMINAL = new Set(['installed', 'failed', 'cancelled', 'interrupted', 'paused']);
 const ACTIVE = new Set([
   'awaiting_authorization', 'queued', 'resolving', 'downloading',
   'downloaded', 'analyzing', 'needs_review', 'installing'
 ]);
+
+/**
+ * 「正在跑」—— 按「⏸ 全部停止」时要中止的就是这些。
+ *
+ * ⚠️ **不含** `analyzing` / `installing`：那两步是同步的文件操作，
+ *    中止意义不大（半途停下反而会留下写了一半的游戏目录），让它们跑完更安全。
+ *    也不含 `needs_review` / `awaiting_authorization` —— 那是在等用户，不是在跑。
+ */
+const PAUSABLE = new Set(['queued', 'resolving', 'downloading']);
 
 /** 把任意来源的文件名洗成安全的本地文件名（不越界、不破坏扩展名） */
 function safeFileName(name, fallback) {
@@ -301,6 +310,26 @@ function createDownloadEngine(opts = {}) {
     try { return queue.update(key, next); } catch { return null; }
   }
 
+  /**
+   * 用户按下「暂停 / 取消」之后，`run()` 里的中止流程该把状态收敛成什么。
+   *
+   * ## 为什么需要这个函数
+   *
+   * `pause()` / `cancel()` 会**先**把状态写进队列（界面要立刻看到变化，不能等
+   * `downloadToFile` 把当前分片收尾）。而 `run()` 是在下载真正中断、抛错之后
+   * 才走到这里 —— 无脑写 `status: 'cancelled'` 的话：
+   *   · 用户点「暂停」→ 状态被改回「已取消」→ 界面给的按钮变成「移除」而不是「继续」
+   *   · 半截 `.part` 的处置也跟着错（暂停必须留、取消该清）
+   *
+   * 所以只在**当前状态还没被改成终态**时才动手兜底。
+   */
+  function settleAbort(id) {
+    const cur = queue.get(id);
+    if (!cur) return;
+    if (cur.status === 'paused' || cur.status === 'cancelled') return;
+    patch(id, { status: 'cancelled' });
+  }
+
   function list() { return queue.list(); }
   function get(id) { return queue.get(id); }
   function activeCount() { return queue.list().filter(t => ACTIVE.has(t.status)).length; }
@@ -420,11 +449,15 @@ function createDownloadEngine(opts = {}) {
     pendingSlot.delete(id);
 
     const tNow = queue.get(id);
-    if (!tNow || tNow.status === 'cancelled' || !auth.has(id)) { releaseSlot(); return; }
+    // 排队期间用户可能已经取消或暂停 —— 拿到名额后别再把它拉起来
+    if (!tNow || tNow.status === 'cancelled' || tNow.status === 'paused' || !auth.has(id)) { releaseSlot(); return; }
 
     running.add(id);
-    cancels.set(id, { cancelled: false });
+    // `keepPartial` —— 中止时要不要保留半截文件。
+    // 「取消」为 false（清掉），「暂停」为 true（留着续传）。判定见 pause()/cancel()。
+    cancels.set(id, { cancelled: false, keepPartial: false });
     const cancelled = () => !!(cancels.get(id) && cancels.get(id).cancelled);
+    const keepPartial = () => !!(cancels.get(id) && cancels.get(id).keepPartial);
 
     try {
       patch(id, { status: 'resolving', error: null });
@@ -440,7 +473,8 @@ function createDownloadEngine(opts = {}) {
         logEvent('download:failed', { id, stage: 'resolve', error: e.message });
         return;
       }
-      if (cancelled()) { patch(id, { status: 'cancelled' }); return; }
+      // 用户在中止（暂停或取消）—— 状态由 pause()/cancel() 决定，这里只兜底
+      if (cancelled()) { settleAbort(id); return; }
 
       const chosen = (links || [])[0];
       if (!chosen) { patch(id, { status: 'failed', error: '没有可用的下载地址' }); return; }
@@ -481,10 +515,13 @@ function createDownloadEngine(opts = {}) {
       try {
         r = await downloadToFile(chosen.uri, dest, {
           onProgress: (p) => queue.updateProgress(id, p),
-          shouldCancel: cancelled
+          shouldCancel: cancelled,
+          // 「暂停」和「取消」共用中止通道，但**半截文件的处置相反** ——
+          // 这里把「要不要留」单独告诉下载层（见 nxm.downloadToFile 的同名选项）
+          keepPartialOnCancel: keepPartial
         });
       } catch (e) {
-        if (/已取消/.test(e.message)) { patch(id, { status: 'cancelled' }); return; }
+        if (/已取消/.test(e.message)) { settleAbort(id); return; }
         patch(id, { status: 'failed', error: e.message });
         logEvent('download:failed', { id, stage: 'download', error: e.message });
         return;
@@ -517,7 +554,7 @@ function createDownloadEngine(opts = {}) {
   // ⚠️ 这里**没有** `manualTarget`：手动指定落点是「安装助手」那条独立链路
   //    （ipc.js → installFlow.runInstall → installer.analyze 的 opts.manualTarget），
   //    队列驱动这条路径拿不到也不该拿它 —— 之前留过一个同名的死形参，已删。
-  async function installPhase(id, { auto = false, onConflict = 'overwrite', pickDir = '', pickDirs = null } = {}) {
+  async function installPhase(id, { auto = false, onConflict = 'overwrite', pickDir = '', pickDirs = null, _autoPicked = false } = {}) {
     const t = queue.get(id);
     if (!t) return;
 
@@ -564,6 +601,31 @@ function createDownloadEngine(opts = {}) {
     catch { /* 拿不到清单不影响安装 */ }
 
     if (!plan || !plan.ok) {
+      // 🔴 多变体包：**不冲突的直接全部装**，不再停下来等用户点（用户 2026-10-14 要求）。
+      //
+      // `needsTargetPick` 只说明「结构识别不出来」，**不等于**「必须让用户选」——
+      // 那几套内容本来就互不覆盖时（`hasConflicts === false`）全都能装。
+      // 以前一律置 `needs_review`，于是队列里堆了二十多条「待确认」，
+      // 用户得一条条点开、再点一次安装（截图里正是这个场景）。
+      //
+      // ⚠️ 三条闸门，缺一不可：
+      //    · `needsTargetPick`     —— 只有这种「要挑内容」的情况才走自动，
+      //                              真正识别不了的包（没有候选）照旧等用户处理
+      //    · `hasConflicts === false` —— **必须是明确的 false**。老任务存的 plan
+      //                              没有这个字段（`undefined`）→ 不自动装，回落人工确认，
+      //                              宁可多问一次也不能替用户做有损的决定
+      //    · `!_autoPicked`        —— 防套娃。全选之后若仍判成要选（理论上不该发生），
+      //                              直接落回「待确认」，绝不会无限递归
+      const opts = Array.isArray(plan && plan.options) ? plan.options : [];
+      if (plan && plan.needsTargetPick && !plan.diagnosis
+          && opts.length && plan.hasConflicts === false && !_autoPicked) {
+        const dirs = (Array.isArray(plan.defaultPick) && plan.defaultPick.length)
+          ? plan.defaultPick : opts.map(o => o.dir).filter(Boolean);
+        if (dirs.length) {
+          logEvent('download:autoPickAll', { id, modId: meta.modId, options: opts.length, picked: dirs.length });
+          return installPhase(id, { auto, onConflict, pickDirs: dirs, _autoPicked: true });
+        }
+      }
       patch(id, {
         status: 'needs_review',
         install: {
@@ -828,7 +890,74 @@ function createDownloadEngine(opts = {}) {
     return queue.get(id);
   }
 
-  /** 重试 / 手动开始 */
+  /**
+   * 清掉某条任务在 `data/library/` 残留的**半截下载**（`.dl-<modId>-<fileId>.part`）。
+   *
+   * ⚠️ 用 `startsWith('.dl-<modId>-')` 前缀扫，而不是按 `meta.fileId` 拼一个精确名字：
+   *    下载时用的 fileId 来自**当次授权**（`a.fileId`），与 meta 里存的不一定一致
+   *    （「fileId 失效自愈」换过号就会对不上）。前缀扫两种都能兜住。
+   */
+  function removePartsOf(t) {
+    const modId = Number((t && t.meta && t.meta.modId) || 0);
+    const gone = [];
+    if (!modId) return gone;
+    const prefix = '.dl-' + modId + '-';
+    let items = [];
+    try { items = fs.readdirSync(libraryDir); } catch { return gone; }
+    for (const name of items) {
+      if (!name.startsWith(prefix) || !name.endsWith('.part')) continue;
+      try { fs.rmSync(path.join(libraryDir, name), { force: true }); gone.push(name); } catch { /* 下次再说 */ }
+    }
+    return gone;
+  }
+
+  /**
+   * ⏸ **暂停**：中止正在进行的下载，但**半截文件留着**。
+   *
+   * 与「取消」的分界（2026-10-14 用户明确要求两种都要有）：
+   *   · 暂停 → `.part` 保留，点「继续」从断点接着下，不重跑流量
+   *   · 取消 → `.part` 清掉，这条任务到此为止
+   *
+   * 实现上只是把协作式取消标志打上，然后**自己先把状态写好** ——
+   * `run()` 那边的中止分支会看到 `paused` 并跳过改写（见 `settleAbort`），
+   * 否则用户点的「暂停」会被回写成「已取消」，按钮也就变成了「移除」。
+   */
+  function pause(id) {
+    const t = queue.get(id);
+    if (!t) return null;
+    if (running.has(id)) {
+      const c = cancels.get(id);
+      // ⚠️ `keepPartial = true` 是关键：下载层默认在「已取消」时删掉半截文件，
+      //    而暂停必须把它留下来当续传的起点。
+      if (c) { c.cancelled = true; c.keepPartial = true; }
+    }
+    patch(id, { status: 'paused', error: null });
+    logEvent('download:paused', { id, modId: t.meta && t.meta.modId, from: t.status });
+    return queue.get(id);
+  }
+
+  /**
+   * 「⏸ 全部停止」——把队列里**正在跑**的任务一次性暂停（用户 2026-10-14 要求）。
+   *
+   * 口径是「暂停」不是「取消」：半截文件全留着，之后点「全部恢复」接着下。
+   * 只动 `queued / resolving / downloading`（见 `PAUSABLE`）：
+   *   · 正在等用户的（待授权 / 待确认）本来就没在跑，不该被算进「停止」
+   *   · 正在分析 / 安装的让它跑完 —— 半途停下会在游戏目录里留个半成品
+   */
+  function pauseAll() {
+    const targets = queue.list().filter(t => PAUSABLE.has(t.status));
+    for (const t of targets) {
+      if (running.has(t.id)) {
+        const c = cancels.get(t.id);
+        if (c) { c.cancelled = true; c.keepPartial = true; }
+      }
+      patch(t.id, { status: 'paused', error: null });
+    }
+    if (targets.length) logEvent('download:pausedAll', { total: targets.length, ids: targets.map(t => t.id) });
+    return { total: targets.length, ids: targets.map(t => t.id) };
+  }
+
+  /** 重试 / 手动开始（也是「▶ 继续」的实现 —— 暂停的任务走这里续传） */
   function retry(id) {
     const t = queue.get(id);
     if (!t) return null;
@@ -854,11 +983,14 @@ function createDownloadEngine(opts = {}) {
     if (!t) return null;
     if (running.has(id)) {
       const c = cancels.get(id);
-      if (c) c.cancelled = true;
-      patch(id, { status: 'cancelled', error: null });
-    } else {
-      patch(id, { status: 'cancelled', error: null });
+      // 取消 = 明确不要这半截文件了 → 让下载层删掉它（与暂停相反）
+      if (c) { c.cancelled = true; c.keepPartial = false; }
     }
+    patch(id, { status: 'cancelled', error: null });
+    // 用户主动「取消」= 明确不要这半截文件了 → 清掉，别让它一直占着几百 MB。
+    // ⚠️ 与「暂停」严格区分：暂停时必须留着（那是续传的本钱）。
+    const gone = removePartsOf(t);
+    if (gone.length) logEvent('download:partsCleared', { id, parts: gone });
     return queue.get(id);
   }
 
@@ -874,6 +1006,45 @@ function createDownloadEngine(opts = {}) {
     const t = queue.get(id);
     if (!t) return null;
     installPhase(id, { auto: false, onConflict, pickDir, pickDirs });
+    return queue.get(id);
+  }
+
+  /**
+   * **一键安装（默认选择）** —— 不弹选择框，直接按默认集装。
+   *
+   * ## 为什么要有这个
+   *
+   * 用户 2026-10-14：「有多个文件时每组冲突的 mod 都默认选中第一个文件，
+   * 不要手工一个一个确认」。
+   *
+   * 默认集 = 每个互斥组取**第一套** + 不在任何组里的**全选**，
+   * 与界面 `openVariantPicker()` 的预选**同一口径**（组内取 `[0]`）。
+   * 于是「有冲突需要选」的那些包，用户不用点开就能一键装掉；
+   * 想改成别的组合时，仍然可以打开选择框手动改（那条路没动）。
+   *
+   * ⚠️ 老任务的 `install.plan` 没有 `defaultPick` 字段（后加的），
+   *    先 `planOf()` 重新分析一次把它补出来；实在补不出来就退回「全部候选」。
+   */
+  async function confirmInstallDefault(id) {
+    const t = queue.get(id);
+    if (!t) return null;
+    let plan = (t.install && t.install.plan) || null;
+
+    if (!plan || !Array.isArray(plan.defaultPick)) {
+      try { const fresh = await planOf(id); if (fresh) plan = fresh; } catch { /* 用旧 plan 兜底 */ }
+    }
+    // 结构本来就能识别（不是变体包）→ 跟「确认安装」是同一条路
+    if (!plan || !plan.needsTargetPick) return retry(id);
+
+    const dirs = (Array.isArray(plan.defaultPick) && plan.defaultPick.length)
+      ? plan.defaultPick
+      : (Array.isArray(plan.options) ? plan.options.map(o => o.dir).filter(Boolean) : []);
+    if (!dirs.length) return confirmInstall(id, {});
+
+    logEvent('download:confirmDefault', { id, modId: t.meta && t.meta.modId, picked: dirs.length });
+    // ⚠️ **等安装真正结束**再返回：批量一键安装时要靠这个把几十条串起来，
+    //    不然它们会同时开解压（重 IO），既慢又容易把磁盘打满。
+    await installPhase(id, { auto: false, pickDirs: dirs, _autoPicked: true });
     return queue.get(id);
   }
 
@@ -917,6 +1088,55 @@ function createDownloadEngine(opts = {}) {
     const ok = queue.remove(id);
     if (ok) logEvent('download:removed', { id, deleteArchive: !!deleteArchive });
     return ok;
+  }
+
+  /**
+   * 🗑 **彻底删除** —— 把这条任务在本地留下的一切都清掉（用户 2026-10-14 要求）。
+   *
+   * 清五面（口径已与用户确认：**不动游戏目录**）：
+   *   ① 队列记录（含任务自带的 meta / 安装记录）
+   *   ② `data/library/` 里的安装包
+   *   ③ 半截下载 `.dl-<modId>-*.part`
+   *   ④ `data/images/<modId>/` 缓存的封面与预览图
+   *   ⑤ 内存里的下载授权凭据
+   *
+   * ⚠️ **不删**已经装进游戏目录的文件。那属于「卸载」的职责，走「已安装 Mod」页 ——
+   *    那边有备份还原逻辑，会先把被这个 mod 覆盖掉的原始资源还回去。
+   *    在这里粗暴删掉，会把用户原有的游戏资源一起破坏掉。
+   */
+  function purge(id) {
+    const t = queue.get(id);
+    if (!t) return { ok: false, id, reason: 'not_found' };
+    const modId = Number((t.meta && t.meta.modId) || 0);
+
+    if (running.has(id)) { const c = cancels.get(id); if (c) c.cancelled = true; }
+    auth.delete(id);
+    cancels.delete(id);
+
+    const result = { ok: true, id, modId: modId || null, parts: [], archive: null, images: null };
+    try { result.parts = removePartsOf(t); } catch { /* 忽略 */ }
+
+    if (t.archivePath) {
+      try { fs.rmSync(t.archivePath, { force: true }); result.archive = t.archivePath; } catch { /* 文件可能已被手动删掉 */ }
+    }
+
+    if (modId && imagesDir) {
+      const dir = path.join(imagesDir, String(modId));
+      try {
+        // 逐个文件删再删空目录：一次 `rmSync(recursive)` 在文件数多时容易踩沙箱的
+        // safe-delete 阈值（一次删太多会被整体拒掉），而且那样失败是全删不掉。
+        for (const f of fs.readdirSync(dir)) { try { fs.rmSync(path.join(dir, f), { force: true }); } catch { /* 单个跳过 */ } }
+        fs.rmdirSync(dir);
+        result.images = dir;
+      } catch { /* 目录不存在 / 删不掉都不影响主流程 */ }
+    }
+
+    result.ok = queue.remove(id);
+    logEvent('download:purged', {
+      id, modId: modId || null,
+      parts: result.parts.length, archive: !!result.archive, images: !!result.images
+    });
+    return result;
   }
 
   /** 把「注册表里确实装着」的下载任务对齐成已安装（避免装完显示成失败） */
@@ -1102,6 +1322,8 @@ function createDownloadEngine(opts = {}) {
     list, get, stats, activeCount,
     enqueueNexus, enqueueLocal, attachNxm,
     retry, cancel, confirmInstall, remove, planOf,
+    // 2026-10-14 新增：暂停 / 全部停止 / 一键按默认选择安装 / 彻底删除
+    pause, pauseAll, confirmInstallDefault, purge,
     markAuthFailed, patchMeta,
     ensureImages, syncFromInstalled,
     refreshUnknownPlans,

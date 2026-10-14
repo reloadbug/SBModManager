@@ -532,6 +532,70 @@ function maybeAutoAuthorize(id) {
   } catch { /* 配置读不到就当关着 */ }
 }
 
+/* ---------------- 一键确认安装（默认选择） ---------------- */
+
+/** 批量「一键安装」的实时进度 → 界面按钮文案 */
+function sendConfirmProgress(x) { sendToMain('download:confirmprogress', x || {}); }
+
+/**
+ * 把队列里所有卡在「待确认」的任务，按**默认选择**一次性装掉。
+ *
+ * ## 为什么需要（用户 2026-10-14 原话）
+ *
+ * 「支持批量确认，有多个文件时每组冲突的 mod 都默认选中第一个文件；
+ *   不要手工一个一个确认」。
+ *
+ * 变体包（一个归档里 N 套内容）以前一律要用户点开选择框、再点一次安装；
+ * 队列里二十多条待确认时，用户得点四十多下，而其中绝大多数包
+ * 「每组选第一套」本来就是对的。这里一次按默认集装掉。
+ *
+ * ## 口径
+ *
+ *   · **只动 `needs_review`**
+ *   · 排除 `plan.diagnosis` 的（作者的工程源文件 —— 那不是「要你选」，
+ *     是「装了也没用」，界面给的是「移除」按钮，不该被这里顺手装掉）
+ *   · 顺序执行 + 每条之间留 `gapMs`（默认 120ms）：每条都要解压分析，
+ *     一口气并发会把磁盘打满
+ *   · 正在等用户的其他状态（待授权）不碰
+ *
+ * 返回 `{ total, ok, failed, skipped }`；`ok` 表示「处理完没抛错」，
+ * 具体结果是「已安装」还是「仍待确认（真冲突需用户选）」可从任务状态看出。
+ */
+async function confirmAllDefault(o = {}) {
+  const gapMs = Number.isFinite(o.gapMs) ? Math.max(0, o.gapMs) : 120;
+
+  const targets = engine.list().filter(t => {
+    if (t.status !== 'needs_review') return false;
+    const plan = t.install && t.install.plan;
+    if (plan && plan.diagnosis) return false;
+    return true;
+  });
+
+  if (!targets.length) {
+    sendConfirmProgress({ done: 0, total: 0, name: '' });
+    return { total: 0, ok: 0, failed: 0, skipped: 0 };
+  }
+
+  let ok = 0, failed = 0, skipped = 0;
+  sendConfirmProgress({ done: 0, total: targets.length, name: '' });
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
+    sendConfirmProgress({ done: i, total: targets.length, name: (t.meta && t.meta.name) || '' });
+    try {
+      const r = await engine.confirmInstallDefault(t.id);
+      if (r) ok++; else skipped++;
+    } catch (e) {
+      failed++;
+      logger.event('download:confirmDefaultFailed', { id: t.id, error: e && e.message });
+    }
+    if (gapMs) await sleep(gapMs);
+  }
+  sendConfirmProgress({ done: targets.length, total: targets.length, name: '' });
+  logger.event('download:confirmAllDefault', { total: targets.length, ok, failed, skipped });
+  broadcastDownloads(null);
+  return { total: targets.length, ok, failed, skipped };
+}
+
 /** 统一的返回包装：{ ok, data } / { ok:false, error } */
 function ok(data) { return { ok: true, data }; }
 function fail(e) { return { ok: false, error: e && e.message ? e.message : String(e) }; }
@@ -1139,6 +1203,36 @@ function register() {
   handle('download:start', (id) => { const t = engine.retry(id); broadcastDownloads(t); return t; });
   handle('download:cancel', (id) => { const t = engine.cancel(id); broadcastDownloads(t); return t; });
   handle('download:confirmInstall', (id, opts) => { const t = engine.confirmInstall(id, opts); broadcastDownloads(t); return t; });
+
+  /* ---- 2026-10-14 新增：暂停 / 全部停止 / 一键安装（默认选择） / 彻底删除 ---- */
+
+  /** ⏸ 暂停单条：中止下载、保留半截文件，之后点「继续」接着下 */
+  handle('download:pause', (id) => { const t = engine.pause(id); broadcastDownloads(t); return t; });
+  /** ⏸ 全部停止：把正在跑的任务一次性暂停（口径同样是「暂停」，不是「取消」） */
+  handle('download:pauseAll', () => { const r = engine.pauseAll(); broadcastDownloads(null); return r; });
+
+  /**
+   * 一键安装（默认选择）：每个互斥组取第一套 + 互不相关的全选。
+   * 用户要求「不要手工一个一个确认」—— 单条与批量都走这条。
+   */
+  handleWithEvent('download:confirmDefault', async (_event, id) => {
+    const t = await engine.confirmInstallDefault(id);
+    broadcastDownloads(t);
+    return t;
+  });
+  /** 批量：把所有「待确认」任务按默认选择装掉（串行 + 节流，带进度回推） */
+  handleWithEvent('download:confirmAllDefault', async (_event, opts) => {
+    const r = await confirmAllDefault(opts || {});
+    broadcastDownloads(null);
+    return r;
+  });
+
+  /**
+   * 🗑 彻底删除：队列记录 + 安装包 + 半截下载 + 缓存图 + 授权凭据。
+   * ⚠️ **不动游戏目录**（口径已与用户确认）—— 卸载归「已安装 Mod」页管。
+   */
+  handle('download:purge', (id) => { const r = engine.purge(id); broadcastDownloads(null); return r; });
+
   // 重新分析任务结构（老任务的 install.plan 可能缺 options 之类的后加字段）
   handle('download:plan', (id) => engine.planOf(id));
   /**

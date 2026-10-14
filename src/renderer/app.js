@@ -377,9 +377,15 @@ function reviewWhy(t) {
     if (plan.reason) return plan.reason;
     const n = (plan.options || []).length;
     const g = (plan.exclusiveGroups || []).length;
-    return n
-      ? `包里有 ${n} 套内容${g ? `（其中 ${g} 组是同一件东西的不同版本，只能各选一套）` : ''}，点「确认安装」挑选`
-      : '结构无法识别，需要手动指定安装位置';
+    // 2026-10-14：无冲突的包现在会被**自动装掉**，还停在待确认的通常是这两种：
+    //   · 有互斥组 → 每组已按第一套预选好，用户点一下就行（不必逐套挑）
+    //   · 老任务还没算出默认集 → 也得让用户知道点哪个按钮
+    if (n) {
+      return g
+        ? `包里有 ${n} 套内容，其中 ${g} 组是同一件东西的不同版本 —— 已按「每组第一套」替你选好，点「一键安装」即可（想改就点「选择内容」）`
+        : `包里有 ${n} 套内容，互不相关 —— 点「一键安装」全部装上`;
+    }
+    return '结构无法识别，需要手动指定安装位置';
   }
   if (t.status === 'failed' && t.error) return String(t.error).replace(/^安装失败：/, '');
   if (inst.requiresCns) return '需要先安装 CNS 才会生效';
@@ -499,11 +505,19 @@ function liveStrip() {
     const label = esc(meta.name || ('Mod #' + (meta.modId || '?')));
 
     if (isReview) {
+      // 能一键装的（有默认选择集、且不是「工程源文件」这种结论性诊断）→ 直接给「一键安装」，
+      // 用户不用点开对话框再点第二次（2026-10-14 要求「不要手工一个一个确认」）。
+      const plan = t.install && t.install.plan;
+      const canDefault = !!(plan && !plan.diagnosis
+        && Array.isArray(plan.defaultPick) && plan.defaultPick.length);
+      const btn = canDefault
+        ? `<button class="btn p sm" data-dl-confirmdefault="${esc(t.id)}" title="${plan.hasConflicts ? '按默认选择直接安装：每组取第一套' : '这几套互不覆盖，直接全部安装'}">一键安装</button>`
+        : `<button class="btn p sm" data-dl-confirm="${esc(t.id)}">去处理</button>`;
       return `<div class="li rev" data-live="${esc(t.id)}">
         <b>${label}</b>
         <span class="dl-st ${st.c}">${esc(st.t)}</span>
         <span class="why">${esc(reviewWhy(t))}</span>
-        <button class="btn p sm" data-dl-confirm="${esc(t.id)}">去处理</button>
+        ${btn}
       </div>`;
     }
 
@@ -1905,7 +1919,10 @@ const DL_STATUS = {
   installed: { t: '已安装', c: 'ok' },
   failed: { t: '失败', c: 'err' },
   cancelled: { t: '已取消', c: 'wait' },
-  interrupted: { t: '已中断', c: 'err' }
+  interrupted: { t: '已中断', c: 'err' },
+  // 用户主动暂停（2026-10-14 新增）：与「已中断」分开显示 ——
+  // 中断是意外，暂停是用户自己的动作，文案该不一样，按钮也不同（暂停给「继续」）。
+  paused: { t: '已暂停', c: 'wait' }
 };
 
 const DL_ACTIVE = new Set([
@@ -1915,47 +1932,95 @@ const DL_ACTIVE = new Set([
 
 const DL_BUSY = new Set(['queued', 'resolving', 'downloading', 'analyzing', 'installing']);
 
+/** 「还能接着下」的状态：中断 / 下载失败 / 用户暂停，且手上**没有**安装包 */
+const DL_RESUMABLE = new Set(['interrupted', 'failed', 'paused']);
+
 function dlStatusMeta(t) { return DL_STATUS[t.status] || { t: t.status, c: 'wait' }; }
 
+/**
+ * 一条下载任务的按钮组。
+ *
+ * ## 2026-10-14 的用户要求
+ *
+ * 「每个 mod 可以暂停，取消，继续下载，彻底删除等操作」——
+ * 所以这里按**状态**给出对应的动作，而不是只给一个「取消」：
+ *
+ *   下载中 / 排队中  → ⏸ 暂停 · 取  消
+ *   已暂停           → ▶ 继续 · 取  消 · 彻底删除
+ *   失败 / 已中断     → ↻ 重试 · 打开文件夹 · 彻底删除
+ *   已下载           → 安  装 · 打开文件夹 · 彻底删除
+ *   已安装           → 重新安装 · 打开文件夹 · 彻底删除
+ *   待确认           → ⚡ 一键安装 · 选择内容 · 打开文件夹 · 彻底删除
+ *   等待授权         → ⚡ 自动授权 · 手  动 · 彻底删除
+ *
+ * 「彻底删除」放最后、用危险色：它清掉记录 + 安装包 + 半截下载 + 缓存图
+ * （**不动游戏目录**，卸载归「已安装 Mod」页管），是个不该被误点的动作。
+ */
 function dlActionsHtml(t) {
   const meta = t.meta || {};
+  const plan = (t.install && t.install.plan) || null;
   const a = [];
+
+  // 「彻底删除」是整个按钮组的**收尾动作**，每个状态都能用
+  const purgeBtn = `<button class="btn d sm" data-dl-purge="${esc(t.id)}" title="删掉这条记录 + 本地安装包 + 半截下载 + 缓存图（游戏里已安装的文件不受影响）">🗑 彻底删除</button>`;
+
   if (t.status === 'awaiting_authorization') {
     // 主按钮 = 自动授权（免点击，直接问 Nexus 要授权）。
     // 「手动」保留为降级通路：作者只开了手动下载、或撞上 Cloudflare 时还得靠它。
     a.push(`<button class="btn p sm" data-dl-autoauth="${esc(t.id)}" title="用已登录的 Nexus 会话直接取得下载授权，不用打开网页">⚡ 自动授权</button>`);
     a.push(`<button class="btn sm" data-dl-auth="${esc(t.id)}" title="打开 Nexus 页面，由你点一下下载按钮（自动授权失败时用）">手动</button>`);
-    a.push(`<button class="btn sm" data-dl-cancel="${esc(t.id)}">取消</button>`);
+    a.push(purgeBtn);
   } else if (DL_BUSY.has(t.status)) {
-    a.push(`<button class="btn d sm" data-dl-cancel="${esc(t.id)}">取消</button>`);
+    // 正在跑 → 暂停（保留已下载的部分）或取消（丢弃）
+    a.push(`<button class="btn sm" data-dl-pause="${esc(t.id)}" title="停下，但已下载的部分会留着 —— 之后点「继续」接着下，不重跑流量">⏸ 暂停</button>`);
+    a.push(`<button class="btn d sm" data-dl-cancel="${esc(t.id)}" title="取消这条任务，并清掉已经下载的部分">取消</button>`);
+  } else if (t.status === 'paused') {
+    a.push(`<button class="btn p sm" data-dl-start="${esc(t.id)}" title="从断点接着下载">▶ 继续</button>`);
+    a.push(`<button class="btn sm" data-dl-cancel="${esc(t.id)}">取消</button>`);
+    a.push(purgeBtn);
   } else if (t.status === 'needs_review') {
     // 「作者的工程源文件」这类包**装到哪儿都不会生效** ——
-    // 给它「确认安装」是个死胡同（点下去只会再弹一次说明），主按钮换成「移除」。
-    const noInstall = !!(t.install && t.install.plan && t.install.plan.diagnosis);
-    if (noInstall) {
-      a.push(`<button class="btn d sm" data-dl-remove="${esc(t.id)}">移除</button>`);
+    // 给它「确认安装」是个死胡同（点下去只会再弹一次说明），主按钮换成「彻底删除」。
+    if (plan && plan.diagnosis) {
       a.push(`<button class="btn sm" data-dl-reveal="${esc(t.id)}">打开文件夹</button>`);
+      a.push(purgeBtn);
     } else {
-      a.push(`<button class="btn p sm" data-dl-confirm="${esc(t.id)}">确认安装</button>`);
+      // ⚡ 一键安装：按「每组第一套 + 互不相关的全选」直接装，不用点开对话框。
+      //    用户 2026-10-14：「不要手工一个一个确认」。
+      //    老任务的 plan 可能还没有 `defaultPick`（后加字段）→ 那时退回「确认安装」，
+      //    点开对话框手动选（`download:confirmDefault` 那边也会先重算一次 plan）。
+      const hasDefault = Array.isArray(plan && plan.defaultPick) && plan.defaultPick.length > 0;
+      const optCount = Array.isArray(plan && plan.options) ? plan.options.length : 0;
+      if (hasDefault) {
+        a.push(`<button class="btn p sm" data-dl-confirmdefault="${esc(t.id)}" title="${
+          plan.hasConflicts
+            ? '按默认选择直接安装：每组取第一套，互不相关的全部装上'
+            : '这个包里几套内容互不覆盖，直接全部安装'
+        }">⚡ 一键安装</button>`);
+      } else {
+        a.push(`<button class="btn p sm" data-dl-confirm="${esc(t.id)}">确认安装</button>`);
+      }
+      // 「选择内容」= 打开那个可逐套勾选的对话框（想改默认组合时用）
+      if (optCount) a.push(`<button class="btn sm" data-dl-confirm="${esc(t.id)}" title="打开对话框，自己挑要装哪几套">选择内容</button>`);
       a.push(`<button class="btn sm" data-dl-reveal="${esc(t.id)}">打开文件夹</button>`);
-      a.push(`<button class="btn d sm" data-dl-remove="${esc(t.id)}">移除</button>`);
+      a.push(purgeBtn);
     }
   } else if (t.status === 'downloaded') {
     a.push(`<button class="btn p sm" data-dl-start="${esc(t.id)}">安装</button>`);
     a.push(`<button class="btn sm" data-dl-reveal="${esc(t.id)}">打开文件夹</button>`);
-    a.push(`<button class="btn d sm" data-dl-remove="${esc(t.id)}">移除</button>`);
+    a.push(purgeBtn);
   } else if (t.status === 'installed') {
     a.push(`<button class="btn sm" data-dl-start="${esc(t.id)}">重新安装</button>`);
     a.push(`<button class="btn sm" data-dl-reveal="${esc(t.id)}">打开文件夹</button>`);
-    a.push(`<button class="btn sm" data-dl-remove="${esc(t.id)}">删除记录</button>`);
+    a.push(purgeBtn);
   } else {
-    // 失败分两种：**安装**失败（安装包还在，问题出在结构/落点）和**下载**失败。
-    // 前者该走「去处理」（会先刷新结构分析、必要时弹变体选择框），
+    // 失败 / 已中断 / 已取消 分两种：**安装**失败（安装包还在，问题出在结构/落点）
+    // 和**下载**失败。前者该走「去处理」（会先刷新结构分析、必要时弹变体选择框），
     // 后者才该重新下载 —— 一律给「重试」会让安装失败的任务点了没反应（实测踩过）。
     if (t.archivePath) a.push(`<button class="btn p sm" data-dl-confirm="${esc(t.id)}">去处理</button>`);
-    else a.push(`<button class="btn p sm" data-dl-start="${esc(t.id)}">重试</button>`);
+    else a.push(`<button class="btn p sm" data-dl-start="${esc(t.id)}" title="重新排队下载；有断点的话会接着下">↻ 重试</button>`);
     if (t.archivePath) a.push(`<button class="btn sm" data-dl-reveal="${esc(t.id)}">打开文件夹</button>`);
-    a.push(`<button class="btn d sm" data-dl-remove="${esc(t.id)}">移除</button>`);
+    a.push(purgeBtn);
   }
   if (meta.sourceUrl) a.push(`<button class="btn sm" data-openurl="${esc(meta.sourceUrl)}">来源</button>`);
   return a.join('');
@@ -2044,14 +2109,24 @@ function renderDownload() {
   const doneCount = tasks.filter(t => t.status === 'installed' || t.status === 'cancelled').length;
   const reviewCount = tasks.filter(t => t.status === 'needs_review').length;
   const waitAuthCount = tasks.filter(t => t.status === 'awaiting_authorization').length;
-  // 「还能接着下」的任务：中断 / 下载失败，且手上**没有**安装包。
+  // 「还能接着下」的任务：中断 / 下载失败 / **用户暂停**，且手上**没有**安装包。
   // 用户要求（2026-10-14）：「任务中断后支持全部恢复继续下载」——
   // 十几条任务一条条点「重试」是折磨，给一个一键恢复。
   // ⚠️ 排除有 `archivePath` 的：那种是**安装**失败，包已经下好了，
   //     重新下载纯属白跑流量，该走「去处理」。
   const resumeCount = tasks.filter(t =>
-    (t.status === 'interrupted' || t.status === 'failed') && !t.archivePath
+    DL_RESUMABLE.has(t.status) && !t.archivePath
   ).length;
+  // 正在跑的任务 —— 「⏸ 全部停止」要停的就是这些（与主进程的 PAUSABLE 口径一致）
+  const busyCount = tasks.filter(t => DL_BUSY.has(t.status)).length;
+  const pausedCount = tasks.filter(t => t.status === 'paused').length;
+  // 「待确认」里能一键装的：有默认选择集、且不是「工程源文件」这类**结论性**诊断
+  const autoConfirmCount = tasks.filter(t => {
+    if (t.status !== 'needs_review') return false;
+    const plan = t.install && t.install.plan;
+    if (!plan || plan.diagnosis) return false;
+    return Array.isArray(plan.defaultPick) && plan.defaultPick.length > 0;
+  }).length;
   // 「进行中」和「待处理」必须分开算 ——
   // 主进程的 `stats.active` 是「所有非终态」，把「待确认 / 等待授权」也含进去了。
   // 那两类是**在等你操作**（不该显示成正在跑，见 SKILL 铁律 42），口径混着显示会误导。
@@ -2062,11 +2137,14 @@ function renderDownload() {
     <div class="dl-bar">
       <span class="stat">共 <b>${tasks.length}</b> 项</span>
       ${runningCount ? `<span class="stat">进行中 <b>${runningCount}</b></span>` : ''}
+      ${pausedCount ? `<span class="stat">已暂停 <b>${pausedCount}</b></span>` : ''}
       ${needYouCount ? `<span class="stat" style="color:var(--accent)">待处理 <b style="color:var(--accent)">${needYouCount}</b></span>` : ''}
       <span class="stat">已安装 <b>${s.installed || 0}</b></span>
       ${s.failed ? `<span class="stat" style="color:var(--red)">失败 <b style="color:var(--red)">${s.failed}</b></span>` : ''}
       <div class="spacer"></div>
-      ${resumeCount ? `<button class="btn p sm" data-dl-resumeall="1" title="把所有中断 / 下载失败的任务一次性重新排队：已经下过的部分会接着下，不用从头再来">↻ 全部恢复（${resumeCount}）</button>` : ''}
+      ${busyCount ? `<button class="btn sm" data-dl-pauseall="1" title="把正在下载的任务全部停下；已下载的部分会保留，随时能点「全部恢复」接着下">⏸ 全部停止（${busyCount}）</button>` : ''}
+      ${resumeCount ? `<button class="btn p sm" data-dl-resumeall="1" title="把所有中断 / 暂停 / 下载失败的任务一次性重新排队：已经下过的部分会接着下，不用从头再来">↻ 全部恢复（${resumeCount}）</button>` : ''}
+      ${autoConfirmCount ? `<button class="btn p sm" data-dl-confirmall="1" title="把所有「待确认」的包按默认选择直接安装（每组第一套；互不相关的内容全部装上）—— 不用逐个点开">⚡ 一键安装全部（${autoConfirmCount}）</button>` : ''}
       ${waitAuthCount ? `<button class="btn p sm" data-dl-autoauthall="1" title="用已登录的 Nexus 会话逐个取得下载授权，不用再逐条去网页点下载按钮">⚡ 全部自动授权（${waitAuthCount}）</button>` : ''}
       ${reviewCount ? `<button class="btn sm" data-dl-refreshplans="1" title="安装规则升级后，之前识别不了的包可能已经能认出来了">重新识别${reviewCount ? `（${reviewCount}）` : ''}</button>` : ''}
       ${doneCount ? `<button class="btn sm" data-dl-cleardone="1">清理已完成记录（${doneCount}）</button>` : ''}
@@ -2256,7 +2334,10 @@ async function dlResumeAll() {
 
   try {
     const ids = (state.downloads || [])
-      .filter(t => (t.status === 'interrupted' || t.status === 'failed') && !t.archivePath)
+      // ⚠️ 必须与 `renderDownload` 里算 `resumeCount` 的口径**完全一致**，
+      //    否则会出现「按钮写着（3）但点下去只恢复了 1 条」——
+      //    用户暂停的任务正是最该被恢复的那批（那是他主动停下的）。
+      .filter(t => DL_RESUMABLE.has(t.status) && !t.archivePath)
       .map(t => t.id);
     if (!ids.length) { toast('没有需要恢复的任务'); return null; }
 
@@ -2294,6 +2375,181 @@ async function dlStart(id) {
 async function dlCancel(id) {
   try { await call(window.api.download.cancel(id), { silent: true }); toast('已取消'); await refreshDownloads(); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+/* ---------------- 暂停 / 继续 / 全部停止 ---------------- */
+
+/**
+ * ⏸ 暂停一条。
+ *
+ * 与「取消」的区别（用户 2026-10-14 要求两种都要有）：
+ *   暂停 → 半截文件留着，点「继续」从断点接着下
+ *   取消 → 半截文件清掉，这条任务到此为止
+ */
+async function dlPause(id) {
+  const btn = document.querySelector(`[data-dl-pause="${id}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '暂停中…'; }
+  try {
+    await call(window.api.download.pause(id), { silent: true });
+    toast('已暂停（已下载的部分已保留，点「继续」接着下）');
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    await refreshDownloads();
+  }
+}
+
+/** 「⏸ 全部停止」是否在跑（挡住重复点） */
+let pauseAllRunning = false;
+
+/**
+ * ⏸ 全部停止 —— 把正在下载的任务一次性暂停。
+ *
+ * 口径是**暂停**不是取消：半截文件全都留着，之后点「全部恢复」接着下。
+ * （这条口径是问过用户的：他选的是「暂停，保留进度」。）
+ */
+async function dlPauseAll() {
+  if (pauseAllRunning) { toast('正在停止中，稍等…'); return null; }
+  pauseAllRunning = true;
+  const btn = document.querySelector('[data-dl-pauseall]');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '停止中…'; }
+  try {
+    const r = await call(window.api.download.pauseAll(), { silent: true });
+    const n = (r && r.total) || 0;
+    toast(n ? `已停止 ${n} 项（进度已保留，可点「全部恢复」接着下）` : '没有正在下载的任务');
+    return r;
+  } catch (e) {
+    toast(e.message, 'err');
+    return null;
+  } finally {
+    pauseAllRunning = false;
+    if (btn) { btn.disabled = false; btn.textContent = label || '⏸ 全部停止'; }
+    await refreshDownloads();
+  }
+}
+
+/* ---------------- 一键安装（默认选择） ---------------- */
+
+/**
+ * ⚡ 一键安装（单条）—— 按「每组第一套 + 互不相关的全选」直接装。
+ *
+ * 用户 2026-10-14：「有多个文件时每组冲突的 mod 都默认选中第一个文件；
+ * 不要手工一个一个确认」。想改组合仍可点旁边的「选择内容」打开对话框。
+ */
+async function dlConfirmDefault(id) {
+  const btn = document.querySelector(`[data-dl-confirmdefault="${id}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '安装中…'; }
+  try {
+    await call(window.api.download.confirmDefault(id), { silent: true });
+    toast('开始安装…');
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    await refreshDownloads();
+  }
+}
+
+/** 「⚡ 一键安装全部」是否在跑 */
+let confirmAllRunning = false;
+
+/**
+ * ⚡ 一键安装全部 —— 把所有「待确认」的包按默认选择一次装掉。
+ *
+ * 主进程那边是**串行 + 节流**的（每条都要解压分析，一口气并发会把磁盘打满），
+ * 所以用按钮文案当进度条 + `download:confirmprogress` 实时更新，
+ * 避免用户以为程序卡住了。
+ */
+async function dlConfirmAll() {
+  if (confirmAllRunning) { toast('正在一键安装中，稍等…'); return null; }
+  confirmAllRunning = true;
+  const btn = document.querySelector('[data-dl-confirmall]');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '安装中…'; }
+  try {
+    const r = await call(window.api.download.confirmAllDefault({}), { silent: true });
+    if (!r) return null;
+    const parts = [`处理 ${r.total} 项`];
+    if (r.failed) parts.push(`失败 ${r.failed}`);
+    const still = (state.downloads || []).filter(t => t.status === 'needs_review').length;
+    if (still) parts.push(`仍有 ${still} 项需要你挑内容`);
+    toast('一键安装：' + parts.join('，'), r.failed ? 'err' : 'ok');
+    return r;
+  } catch (e) {
+    toast(e.message, 'err');
+    return null;
+  } finally {
+    confirmAllRunning = false;
+    if (btn) { btn.disabled = false; btn.textContent = label || '⚡ 一键安装全部'; }
+    await refreshDownloads();
+  }
+}
+
+/** 批量一键安装的实时进度 → 按钮文案 */
+function onConfirmProgress(p) {
+  if (!p || !p.total) return;
+  const btn = document.querySelector('[data-dl-confirmall]');
+  if (btn && confirmAllRunning) btn.textContent = `安装中 ${p.done}/${p.total}…`;
+}
+
+/* ---------------- 彻底删除 ---------------- */
+
+/** 「彻底删除」确认框对应的任务 id（点确认时要用） */
+let purgeTaskId = null;
+
+/**
+ * 🗑 彻底删除（**带二次确认**）。
+ *
+ * 清掉记录 + 本地安装包 + 半截下载 + 缓存图；**不动游戏目录**（口径已确认）。
+ * 它比「移除」更彻底，且不可撤销，所以必须问一次，并且把「已安装」这种
+ * 最容易误会的场景单独写清楚：删了记录不等于卸载。
+ */
+function dlPurge(id) {
+  const t = dlFind(id);
+  if (!t) return;
+  const meta = t.meta || {};
+  const name = meta.name || ('Mod #' + (meta.modId || '?'));
+  purgeTaskId = t.id;
+
+  const installed = t.status === 'installed' || !!(t.install && t.install.registryId);
+  // ⚠️ 这里的句子刻意**不嵌 `<b>` 标签**：i18n 是按 DOM 文本节点查表的，
+  //    中间插标签会把一句话切成 `会清掉这些` / `本地` / `内容：` 三段，
+  //    整句就再也查不到字典了（老文案踩过这个坑）。
+  openModal('彻底删除「' + name + '」？', `
+    <p>会清掉这些本地内容：</p>
+    <ul style="margin:8px 0 0 18px;line-height:2">
+      <li>下载队列里的这条记录</li>
+      <li>本地安装包：${t.archivePath ? `<code>${esc(clip(t.filename || '安装包', 40))}</code>` : '这条没有'}</li>
+      <li>没下完的半截文件</li>
+      <li>缓存的封面与预览图</li>
+    </ul>
+    ${installed ? `<div class="callout warn" style="margin-top:10px">
+      彻底删除不会动游戏目录里的文件 —— 想卸载请到「已安装 Mod」页点「卸载」（那里会把被它覆盖的原始文件还原回去）。
+    </div>` : ''}
+  `, [
+    { label: '取消', id: 'pCancel' },
+    { label: '彻底删除', id: 'pPurge', primary: true, danger: true }
+  ]);
+}
+
+async function dlPurgeConfirmed() {
+  const id = purgeTaskId;
+  purgeTaskId = null;
+  closeModal();
+  if (!id) return;
+  try {
+    const r = await call(window.api.download.purge(id), { silent: true });
+    await refreshDownloads();
+    if (r && r.ok) {
+      const bits = [];
+      if (r.archive) bits.push('安装包');
+      if (r.parts && r.parts.length) bits.push(`半截文件 ${r.parts.length} 个`);
+      if (r.images) bits.push('缓存图');
+      toast('已彻底删除' + (bits.length ? '（' + bits.join('、') + '）' : ''));
+    } else {
+      toast('删除失败', 'err');
+    }
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function dlConfirm(id) {
@@ -4036,14 +4292,23 @@ function bindEvents() {
     if (dlAutoAuth) { await dlAutoAuthorize(dlAutoAuth.dataset.dlAutoauth); return; }
     if (t.closest('[data-dl-resumeall]')) { await dlResumeAll(); return; }
     if (t.closest('[data-dl-autoauthall]')) { await dlAutoAuthorizeAll(); return; }
+    // 2026-10-14 新增：全部停止 / 一键安装全部
+    if (t.closest('[data-dl-pauseall]')) { await dlPauseAll(); return; }
+    if (t.closest('[data-dl-confirmall]')) { await dlConfirmAll(); return; }
     const dlAuth = t.closest('[data-dl-auth]');
     if (dlAuth) { await dlAuthorize(dlAuth.dataset.dlAuth); return; }
     const dlStartBtn = t.closest('[data-dl-start]');
     if (dlStartBtn) { await dlStart(dlStartBtn.dataset.dlStart); return; }
     const dlCancelBtn = t.closest('[data-dl-cancel]');
     if (dlCancelBtn) { await dlCancel(dlCancelBtn.dataset.dlCancel); return; }
+    const dlPauseBtn = t.closest('[data-dl-pause]');
+    if (dlPauseBtn) { await dlPause(dlPauseBtn.dataset.dlPause); return; }
+    const dlConfirmDefaultBtn = t.closest('[data-dl-confirmdefault]');
+    if (dlConfirmDefaultBtn) { await dlConfirmDefault(dlConfirmDefaultBtn.dataset.dlConfirmdefault); return; }
     const dlConfirmBtn = t.closest('[data-dl-confirm]');
     if (dlConfirmBtn) { await dlConfirm(dlConfirmBtn.dataset.dlConfirm); return; }
+    const dlPurgeBtn = t.closest('[data-dl-purge]');
+    if (dlPurgeBtn) { dlPurge(dlPurgeBtn.dataset.dlPurge); return; }
     const dlRemoveBtn = t.closest('[data-dl-remove]');
     if (dlRemoveBtn) { await dlRemove(dlRemoveBtn.dataset.dlRemove); return; }
     const dlRevealBtn = t.closest('[data-dl-reveal]');
@@ -4080,6 +4345,8 @@ function bindEvents() {
     if (mb) {
       const id = mb.dataset.mbtn;
       if (id === 'impCancel' || id === 'vCancel') closeModal();
+      else if (id === 'pCancel') { purgeTaskId = null; closeModal(); }
+      else if (id === 'pPurge') await dlPurgeConfirmed();
       else if (id === 'cmpClose') closeModal();
       else if (id === 'cmpGo') {
         // 「查看被替换的文件」→ 滚回下载卡片，把冲突明细露出来
@@ -4431,6 +4698,8 @@ window.__refreshAll = refreshAll;
   window.api.download.onChanged(onDownloadChanged);
   window.api.download.onProgress(onDownloadProgress);
   window.api.download.onAutoAuth(onAutoAuthProgress);
+  // 批量「一键安装」的进度（2026-10-14）
+  if (window.api.download.onConfirmProgress) window.api.download.onConfirmProgress(onConfirmProgress);
 
   // 登录窗口里检测到登录成功 → 主界面同步状态
   window.api.nexus.onAuthChanged(async (info) => {
