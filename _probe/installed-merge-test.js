@@ -47,6 +47,10 @@ function pick(re, what) {
   return m[0];
 }
 const SRC_KIND = pick(/const KIND_RANK = \{[^}]*\};/, 'KIND_RANK');
+// 排序方向相关（0.2.8 新增）：compareInstalled 的第四个参数靠这两个符号判默认方向
+const SRC_SORTS = pick(/const INSTALLED_SORTS = \[[\s\S]*?\n\];/, 'INSTALLED_SORTS');
+const SRC_DIRS = pick(/const SORT_DIRS = \[[^\]]*\];/, 'SORT_DIRS');
+const SRC_DEFDIR = pick(/function sortDefaultDir\([\s\S]*?\n}/, 'sortDefaultDir');
 const SRC_MTIME = pick(/function groupMtime\([\s\S]*?\n}/, 'groupMtime');
 const SRC_CMP = pick(/function compareInstalled\([\s\S]*?\n}/, 'compareInstalled');
 const SRC_GROUP = pick(/function groupInstalled\([\s\S]*?\n}/, 'groupInstalled');
@@ -54,10 +58,10 @@ const SRC_GROUP = pick(/function groupInstalled\([\s\S]*?\n}/, 'groupInstalled')
 const ctx = {};
 vm.createContext(ctx);
 vm.runInContext(
-  [SRC_KIND, SRC_MTIME, SRC_CMP, SRC_GROUP].join('\n') +
-  '\nthis.K = { KIND_RANK, groupMtime, compareInstalled, groupInstalled };',
+  [SRC_KIND, SRC_SORTS, SRC_DIRS, SRC_DEFDIR, SRC_MTIME, SRC_CMP, SRC_GROUP].join('\n') +
+  '\nthis.K = { KIND_RANK, INSTALLED_SORTS, SORT_DIRS, sortDefaultDir, groupMtime, compareInstalled, groupInstalled };',
   ctx);
-const { groupMtime, compareInstalled, groupInstalled } = ctx.K;
+const { groupMtime, compareInstalled, groupInstalled, INSTALLED_SORTS, sortDefaultDir } = ctx.K;
 
 /** 造一条已安装项（只带被测逻辑关心的字段） */
 const item = (o = {}) => Object.assign(
@@ -198,6 +202,47 @@ console.log('\n[3] compareInstalled：默认时间倒序 + 每模式带兜底键
   ];
   const run = (mode) => pool.slice().sort((a, b) => cmp(a, b, mode)).map(g => g.key).join(',');
   eq(run('time') === run('time'), true, '同样输入两次排序结果完全一致（可复现）');
+
+  // ---- 0.2.8：正序 / 倒序 ----
+  // 用户 2026-10-14：「已安装的 mod 排序要支持正序，倒叙」。
+  // 方向**只作用于主键**；不传 dir = 用该模式的默认方向（故上面那批老断言一字未改仍全绿）。
+  t('★ 不传 dir = 该模式的默认方向（time 默认倒序）',
+    () => cmp(old1, new2, 'time') === cmp(old1, new2, 'time', 'desc') || '默认方向不是 desc');
+  t('★ time：显式 asc = 旧的在前（与默认倒序相反）',
+    () => cmp(old1, new2, 'time', 'asc') < 0 || '正序没生效');
+  t('time：asc / desc 两个方向互为反号（主键）',
+    () => cmp(old1, new2, 'time', 'asc') === -cmp(old1, new2, 'time', 'desc') || '两个方向不成对');
+  t('name：asc 升序、desc 降序',
+    () => cmp(grp(1, 'B', T), grp(2, 'A', T), 'name', 'asc') > 0
+      && cmp(grp(1, 'B', T), grp(2, 'A', T), 'name', 'desc') < 0 || '顺序错了');
+  t('modid：asc 升序、desc 降序',
+    () => cmp(grp(9, 'A', T), grp(3, 'Z', T), 'modid', 'asc') > 0
+      && cmp(grp(9, 'A', T), grp(3, 'Z', T), 'modid', 'desc') < 0 || '顺序错了');
+  t('kind：asc 前置在前、desc 前置在后',
+    () => cmp(grp(1, 'A', T, 'prereq'), grp(2, 'B', T, 'pak'), 'kind', 'asc') < 0
+      && cmp(grp(1, 'A', T, 'prereq'), grp(2, 'B', T, 'pak'), 'kind', 'desc') > 0 || '顺序错了');
+
+  // ⚠️ 次键（Mod ID / 名称）不跟着方向翻转：时间相同 → 一律 Mod ID 升序
+  t('★ 次键不翻转：时间相同 → 两个方向下都是 Mod ID 升序',
+    () => cmp(grp(1, 'Z', T), grp(2, 'A', T), 'time', 'asc') < 0
+      && cmp(grp(1, 'Z', T), grp(2, 'A', T), 'time', 'desc') < 0 || '次键跟着翻转了');
+  // ⚠️ 「没有 modId 恒排最后」是「来源不明」的约定，不是大小关系 → 两个方向都在最后
+  t('★ 未知 kind 在两个方向下都排最后',
+    () => cmp(grp(1, 'A', T, 'weird'), grp(2, 'B', T, 'script'), 'kind', 'asc') > 0
+      && cmp(grp(1, 'A', T, 'weird'), grp(2, 'B', T, 'script'), 'kind', 'desc') > 0 || '未知类型方向一翻就跑前面去了');
+  t('非法 dir（乱塞字符串）退回该模式默认方向',
+    () => cmp(old1, new2, 'time', 'sideways') === cmp(old1, new2, 'time', 'desc') || '没有兜底');
+
+  // ---- sortDefaultDir：每模式的默认方向 ----
+  eq(sortDefaultDir('time'), 'desc', 'sortDefaultDir(time) = desc（最新装的最上面）');
+  eq(sortDefaultDir('name'), 'asc', 'sortDefaultDir(name) = asc');
+  eq(sortDefaultDir('modid'), 'asc', 'sortDefaultDir(modid) = asc');
+  eq(sortDefaultDir('kind'), 'asc', 'sortDefaultDir(kind) = asc');
+  eq(sortDefaultDir('不存在'), 'asc', '未知 mode 一律 asc（不抛异常）');
+  eq(INSTALLED_SORTS.every(s => s.defDir === 'asc' || s.defDir === 'desc'), true,
+    '每种排序都显式声明了 defDir（不靠隐式兜底）');
+  eq(INSTALLED_SORTS.filter(s => s.defDir === 'desc').map(s => s.value).join(','), 'time',
+    '只有「安装时间」默认倒序，其余默认正序');
 }
 
 // ================================================================ 3. 端到端
@@ -253,12 +298,27 @@ console.log('\n[5] 渲染层接线（源码级断言）');
     () => /const INSTALLED_SORTS = \[[\s\S]{0,600}'time'[\s\S]{0,300}'name'[\s\S]{0,300}'modid'[\s\S]{0,300}'kind'/.test(code) || '缺失');
   t('默认排序是 time（安装时间倒序）', () => /installedSort: 'time',/.test(code) || '缺失');
   t('排序栏是 data-isort 按钮组', () => /data-isort="\$\{esc\(s\.value\)\}"/.test(code) || '缺失');
-  t('点排序按钮会改 state 并重渲染', () =>
-    /state\.installedSort = isort\.dataset\.isort \|\| 'time';[\s\S]{0,120}renderInstalled\(\);/.test(code) || '缺失');
-  t('渲染走「分组 → 排序 → 画卡」三步', () =>
-    /state\.installedGroups = groupInstalled\(visible\);[\s\S]{0,300}\.sort\(\(a, b\) => compareInstalled\(a, b, state\.installedSort\)\)/.test(code) || '缺失');
+  t('点排序按钮会改 state 并重渲染（0.2.8：换排序时方向回到该模式默认值）', () =>
+    /state\.installedSort = v;[\s\S]{0,60}state\.installedSortDir = sortDefaultDir\(v\);[\s\S]{0,80}renderInstalled\(\);[\s\S]{0,40}saveFilters\(\);/.test(code) || '缺失');
+  t('渲染走「分组 → 排序 → 画卡」三步（排序带上方向）', () =>
+    /state\.installedGroups = groupInstalled\(visible\);[\s\S]{0,300}\.sort\(\(a, b\) => compareInstalled\(a, b, state\.installedSort, state\.installedSortDir\)\)/.test(code) || '缺失');
   t('侧栏计数也用分组后的数量（= Mod 数，不是磁盘条目数）',
     () => /function syncInstalledNav\(\)[\s\S]{0,300}groupInstalled\(state\.installed\)[\s\S]{0,120}gs\.length/.test(code) || '缺失');
+
+  // ---- 排序方向 UI（0.2.8） ----
+  t('state 默认方向是 desc（安装时间倒序）', () => /installedSortDir: 'desc',/.test(code) || '缺失');
+  t('排序条包在 .sortgrp 里（右侧方向按钮才不会被 .ibar > .btn 的 margin-left:auto 推到最右）',
+    () => /const sortBar = `<div class="sortgrp">/.test(code) || '缺失');
+  t('选中的排序名后面跟一枚方向箭头，且箭头在**独立元素**里（i18n 按文本节点整串查表）',
+    () => /<span class="dir">\$\{arrow\}<\/span>/.test(code) || '缺失');
+  t('有独立的方向按钮 data-isortdir', () => /data-isortdir="1"/.test(code) || '缺失');
+  t('再点一次当前排序名 = 翻转方向', () =>
+    /if \(v === state\.installedSort\) \{\s*\n\s*toggleInstalledSortDir\(\);/.test(code) || '缺失');
+  t('toggleInstalledSortDir 翻转 + 重画 + 落盘', () =>
+    /function toggleInstalledSortDir\(\)[\s\S]{0,200}renderInstalled\(\);[\s\S]{0,40}saveFilters\(\);/.test(code) || '缺失');
+  t('CSS 有 .sortgrp（排序名 + 方向按钮一行）', () => /\.sortgrp\{/.test(css) || '缺失');
+  t('CSS 里 .ibar > .btn 是**子选择器**（方向按钮不会被误推到最右）',
+    () => /\.ibar > \.btn\{/.test(css) || '缺失');
 
   // ---- 卡片 ----
   t('卡片带 data-gid（点击打开的是「这个 Mod」而不是某个文件）',
