@@ -1,7 +1,7 @@
 {
   "name": "sbmodmanager",
   "productName": "剑星 Mod 管理器",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "SBModManager — Stellar Blade 模组管理器：已装模组管理、Nexus 浏览、一键安装、说明中文化，支持 14 种语言界面",
   "main": "src/main/index.js",
   "author": "zilong",

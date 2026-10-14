@@ -78,7 +78,18 @@ const CASES = [
   // 运行时错误码夹在括号里（不是数字，形状键吃不下）→ 靠前后两段片段各换一次
   ['连不上 Nexus（Error: net::ERR_CONNECTION_TIMED_OUT），稍后再试或点「手动授权」。',
     { 'en-US': 'Can\'t reach Nexus (Error: net::ERR_CONNECTION_TIMED_OUT). Try again later or click "Manual authorize".' }],
-  ['这个文件没有「Mod Manager Download」链接（作者只开了手动下载），请点「手动授权」。', {}]
+  ['这个文件没有「Mod Manager Download」链接（作者只开了手动下载），请点「手动授权」。', {}],
+
+  // —— 覆盖清单顶部的「⇄ 对比」入口（0.2.9）——
+  // 按钮文案**故意拆成三个文本节点**（见 `conflictListHtml`）：
+  //   ① `⇄ 对比`          → 整串命中字典
+  //   ② `「Mod 名」`       → 包在 `data-i18n-skip` 里（Mod 名是动态数据，不许被片段替换啃）
+  //   ③ `（3 个文件）`     → 靠字典里已有的「个文件」片段剥掉数字后翻
+  // 若有谁把它们拼回「⇄ 与「X」对比（3 个文件）」一句，整串查不到、片段替换又因
+  // 残留中文被拒 —— 非中文界面会整句留中文。下面三条就是拦这个的。
+  ['⇄ 对比', { 'en-US': '⇄ Compare', 'ja-JP': '⇄ 比較', 'ru-RU': '⇄ Сравнить', 'zh-TW': '⇄ 對比' }],
+  ['（3 个文件）', { 'en-US': '（3 files）', 'ja-JP': '（3 個のファイル）' }],
+  ['（10 个文件）', { 'en-US': '（10 files）' }]
 ];
 
 const CODES = ['zh-TW', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU', 'de-DE',

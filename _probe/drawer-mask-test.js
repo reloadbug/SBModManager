@@ -221,11 +221,15 @@ console.log('\n[4] 覆盖清单的「⇄ 对比」按钮');
 const c2 = { console, esc: (s) => String(s) };
 vm.createContext(c2);
 vm.runInContext(
-  extract('esc') + '\n' + extract('fmtSize') + '\n'
-  + extract('conflictListHtml') + '\n' + 'this.f = { conflictListHtml };',
+  extract('esc') + '\n' + extract('clip') + '\n' + extract('fmtSize') + '\n'
+  // ⚠️ `cmpIncomingMeta` 在 app.js 里是**模块级 let**，抽出函数体时不会带过来 ——
+  //    这里补一份同样的声明，否则赋值会变成隐式全局（能跑但语义漂了）。
+  + 'let cmpIncomingMeta = {};\n'
+  + extract('conflictListHtml') + '\n'
+  + 'this.f = { conflictListHtml, getIncoming: () => cmpIncomingMeta };',
   c2
 );
-const { conflictListHtml } = c2.f;
+const { conflictListHtml, getIncoming } = c2.f;
 
 function item(over) {
   return Object.assign({ path: 'D:\\g\\SB\\Content\\Paks\\~Mods\\X_P.pak', rel: 'SB/Content/Paks/~Mods/X_P.pak',
@@ -271,6 +275,47 @@ function item(over) {
   t('空清单 → 空串（不画个空框）', () =>
     conflictListHtml({ total: 0, items: [] }) === '' && conflictListHtml(null) === '');
 }
+
+// ---- 同一组 mod 的多个文件只出一个对比入口（用户 2026-10-14 第 3 张截图）----
+{
+  // 一组 mod 的 3 个文件（ATOOL 那种 .pak / .ucas / .utoc）撞上同一个已装 mod
+  const three = [
+    item({ path: 'D:\\g\\a.pak', name: 'a.pak', owners: [{ modId: 3970, name: 'Cyber Suit', version: 'v1.2', author: 'A', pictureUrl: 'http://x/1.jpg', isSelf: false }] }),
+    item({ path: 'D:\\g\\a.ucas', name: 'a.ucas', owners: [{ modId: 3970, name: 'Cyber Suit', version: 'v1.2', author: 'A', pictureUrl: 'http://x/1.jpg', isSelf: false }] }),
+    item({ path: 'D:\\g\\a.utoc', name: 'a.utoc', owners: [{ modId: 3970, name: 'Cyber Suit', version: 'v1.2', author: 'A', pictureUrl: 'http://x/1.jpg', isSelf: false }] })
+  ];
+  const h = conflictListHtml({ total: 3, items: three });
+  eq((h.match(/data-cmp="/g) || []).length, 1, '3 个文件同一个目标 → 只出 1 个对比入口');
+  t('入口标出涉及 3 个文件', () => h.includes('（3 个文件）') || h);
+  t('入口带已装 mod 的版本 / 作者 / 封面', () =>
+    h.includes('data-cmp-ver="v1.2"') && h.includes('data-cmp-author="A"') && h.includes('data-cmp-pic="http://x/1.jpg"') || h);
+  t('三行都还在（只是没各自的对比按钮）', () =>
+    (h.match(/class="cfl-row"/g) || []).length === 3 || h);
+  t('行内只留「定位」', () => (h.match(/>定位</g) || []).length === 3 || h);
+  t('button 开合配对（1 个入口 + 3 个定位）', () => {
+    const open = (h.match(/<button/g) || []).length;
+    const close = (h.match(/<\/button>/g) || []).length;
+    return open === close && open === 4 ? true : `${open}/${close}`;
+  });
+
+  // 两个不同的已装 mod → 两个入口（一个目标一个，不是一堆）
+  const two = conflictListHtml({ total: 2, items: [
+    item({ path: 'D:\\g\\p1.pak', owners: [{ modId: 3970, name: 'Cyber Suit', isSelf: false }] }),
+    item({ path: 'D:\\g\\p2.pak', owners: [{ modId: 5118, name: 'Minervha', isSelf: false }] })
+  ] });
+  eq((two.match(/data-cmp="/g) || []).length, 2, '两个不同目标 → 两个入口');
+  t('两个入口各对应自己的 modId', () => two.includes('data-cmp="3970"') && two.includes('data-cmp="5118"') || two);
+  t('单个文件的入口不标文件数', () => !two.includes('个文件）') || two);
+
+  // 传 incoming → 写进 cmpIncomingMeta（openCmpModal 靠它填右侧）
+  const inc = { modId: 4242, name: 'New One' };
+  conflictListHtml({ total: 1, items: [item({ owners: [{ modId: 3970, name: 'Cyber Suit', isSelf: false }] })] }, { incoming: inc });
+  eq(getIncoming(), inc, 'opts.incoming 落到 cmpIncomingMeta（对比框右侧的来源）');
+  t('不传 incoming 时不覆盖上一次的上下文', () => getIncoming() === inc || '被清空了');
+}
+
+t('conflictListHtml 真身里做了按目标去重（tgtMap）', () =>
+  extract('conflictListHtml').includes('const tgtMap = new Map();') || '没做去重');
 
 t('点击委托里「对比」排在「定位」之前（否则点对比只会弹资源管理器）', () => {
   const a = appCode.indexOf("t.closest('[data-cmp]')");

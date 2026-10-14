@@ -276,7 +276,10 @@ console.log('\n[7] 渲染层接线（源码级断言）');
     appJs.includes("closest('[data-dl-conflicts]')") && appJs.includes("$('#dlConflicts')") || '缺失');
   t('点击 data-reveal-path → revealPath()', () =>
     appJs.includes("closest('[data-reveal-path]')") && appJs.includes('revealPath(') || '缺失');
-  t('手动安装确认抽屉也插入 conflictList', () => appJs.includes('conflictListHtml(p.conflictDetails)') || '缺失');
+  t('手动安装确认抽屉也插入 conflictList 且带 incoming meta', () =>
+    appJs.includes('conflictListHtml(p.conflictDetails, { incoming: st.meta || {} })') || '缺失 / 没带 incoming');
+  t('下载详情抽屉也带 incoming meta（t.meta）', () =>
+    appJs.includes('conflictListHtml(cd, { incoming: meta })') || '缺失 / 没带 incoming');
 
   t('ipc.js 的 install:analyze 挂上 conflictDetails', () =>
     ipc.includes('plan.conflictDetails = installFlow.explainConflicts(') || '缺失');
@@ -289,6 +292,103 @@ console.log('\n[7] 渲染层接线（源码级断言）');
     css.includes('.tag.self{') && css.includes('.tag.other{') && css.includes('.tag.gray{') || '缺失');
   t('style.css 用项目自己的 --ok 变量（不引不存在的 --green）', () =>
     !css.includes('var(--green') || '仍有 var(--green)');
+}
+
+// ------------------------------------------------- 「⇄ 对比」入口与右侧信息（0.2.9）
+
+console.log('\n[8] 对比入口去重 + 对比框两侧信息完整（用户 2026-10-14 三张截图）');
+{
+  const appJs = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+  const flow = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'installFlow.js'), 'utf8');
+  /**
+   * 取某个函数的源码正文（用成对锚点收口，别用固定长度切片）。
+   * ⚠️ app.js 是 **CRLF**，必须先把行尾归一成 LF，否则 `'\n}\n'` 永远匹配不上，
+   *    切片会一路吞到文件末尾 —— 制造假失败。
+   */
+  const appLf = appJs.replace(/\r\n/g, '\n');
+  const fnBody = (name) => {
+    const i = appLf.indexOf('function ' + name + '(');
+    if (i < 0) return '';
+    const j = appLf.indexOf('\n}\n', i);
+    return j < 0 ? appLf.slice(i) : appLf.slice(i, j + 3);
+  };
+  const cmpModal = fnBody('openCmpModal');
+
+  // ---- ① 对比框右侧不再恒为「Mod #? / —」----
+  t('存在模块级 cmpIncomingMeta（由 opts.incoming 写入）', () =>
+    /let cmpIncomingMeta = \{\};/.test(appJs) || '缺失 cmpIncomingMeta');
+  t('conflictListHtml 用 opts.incoming 写入 cmpIncomingMeta', () =>
+    appJs.includes('if (opts.incoming) cmpIncomingMeta = opts.incoming;') || '缺失写入');
+  t('openCmpModal 不再读 state.modalTask（那是任务 id 字符串，.meta 恒 undefined）', () =>
+    !cmpModal.includes('state.modalTask') || '仍在读 state.modalTask');
+  t('死变量 state.cmpIncoming 已清除（全文不再赋值，对比框内不再读）', () =>
+    (!/state\.cmpIncoming\s*=/.test(appJs) && !cmpModal.includes('state.cmpIncoming'))
+    || '仍引用 state.cmpIncoming');
+  t('右侧封面包进 #cmpNewFace（好让异步拉到的图集有地方落）', () =>
+    appJs.includes('<div id="cmpNewFace">') || '缺失 #cmpNewFace');
+  t('右侧没图时按 modId 主动拉图集（用户「主要是比较截图」）', () =>
+    appJs.includes('if (newModId && !incomingImgs.length)') || '缺失主动拉图集');
+  t('左侧封面包进 #cmpOldFace 且不再是 meta.__oldCover 残留', () =>
+    appJs.includes('<div id="cmpOldFace">') && !appJs.includes('meta.__oldCover') || '仍有残留');
+  t('左侧条件判断不再写 !x === false（恒真，写法有毒）', () =>
+    !/\|\|\s*[^;\n]*!document\.getElementById\('modal'\)\.classList\.contains\('on'\) === false/.test(appJs)
+    || '仍有 !...===false');
+
+  // ---- ② 已装那个 mod 的版本 / 作者 / 封面一起带进对比框 ----
+  t('installFlow 的 owners 带 author', () =>
+    flow.includes('author: (m.source && m.source.author) || null') || '缺失 author');
+  t('installFlow 的 owners 带 pictureUrl', () =>
+    flow.includes('pictureUrl: m.image || (m.source && m.source.pictureUrl) || null') || '缺失 pictureUrl');
+  t('tgtMap 收集 version / author / pictureUrl', () =>
+    appJs.includes('version: tg.version || \'\', author: tg.author || \'\', pictureUrl: tg.pictureUrl || \'\'')
+    || 'tgtMap 没收这三个字段');
+  t('对比入口按钮带 data-cmp-ver / -author / -pic', () =>
+    appJs.includes('data-cmp-ver=') && appJs.includes('data-cmp-author=') && appJs.includes('data-cmp-pic=')
+    || '入口按钮缺字段');
+  t('点击时把这三个字段传给 openCmpModal', () =>
+    appJs.includes('cmpBtn.dataset.cmpVer') && appJs.includes('cmpBtn.dataset.cmpAuthor')
+    && appJs.includes('cmpBtn.dataset.cmpPic') || '点击分支没传');
+  t('openCmpModal 第三参 oldInfo，左栏立刻画封面/版本/作者', () =>
+    appJs.includes('async function openCmpModal(oldModId, oldName, oldInfo = {})')
+    && appJs.includes("faceOf(oldInfo.pictureUrl || '')")
+    && appJs.includes("kv('版本', verText(oldInfo.version))")
+    && appJs.includes("kv('作者', oldInfo.author)") || '左栏仍不完整');
+
+  // ---- ③ 同一组 mod 的多个文件只出一个对比入口 ----
+  t('对比入口按目标 modId 去重（tgtMap）', () =>
+    appJs.includes('const tgtMap = new Map();') || '缺失 tgtMap');
+  t('入口在列表顶部 .cfl-cmpbar', () =>
+    appJs.includes('<div class="cfl-cmpbar">') || '缺失 cmpBar');
+  t('入口按钮标出涉及几个文件', () =>
+    appJs.includes('（${g.n} 个文件）') || '缺失文件数标注');
+  t('文件行内不再挂对比按钮（只留定位）', () => {
+    const a = appJs.indexOf('const rows = d.items.slice');
+    const b = appJs.indexOf('const more = d.items.length');
+    if (a < 0 || b < 0 || b < a) return '定位不到 rows 段';
+    return !appJs.slice(a, b).includes('data-cmp') || '行内仍有 data-cmp';
+  });
+  t('style.css 有 .cfl-cmpbar', () => css.includes('.cfl-cmpbar{') || '缺失样式');
+  t('style.css 里 .cfl-cmpbar 与列表有分隔（border-bottom）', () =>
+    /\.cfl-cmpbar\{[^}]*border-bottom/.test(css) || '没分隔线');
+
+  // ---- ④ 浏览页详情抽屉：图片 → 文件 → 操作按钮，元数据往后排 ----
+  const bodyOrder = ['id="galleryBox"', '<div class="lbl">文件</div>', 'id="dActions"',
+    '<div class="lbl">说明</div>', '<div class="lbl">来源</div>', '<div class="lbl">信息</div>']
+    .map(s => appJs.indexOf(s, appJs.indexOf('async function openNexusDrawer')));
+  t('抽屉顺序 = 图集 → 文件 → 操作按钮 → 说明 → 来源 → 信息', () =>
+    bodyOrder.every((v, i) => v > 0 && (i === 0 || v > bodyOrder[i - 1])) || JSON.stringify(bodyOrder));
+  t('浏览页详情不再用底部固定栏（#dFoot 清空）', () =>
+    /openNexusDrawer[\s\S]{0,4000}?\$\('#dFoot'\)\.innerHTML = '';/.test(appJs) || '底部栏没清空');
+  t('applyDrawerLocalState 按抽屉类型选按钮容器', () =>
+    appJs.includes("const foot = state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot');")
+    || '按钮容器没分流');
+  t('renderFiles 跨两个容器找「加入下载队列」', () =>
+    appJs.includes("document.querySelector('#dActions [data-dl-add], #dFoot [data-dl-add]')") || '没跨容器找');
+  t('style.css .dfoot:empty 不占高度', () => /\.dfoot:empty\{display:none\}/.test(css) || '缺失');
+  t('style.css .dactrow（内容区里的操作按钮行）', () => /\.dactrow\{[^}]*display:flex/.test(css) || '缺失');
+  t('文件列表封顶高度，防止把操作按钮顶出屏幕', () => /\.nxfiles\{[^}]*max-height/.test(css) || '缺失');
+  t('文件列表带 nxfiles 类', () => appJs.includes('id="filesBox" class="txt nxfiles"') || '缺失 nxfiles 类');
 }
 
 // ---------------------------------------------------------------- 收尾
