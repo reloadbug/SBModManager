@@ -4,7 +4,7 @@
 
 - 项目主页：<https://github.com/reloadbug/SBModManager>
 - **下载安装包**：<https://github.com/reloadbug/SBModManager/releases/latest>
-  （`SBModManager-0.2.1-setup.exe` 安装版 / `SBModManager-0.2.1-portable.exe` 免安装版，需 Windows 10/11 x64）
+  （`SBModManager-0.2.2-setup.exe` 安装版 / `SBModManager-0.2.2-portable.exe` 免安装版，需 Windows 10/11 x64）
 - 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 - 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
 
@@ -28,7 +28,7 @@
 语言包位于 `src/renderer/locales/*.js`，以 `<script>` 形式加载（受 CSP `script-src 'self'` 约束，
 `file://` 下无法用 `fetch` 读本地 JSON）。术语与键表以 `_probe/i18n-keys.json` 为唯一真源。
 
-## 现在能做什么（v0.2.1）
+## 现在能做什么（v0.2.2）
 
 | 功能 | 状态 |
 |---|---|
@@ -58,6 +58,7 @@
 | **点击即下载**：点「⬇ 下载」不会再弹出浏览器窗口，任务直接进队列开始下载 | ✅ |
 | **中断后一键全部续传**：下载中断/失败后，「全部恢复」一次把所有可续传任务接着下（HTTP Range 续传，不重头来） | ✅ |
 | **缺文件 ID 自动补齐**：入队时没拿到文件 ID 的任务（卡片上直接点下载、文件列表请求失败…），授权前会现场查出该 Mod 的主文件补上，不用手动 | ✅ |
+| **文件 ID 失效自愈**：作者更新 Mod 后旧文件被归档/删掉、任务里存的文件 ID 成了死号时，会自动重查主文件换上新号再试一次，不再卡在「等待授权」 | ✅ |
 | **多语言界面**：14 种语言（简体中文为原文，另 13 种语言包），跟随系统语言、可手动切换 | ✅ |
 | **不打扰的自动安装**：重装/升级自己、以及「同名同大小」的共用底座 pak，都不算冲突、直接装（覆盖前照旧备份） | ✅ |
 | **变体选择框默认选好**：按互斥组预选（每组一套、互不相关的全选），点开即可直接装 | ✅ |
@@ -90,8 +91,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `SBModManager-0.2.1-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
-| `SBModManager-0.2.1-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
+| `SBModManager-0.2.2-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
+| `SBModManager-0.2.2-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
 
 两者都**不需要管理员权限**，也都**不会**在卸载时删你的数据。
 

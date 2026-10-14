@@ -19,6 +19,8 @@
  *   D. 一刀切的老判定已消失
  *   E. `engine.patchMeta` 存在 / 已导出 / 只动 meta 不动状态
  *   F. 三条分层文案同时存在于源码、keys.json 与 13 个语言包
+ *   G. **fileId 失效自愈**：任务自带的 fileId 变成死号（作者更新后旧文件被归档/删掉）时，
+ *      重查主文件换新 fileId 再试一次，而不是把「作者只开了手动下载」甩给用户
  *
  * 用法：node _probe/autoauth-fileid-test.js
  */
@@ -218,6 +220,102 @@ for (const lang of LANGS) {
     return true;
   });
 }
+
+/* ================= G. fileId 失效自愈 ================= */
+
+console.log('');
+console.log('=== G. fileId 失效自愈（作者更新后旧文件没了） ===');
+
+// 从源码里**取出真身**来断言，而不是另写一份副本 —— 抄一份就失去意义了
+const staleSrc = IPC.match(/const STALE_FILE_CODES = new Set\(\[([^\]]*)\]\)/);
+t('定义了 STALE_FILE_CODES', () => {
+  if (!staleSrc) return 'ipc.js 里没定义';
+  const items = staleSrc[1].split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  return items.length ? true : '集合是空的';
+});
+
+const STALE = staleSrc
+  ? new Set(staleSrc[1].split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean))
+  : new Set();
+
+for (const c of ['no_nxm', 'bad_link', 'http']) {
+  t('自愈集合包含 ' + c, () => STALE.has(c) ? true : '不包含（这类失败其实该救）');
+}
+for (const c of ['not_logged_in', 'challenge', 'network']) {
+  t('自愈集合**不含** ' + c + '（换文件也没用 / 该等一等）', () => STALE.has(c) ? '不该含' : true);
+}
+
+/** 复刻源码里的守卫表达式，逐例验证「救不救」 */
+const shouldHeal = (r, fileIdResolved) => !r.ok && !fileIdResolved && STALE.has(r.code);
+
+const HEAL_CASES = [
+  { label: '旧 fileId 死号（no_nxm）→ 救', r: { ok: false, code: 'no_nxm' }, resolved: false, want: true },
+  { label: '旧 fileId 死号（http 404）→ 救', r: { ok: false, code: 'http' }, resolved: false, want: true },
+  { label: '坏链接（bad_link）→ 救', r: { ok: false, code: 'bad_link' }, resolved: false, want: true },
+  { label: '已授权成功 → 不救', r: { ok: true }, resolved: false, want: false },
+  { label: 'fileId 本就是这次查出来的 → 不重复救（防死循环）', r: { ok: false, code: 'no_nxm' }, resolved: true, want: false },
+  { label: '未登录 → 不救（换文件也没用）', r: { ok: false, code: 'not_logged_in' }, resolved: false, want: false },
+  { label: 'Cloudflare 挑战 → 不救（该退避）', r: { ok: false, code: 'challenge' }, resolved: false, want: false },
+  { label: '网络抖动 → 不救（该重试而不是换文件）', r: { ok: false, code: 'network' }, resolved: false, want: false }
+];
+for (const c of HEAL_CASES) {
+  t(c.label, () => {
+    const got = shouldHeal(c.r, c.resolved);
+    return got === c.want ? true : '得到 ' + got;
+  });
+}
+
+t('源码里确实写了这个守卫', () =>
+  /if\s*\(!r\.ok && !fileIdResolved && STALE_FILE_CODES\.has\(r\.code\)\)/.test(FN) ? true : '没找到守卫');
+
+t('fileIdResolved 在「补齐分支」里被置 true', () =>
+  /fileIdResolved\s*=\s*true/.test(FN) ? true : '没置位（会导致重复救 / 死循环）');
+
+t('新旧 fileId 必须真的不同才重试（防空转）', () => {
+  const i = FN.indexOf('STALE_FILE_CODES.has');
+  const seg = FN.slice(i, i + 400);
+  return /nf\s*!==\s*fileId/.test(seg) ? true : '没有 nf !== fileId 判断';
+});
+
+t('自愈时会写回 meta（卡片上能看到换成了哪个文件）', () => {
+  const i = FN.indexOf('STALE_FILE_CODES.has');
+  const seg = FN.slice(i, i + 700);
+  return /engine\.patchMeta\(id,\s*\{[\s\S]{0,300}?fileId/.test(seg) ? true : '自愈分支里没 patchMeta';
+});
+
+t('自愈有独立日志事件，便于事后追因', () =>
+  /logger\.event\('download:fileIdStale'/.test(FN) ? true : '没有 fileIdStale 日志');
+
+t('自愈会带上新旧 fileId 与触发原因', () => {
+  const i = FN.indexOf("logger.event('download:fileIdStale'");
+  const seg = FN.slice(i, i + 260);
+  const need = ['oldFileId', 'newFileId', 'cause'];
+  const miss = need.filter(k => !seg.includes(k));
+  return miss.length ? ('缺字段：' + miss.join(',')) : true;
+});
+
+t('自愈会重试 fetchNxm（换完新 fileId 再试一次）', () => {
+  const i = FN.indexOf('STALE_FILE_CODES.has');
+  const seg = FN.slice(i, i + 900);
+  return /r\s*=\s*await\s+nexusAutoAuth\.fetchNxm\(/.test(seg) ? true : '自愈分支里没有重试';
+});
+
+t('★ 首次 fetchNxm → 自愈 → 失败判定，顺序正确', () => {
+  const iFirst = FN.indexOf('nexusAutoAuth.fetchNxm');
+  const iHeal = FN.indexOf('STALE_FILE_CODES.has');
+  const iFail = FN.lastIndexOf("logger.event('download:autoauthFailed'");
+  if (iFirst < 0 || iHeal < 0 || iFail < 0) return '找不到关键片段';
+  if (!(iFirst < iHeal)) return '自愈跑到首次授权之前了';
+  if (!(iHeal < iFail)) return '失败判定跑在自愈之前（救不回来）';
+  return true;
+});
+
+t('自愈是**一次性**的，不会自己套娃（源码里只出现一个守卫）', () => {
+  const n = (FN.match(/STALE_FILE_CODES\.has\(/g) || []).length;
+  return n === 1 ? true : ('出现了 ' + n + ' 次');
+});
+
+t('首次 fetchNxm 用的是 let 绑定（自愈能改写它）', () => /let\s+r\s*=\s*await\s+nexusAutoAuth\.fetchNxm\(/.test(FN) ? true : '不是 let r =');
 
 console.log('');
 console.log('---');
