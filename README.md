@@ -4,7 +4,7 @@
 
 - 项目主页：<https://github.com/reloadbug/SBModManager>
 - **下载安装包**：<https://github.com/reloadbug/SBModManager/releases/latest>
-  （`SBModManager-0.2.6-setup.exe` 安装版 / `SBModManager-0.2.6-portable.exe` 免安装版，需 Windows 10/11 x64）
+  （`SBModManager-0.2.7-setup.exe` 安装版 / `SBModManager-0.2.7-portable.exe` 免安装版，需 Windows 10/11 x64）
 - 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 - 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
 
@@ -28,7 +28,7 @@
 语言包位于 `src/renderer/locales/*.js`，以 `<script>` 形式加载（受 CSP `script-src 'self'` 约束，
 `file://` 下无法用 `fetch` 读本地 JSON）。术语与键表以 `_probe/i18n-keys.json` 为唯一真源。
 
-## 现在能做什么（v0.2.6）
+## 现在能做什么（v0.2.7）
 
 | 功能 | 状态 |
 |---|---|
@@ -57,6 +57,7 @@
 | **👍 / 👎 图标投票**：卡片底部、**紧挨「下载 / 已安装」按钮**的两只**纯图标**按钮（不占文字）—— 大拇指向上 = 喜欢，向下 = 不喜欢；点一下**立刻生效**，鼠标悬停有说明。**操作类按钮都集中在这一块**，不再压在封面图上 | ✅ |
 | **「不喜欢」黑名单**：点 👎 **立刻**加入黑名单并从列表消失；顶部可切「隐藏黑名单（默认）/ 显示全部 / 只看黑名单」 | ✅ |
 | **「喜欢」收藏**：点 👍 记下来（再点一次取消）；顶部「只看喜欢」秒开本地列表（零网络请求）；浏览时**喜欢的排在前面**（当前页内稳定置顶，不会偷偷隐藏任何 Mod） | ✅ |
+| **记住筛选条件**：设置 → 「浏览与筛选」里可开关（默认开）。浏览页 7 项筛选（排序 / 成人内容 / 只看未安装 / 黑名单 / 只看喜欢 / 分类 / 标签）与已安装页的排序、内置脚本开关，**下次启动自动套用**，不用每次重新筛。**搜索关键词不记** —— 那是临时查询 | ✅ |
 | **结构识别兜底**：根级 pak 一律能装（自动剔掉 `modinfo.ini` 等管理器记账文件；只有真·多变体包才让你挑一套） | ✅ |
 | **裸包 / 非常规结构也能装**：CNS 服装数据（`.dekcns` / `.dekani`）、`~Mods` 直投包、`SB\` 原样落盘包，都不再报「无法识别这个压缩包的结构」 | ✅ |
 | **覆盖前对比**：需要覆盖的安装任务带「对比」按钮，**左右并列**显示将被覆盖的已安装模组与本包的封面图、名称、版本，确认后再装 | ✅ |
@@ -104,8 +105,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `SBModManager-0.2.6-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
-| `SBModManager-0.2.6-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
+| `SBModManager-0.2.7-setup.exe` | 安装版（约 106 MB）。可选安装目录，装完有桌面/开始菜单快捷方式 |
+| `SBModManager-0.2.7-portable.exe` | 便携版（约 106 MB）。双击即用，不写注册表 |
 
 两者都**不需要管理员权限**，也都**不会**在卸载时删你的数据。
 
@@ -145,13 +146,14 @@ npm start
 
 ```bash
 npm test              # 主进程模块自检（游戏探测 / 扫描 / Nexus / 翻译）
-npm run test:all      # 全部探针套件（36 套 / 2242 断言，见下）
+npm run test:all      # 全部探针套件（37 套 / 2373 断言，见下）
 npm run test:engine   # 下载引擎自检（状态机 / 自动安装 / 授权不落盘 / 取消 / 复用记录）
 npm run test:autoauth # 免点击自动授权（弹层端点解析 / 失败分类 / 刚上传未就绪判定 / 串行流水线 / 挑战页冷却续跑）
 npm run test:conflicts # 覆盖明细（归属三态 / 多主路径 / 大小对比 / 排序 / limit / 渲染层接线）
 npm run test:blacklist # 浏览页吸顶 + 黑名单（本地 CRUD / 前端筛选口径 / 接线）
 npm run test:favorites # 👍 喜欢（本地 CRUD / 与黑名单的对称性 / 投票按钮真身 / 稳定置顶 / 接线）
 npm run test:installed-merge # 已安装页合并 + 排序（分组粒度 / 组对象字段 / 四种排序的兜底键 / 接线）
+npm run test:filters  # 记住筛选条件（快照字段 / 白名单拒绝非法值 / 互斥归一 / 350ms 防抖 / 启动闸门）
 npm run test:top-account # 顶栏账号头像（判定脚本抽真身 / 缓存有值才覆盖 / 三态渲染）
 npm run test:archive  # 已安装页 Mod ID + 原压缩包定位（archiveInfo 跑真身 / 四种状态 / 版本号不拼 vv）
 npm run test:e2e-ue4ss # UE4SS 真实安装 → 卸载 的端到端（含「重装不重复备份自己」）
