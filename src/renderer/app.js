@@ -1587,6 +1587,111 @@ function updateLikeTabs() {
   $$('#likeTabs button').forEach(x => x.classList.toggle('on', on));
 }
 
+/* ---------------- 记住上次的筛选条件 ----------------
+ *
+ * 用户 2026-10-14：「设置里面增加一个选项，保存最后一次的筛选条件，不用每次都重新筛选；
+ * 已安装的 mod 也是同样道理」。
+ *
+ * 开关在设置页（`config.rememberFilters`，默认开）。存的只有**筛选条件**：
+ *   · 浏览页：排序 / 成人内容 / 只显示未安装 / 黑名单模式 / 只看喜欢 / 分类 / 标签
+ *   · 已安装页：排序、是否显示 UE4SS 内置脚本
+ * **不含搜索词** —— 那是临时查询，下次打开还留着上次的关键词只会让人以为列表坏了；
+ * 也不含滚动位置（翻到一半的位置没有回忆价值）。
+ */
+
+/**
+ * ⚠️ 首次拿到配置、把上次的筛选套回来之前，**一律不许落盘**。
+ *
+ * 启动时 `switchPage('p-browse')` 会先用默认筛选拉一轮列表，`loadBrowse(true)`
+ * 又会顺手调 `saveFilters()` —— 350ms 防抖之后就把**默认值**写进配置，
+ * 正好把上次存的筛选覆盖掉，功能会整个失效。所以这里加一道闸门。
+ */
+let filtersReady = false;
+/** 「套用上次筛选」整个进程只做一次 —— `refreshAll()` 会被反复调用（手动刷新、装完后…） */
+let filtersApplied = false;
+
+/** 浏览页排序的合法取值（与 index.html 里的 data-sort 一一对应） */
+const BROWSE_SORT_VALUES = ['downloads', 'endorsements', 'newest', 'updated'];
+const ADULT_MODES = ['hide', 'all', 'only'];
+const BLOCK_MODES = ['hide', 'all', 'only'];
+
+/** 当前浏览页的筛选快照（纯函数，便于离线钉死口径） */
+function browseFilterSnapshot(b) {
+  const s = b || state.browse;
+  return {
+    sort: s.sort,
+    adultMode: s.adultMode,
+    onlyUninstalled: !!s.onlyUninstalled,
+    blockMode: s.blockMode,
+    onlyLiked: !!s.onlyLiked,
+    category: s.category || '',
+    tags: Array.isArray(s.tags) ? s.tags.slice() : []
+  };
+}
+
+let saveFiltersTimer = null;
+
+/**
+ * 把当前筛选写回配置。开关关掉时直接跳过（不保存）。
+ * 连续点几下（比如连点几个标签）只落盘一次 —— 防抖 350ms。
+ */
+function saveFilters() {
+  if (!filtersReady) return;   // 启动恢复还没跑完，此时的状态是默认值，写下去等于把上次的筛选抹掉
+  if (!state.config || state.config.rememberFilters === false) return;
+  clearTimeout(saveFiltersTimer);
+  saveFiltersTimer = setTimeout(() => {
+    const last = {
+      browse: browseFilterSnapshot(),
+      installedSort: state.installedSort,
+      showBuiltin: !!state.showBuiltin
+    };
+    call(window.api.config.set({ lastFilters: last }), { silent: true }).catch(() => {});
+  }, 350);
+}
+
+/**
+ * 启动时把上次存的筛选套回 state，并同步按钮高亮。
+ *
+ * 只认**合法值**：配置被手工改坏、或某个取值以后改了名，一律退回默认 ——
+ * 宁可少恢复一项，也不能把界面搞成一个空列表（用户会以为 mod 没了）。
+ * 返回是否真的恢复过（调用方据此决定要不要重画已安装页）。
+ */
+function applyLastFilters() {
+  const c = state.config || {};
+  if (c.rememberFilters === false) return false;
+  const last = c.lastFilters;
+  if (!last || typeof last !== 'object') return false;
+
+  const b = state.browse;
+  const bf = last.browse;
+  if (bf && typeof bf === 'object') {
+    if (BROWSE_SORT_VALUES.includes(bf.sort)) b.sort = bf.sort;
+    if (ADULT_MODES.includes(bf.adultMode)) b.adultMode = bf.adultMode;
+    if (BLOCK_MODES.includes(bf.blockMode)) b.blockMode = bf.blockMode;
+    b.onlyUninstalled = !!bf.onlyUninstalled;
+    b.onlyLiked = !!bf.onlyLiked;
+    b.category = typeof bf.category === 'string' ? bf.category : '';
+    b.tags = Array.isArray(bf.tags) ? bf.tags.filter(x => typeof x === 'string') : [];
+    // 「只看喜欢」与「只看黑名单」互斥 —— 存档里两个都为真时留「喜欢」
+    if (b.onlyLiked && b.blockMode === 'only') b.blockMode = 'hide';
+  }
+  if (INSTALLED_SORTS.some(s => s.value === last.installedSort)) {
+    state.installedSort = last.installedSort;
+  }
+  if (typeof last.showBuiltin === 'boolean') state.showBuiltin = last.showBuiltin;
+  return true;
+}
+
+/** 把 state 里的筛选同步到浏览页顶部那几组按钮（它们是静态 HTML，默认态写死在 index.html） */
+function syncBrowseFilterUI() {
+  const b = state.browse;
+  $$('#sortTabs button').forEach(x => x.classList.toggle('on', x.dataset.sort === b.sort));
+  $$('#adultTabs button').forEach(x => x.classList.toggle('on', x.dataset.adult === b.adultMode));
+  $$('#newOnlyTabs button').forEach(x => x.classList.toggle('on', !!b.onlyUninstalled));
+  updateBlockTabs();
+  updateLikeTabs();
+}
+
 /** 就地摘掉一张卡片（调用方决定要不要同步 `b.items`） */
 function removeBrowseCard(modId) {
   const card = document.querySelector(`.card[data-modid="${modId}"]`);
@@ -1734,6 +1839,9 @@ async function loadBrowse(reset) {
     const el = $('#body');
     if (el) el.scrollTop = 0;
     selClear();   // 旧选择对应的 Mod 可能已经不在列表里了
+    // 所有筛选入口（排序 / 成人内容 / 未安装 / 黑名单 / 喜欢 / 分类 / 标签）最终都会
+    // 走到这里，所以「记住筛选」只需在这一处挂钩，不用改 8 个点击处理。
+    saveFilters();
   }
   const before = b.items.length;
   updateBrowseChrome();   // 按钮立刻变「加载中…」
@@ -3435,6 +3543,27 @@ function renderSettings() {
     </div>
 
     <div class="frm">
+      <h3>浏览与筛选</h3>
+      <div class="f">
+        <label>记住筛选条件</label>
+        <select id="setRememberFilters" style="flex:none;min-width:210px">
+          <option value="1" ${c.rememberFilters !== false ? 'selected' : ''}>记住（下次启动自动套用）</option>
+          <option value="0" ${c.rememberFilters === false ? 'selected' : ''}>不记住（每次都用默认筛选）</option>
+        </select>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">
+          记住浏览页与「已安装」页的筛选条件（排序、成人内容、只看未安装、黑名单、只看喜欢、分类、标签、内置脚本开关），下次启动自动套用。
+        </div>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">搜索关键词不记 —— 那是临时查询，留着上次的词只会让人以为列表坏了。</div>
+      </div>
+    </div>
+
+    <div class="frm">
       <h3>游戏</h3>
       <div class="f">
         <label>游戏目录</label>
@@ -4619,13 +4748,19 @@ function bindEvents() {
     if (arch) { renderFiles(true, state.drawer.mod && state.drawer.mod.modId); return; }
 
     const sb = t.closest('[data-showbuiltin]');
-    if (sb) { state.showBuiltin = !state.showBuiltin; renderInstalled(); return; }
+    if (sb) {
+      state.showBuiltin = !state.showBuiltin;
+      renderInstalled();
+      saveFilters();   // 「是否显示 UE4SS 内置脚本」也算筛选条件（用户明确要求「已安装的同样道理」）
+      return;
+    }
 
     // 已安装页排序切换（默认「安装时间」倒序）
     const isort = t.closest('[data-isort]');
     if (isort) {
       state.installedSort = isort.dataset.isort || 'time';
       renderInstalled();
+      saveFilters();
       return;
     }
 
@@ -5056,6 +5191,14 @@ function bindEvents() {
       } catch { /* 已提示 */ }
     } else if (e.target.id === 'setBackend') {
       try { state.config = await call(window.api.config.set({ translateBackend: e.target.value })); } catch { /* 已提示 */ }
+    } else if (e.target.id === 'setRememberFilters') {
+      // 「记住筛选条件」：只管开关，不删已存的快照 ——
+      // 关掉 = 下次启动不再套用、之后也不再保存；再打开时上次的记录还在。
+      try {
+        const on = e.target.value === '1';
+        state.config = await call(window.api.config.set({ rememberFilters: on }));
+        toast(on ? '已开启：下次启动自动套用上次的筛选条件' : '已关闭：每次启动都用默认筛选', 'ok');
+      } catch { /* 已提示 */ }
     } else if (e.target.id === 'setWatchEnabled') {
       try {
         const on = e.target.value === '1';
@@ -5212,6 +5355,19 @@ async function refreshAll(showToast) {
     state.downloadStats = data.downloadStats || {};
     if (data.watch) state.watch = data.watch;
     $('#verLine').textContent = 'v' + data.version + (data.packaged ? '' : ' · dev');
+    // 启动后第一次拿到配置：把上次的筛选条件套回来（设置页开关关掉时 `applyLastFilters()` 自己返回）。
+    // 只做一次 —— 之后 refreshAll 再被调用（手动刷新 / 装完 Mod）都不会重套，
+    // 否则用户刚刚改的筛选会被一个刷新按钮顶回去。
+    // 放在 renderInstalled() 之前，是为了让已安装页那一趟就按恢复后的排序与开关来画。
+    if (!filtersApplied) {
+      filtersApplied = true;
+      const before = JSON.stringify(browseFilterSnapshot());
+      applyLastFilters();
+      syncBrowseFilterUI();
+      filtersReady = true;   // 恢复完成，此后才允许 saveFilters 落盘
+      // 首屏的 switchPage 可能已经用默认筛选拉过一轮了，筛选真的变了才重拉
+      if (before !== JSON.stringify(browseFilterSnapshot())) loadBrowse(true);
+    }
     await refreshPrereqs();
     renderSidebar();
     renderInstalled();
