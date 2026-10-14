@@ -328,6 +328,8 @@ async function runInstall({
     taskId: meta.taskId || null,
     // 依赖标记：装的是 CNS 服装 Mod（界面据此提示「需要 CNS」）
     requiresCns: !!plan.requiresCns,
+    // 依赖标记：装的是 ATOOL 体系的 Logic Mod（界面据此提示「需要 ATOOL」）
+    requiresAtool: !!plan.requiresAtool,
     // 这个包本身是前置组件（UE4SS）—— 供 scanner 归类
     prereqKey: plan.prereqKey || null
   });
@@ -348,6 +350,8 @@ async function runInstall({
     backupFailed: r.backupFailed || 0,
     requiresCns: !!plan.requiresCns,
     requiresCnsReason: plan.requiresCnsReason || null,
+    requiresAtool: !!plan.requiresAtool,
+    requiresAtoolReason: plan.requiresAtoolReason || null,
     prereqKey: plan.prereqKey || null,
     reinstalled: !!prev,
     plan

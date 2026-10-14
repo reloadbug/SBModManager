@@ -40,6 +40,7 @@ const PREREQS = {
     // 主文件（primary=true）。见文件顶部关于 fileId 易变的说明。
     fileId: 13020,
     version: '2.2',
+    author: 'Dekita',
     pageUrl: 'https://www.nexusmods.com/stellarblade/mods/1496',
     filesUrl: 'https://www.nexusmods.com/stellarblade/mods/1496?tab=files',
     // 安装落点：包内是 SB\ 目录 → 合并到游戏根目录（官方说明原文：
@@ -49,6 +50,31 @@ const PREREQS = {
     requires: ['ue4ss'],
     // 高亮提示用的可读名，注入脚本会把它写进顶部指引条
     hint: 'CustomNanosuitSystem v2.2'
+  },
+
+  atool: {
+    key: 'atool',
+    name: 'ATOOL',
+    fullName: 'Animation Tool（ATOOL）',
+    desc: '姿势 / 表情 / 自定义动画加载框架 · 大量舞蹈与动画 Mod 的前置',
+    kind: 'nexus',
+    modId: 1662,
+    // 主文件有**三个互斥版本**，只差热键，只能装一个（装多个会互相覆盖）：
+    //   12834 默认键位 / 12835 k2 / 12836 k3
+    // 这里固定取默认键位版；k2/k3 让用户在文件页自己挑（一键安装的降级路径本来就
+    // 会在高亮不到时退化成「高亮页面上所有 Mod Manager Download 按钮」）。
+    fileId: 12834,
+    version: '6.1',
+    author: 'hbd',
+    pageUrl: 'https://www.nexusmods.com/stellarblade/mods/1662',
+    filesUrl: 'https://www.nexusmods.com/stellarblade/mods/1662?tab=files',
+    // 安装落点：包内是 `HD-ATOOL_P\` 文件夹 → 放进 `Paks\LogicMods\`
+    // （**不是** ~Mods！两者是互不相通的加载机制，放错游戏什么都不加载）
+    // 外置音频另需手工放进 `LogicMods\HD-ATOOL_P\audio\*.wav`
+    target: 'SB\\Content\\Paks\\LogicMods',
+    targetHint: 'LogicMods\\（外置音频放 LogicMods\\HD-ATOOL_P\\audio\\）',
+    requires: ['ue4ss'],
+    hint: 'HD-ATOOL v6.1'
   }
 };
 

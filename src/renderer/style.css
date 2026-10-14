@@ -93,6 +93,18 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .cover .sw::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:2px;right:2px;transition:.15s}
 .cover .sw.off{background:#4A5058}
 .cover .sw.off::after{right:16px}
+/* 部分启用（一个 Mod 装了多个文件，只启用了其中一部分）—— 蓝色，与全绿的「已启用」分得开 */
+.cover .sw.part{background:var(--blue)}
+.cover .sw.part::after{right:9px}
+/* 「N 个已装文件」角标 —— 挪到左下角，避开左上角的类型 tag 和右上角的开关 */
+.cover .tag.nfile{top:auto;bottom:8px;left:8px;color:var(--blue);border-color:rgba(74,158,255,.45);background:rgba(74,158,255,.16)}
+/* 封面右下角：👍 / 👎 一对图标按钮（无文字）。浏览页老布局的左下角 `.cat` 分类角标在左，互不遮挡 */
+.vote{position:absolute;bottom:8px;right:8px;display:flex;gap:5px}
+.vbtn{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);background:rgba(20,22,26,.88);color:var(--dim);cursor:pointer;padding:0;box-shadow:0 1px 6px rgba(0,0,0,.4);transition:.13s}
+.vbtn svg{display:block}
+.vbtn:hover{color:var(--text);border-color:var(--border2)}
+.vbtn.up.on{color:#7ED8A0;border-color:rgba(63,185,80,.6);background:rgba(18,42,26,.93)}
+.vbtn.down.on{color:#F0908C;border-color:rgba(217,83,79,.6);background:rgba(52,20,20,.93)}
 .cbody{padding:10px 12px 12px;display:flex;flex-direction:column;gap:3px;flex:1}
 .cbody h3{font-size:12.8px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cbody .zh{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:15px}
@@ -151,6 +163,20 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .dfoot{padding:11px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex:none;flex-wrap:wrap}
 .filelist{font-family:Consolas,monospace;font-size:11px;color:var(--dim);line-height:1.9;word-break:break-all}
 
+/* 已安装页工具条：左边排序切换，右边「显示 UE4SS 内置脚本」按钮（推到最右） */
+.ibar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
+.ibar .btn{margin-left:auto}
+
+/* 抽屉「已安装的文件」逐条列表 —— 每行右侧两个按钮，只作用于这一个文件 */
+.flist{display:flex;flex-direction:column;gap:6px}
+.fli{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:7px 10px}
+.fli.off{opacity:.62}
+.fli-main{flex:1;min-width:0}
+.fli-name{font-size:12px;color:var(--text);display:flex;align-items:center;gap:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fli-sub{font-size:10.5px;color:var(--dim2);margin-top:3px;word-break:break-all}
+.fli-act{display:flex;gap:6px;flex:none}
+.fli-note{font-size:10.5px;color:var(--dim2)}
+
 /* ---------- 浏览 ---------- */
 /* 吸顶区：排序 / 范围 / 筛选 / 统计 —— 滚动时不消失（用户 2026-10-13 要求）。
    滚动容器是 `.body`（`padding:16px`），所以：
@@ -178,6 +204,9 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 /* 「只显示未安装」开关：同一套淡底选中态，看着就是一路的筛选条件 */
 .tabs.newonly button{font-size:11.5px;padding:6px 11px}
 .tabs.newonly button.on{background:rgba(232,163,61,.18);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(232,163,61,.45)}
+/* 「只看喜欢」——与「只显示未安装」同一套淡底选中态（它们都是本地筛选） */
+.tabs.liked button{font-size:11.5px;padding:6px 11px}
+.tabs.liked button.on{background:rgba(232,163,61,.18);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(232,163,61,.45)}
 /* 黑名单三态：与成人内容 / 只看未安装同一套淡底选中态，看着就是一路的筛选条件 */
 .tabs.blocked button{font-size:11.5px;padding:6px 11px}
 .tabs.blocked button.on{background:rgba(232,163,61,.18);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(232,163,61,.45)}
@@ -315,6 +344,8 @@ body.sel .cover .tag{left:38px}
 .dl-st.ok{background:rgba(63,185,80,.14);color:var(--ok);border-color:rgba(63,185,80,.34)}
 .dl-st.err{background:rgba(217,83,79,.14);color:var(--red);border-color:rgba(217,83,79,.34)}
 .dl-st.rev{background:rgba(74,158,255,.14);color:var(--blue);border-color:rgba(74,158,255,.34)}
+/* 「已禁用」——比 wait 更淡：它不是「等着」，就是一个静态状态 */
+.dl-st.dim{background:rgba(140,148,163,.10);color:var(--dim2);border-color:rgba(140,148,163,.22)}
 
 /* 已安装页顶部的「进行中」条 */
 .live{margin-bottom:14px;border:1px solid rgba(232,163,61,.34);background:rgba(232,163,61,.07);border-radius:10px;padding:10px 12px}

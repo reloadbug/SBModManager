@@ -49,6 +49,7 @@ module.exports = {
   downloadQueueFile: path.join(DATA, 'downloads.json'),
   watchSeenFile: path.join(DATA, 'watch-seen.json'),
   blacklistFile: path.join(DATA, 'blacklist.json'),
+  favoritesFile: path.join(DATA, 'favorites.json'),
   translateCache: path.join(CACHE, 'translate.json'),
   nexusCache: path.join(CACHE, 'nexus.json')
 };

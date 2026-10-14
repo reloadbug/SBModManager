@@ -109,7 +109,10 @@ console.log('\n=== installedIdsOf：本地状态 IPC ===');
   t('开关有解释性 title', () => /id="newOnlyTabs" title="[^"]*本地判定[^"]*"/.test(html));
   t('CSS 给了选中态（和成人内容同一套淡底）', () => /\.tabs\.newonly button\.on\{background:rgba\(232,163,61,\.18\)/.test(css));
   t('state 里有 onlyUninstalled 且默认 false', () =>
-    /onlyUninstalled: false, blocked: new Set\(\), blockMode: 'hide' \}/.test(code));
+    // 2026-10-14：state.browse 末尾新增了 likes / onlyLiked 两个字段，
+    // 原来写死到行尾（`blockMode: 'hide' }`）的正则不再匹配 ——
+    // 改成「在 browse 对象内部能找到 onlyUninstalled: false」，不依赖字段顺序。
+    /browse: \{[\s\S]{0,460}onlyUninstalled: false/.test(code));
   t('点击开关切换状态并重新拉列表', () => /\$\('#newOnlyTabs'\)\.addEventListener\('click'[\s\S]{0,260}state\.browse\.onlyUninstalled = !state\.browse\.onlyUninstalled;[\s\S]{0,180}loadBrowse\(true\);/.test(code));
   t('开关按钮的高亮跟着状态走', () => /classList\.toggle\('on', state\.browse\.onlyUninstalled\)/.test(code));
   t('reset 时清空 items/offset/done', () => /b\.items = \[\]; b\.offset = 0; b\.done = false;/.test(code));

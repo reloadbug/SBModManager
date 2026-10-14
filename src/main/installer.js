@@ -68,6 +68,14 @@ const KIND_LABEL = {
   pak: 'Pak 模组',
   script: '脚本模组',
   cns: '框架 / 合并包',
+  // UE4SS 蓝图模组（Logic Mod）—— 与普通 pak 的差别不在文件本身（都是 .pak 三件套），
+  // 而在**落点**是 `Paks\LogicMods\` 而非 `Paks\~Mods\`。
+  //
+  // ⚠️ 单独给一个 kind 而不是复用 'pak'：`ipc.js` 的启用/禁用与卸载里
+  //    `mod.kind === 'pak'` 分支**硬编码只认 `L.modsDir`（~Mods）**，
+  //    复用 'pak' 会让这些操作在错误的目录里找文件 → 全部静默失败。
+  //    走独立 kind 则落到「按 manifest 精确回滚」的兜底分支，反而是对的。
+  logicmod: '逻辑模组（Logic Mod）',
   prereq: '前置组件（加载器）',
   files: '普通文件',
   unknown: '无法识别'
@@ -185,7 +193,15 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
   // ============================================================
 
   /** 这些顶层目录名是游戏结构的一部分，绝不能被当成包装层剥掉 */
-  const STRUCTURAL = new Set(['sb', 'content', 'binaries', 'paks', '~mods', 'ue4ss', 'scripts', 'engine', 'plugins']);
+  const STRUCTURAL = new Set([
+    'sb', 'content', 'binaries', 'paks', '~mods',
+    // ⚠️ `logicmods` 必须在这里。它是 UE4SS 蓝图模组（Logic Mod）的落点，
+    //    与 `~mods` 是**两套互不相通的加载机制**。少了它，`LogicMods\` 这一层
+    //    会被当成「用户的包装目录」剥掉，于是 ATOOL / 其它 Logic Mod 被塞进
+    //    `~Mods\` —— 文件静静躺着，游戏一个字都不加载（实测见 §6）。
+    'logicmods',
+    'ue4ss', 'scripts', 'engine', 'plugins'
+  ]);
 
   /** 在给定文件集上尝试「结构规则」；命中返回 plan（strip 相对于该文件集），否则 null */
   function structuralRules(L, files) {
@@ -214,6 +230,43 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
       // 自带 SB\ 前缀：原样落到游戏根，不剥层
       return { kind: 'cns', target: L.root, strip: null, reason: '包含 SB\\ 目录，按游戏根目录结构原样落盘' };
     }
+
+    // ---- (a) 归档里自带 `LogicMods\` 层 —— 最强信号，直接锚定 ----
+    //
+    // UE4SS 蓝图模组（Logic Mod）的落点是 `SB\Content\Paks\LogicMods\`，
+    // 与 `~Mods\` 是**两套互不相通的加载机制**：放错地方游戏一个字都不加载。
+    //
+    // 命中：所有带目录的文件路径里都出现名为 `logicmods` 的段（大小写不敏感）。
+    // 落点：`Paks\LogicMods\`；剥掉「到 LogicMods 为止」的前缀，**保留内层结构**。
+    //      内层往往是与 pak 配对的伴随资源目录（ATOOL 的 `HD-ATOOL_P\audio\*.wav`
+    //      就在那儿），剥掉会散架。
+    //
+    // 例：LogicMods/HD-ATOOL_P.pak        → Paks\LogicMods\HD-ATOOL_P.pak
+    //     LogicMods/HD-ATOOL_P/audio/x.wav → Paks\LogicMods\HD-ATOOL_P\audio\x.wav
+    //
+    // ⚠️ 要求**全部**带目录的文件都含该段（不是「任一」）。若只在个别路径上出现
+    //    （例如 `Content\Paks\~Mods\x.pak` 旁边还混着 `LogicMods\y.pak`），
+    //    那是结构混合包，交给下面的通用规则更安全。
+    // ⚠️ 还要求这些文件共享**同一个**「到 LogicMods 为止」的前缀，否则一条 `strip`
+    //    表达不了（多前缀的情形极少，宁可退回通用规则）。
+    //
+    // 注：`SB\Content\Paks\LogicMods\...` 这种带 SB 前缀的形态已被上面的 SB 规则接走，
+    //    两者落点一致，这里不重复处理。
+    if (inDir.length) {
+      const isLogicSeg = (s) => s.toLowerCase() === 'logicmods';
+      const prefixes = inDir.map(f => {
+        const segsOf = f.path.split('/');
+        const i = segsOf.findIndex(isLogicSeg);
+        return i < 0 ? null : segsOf.slice(0, i + 1).join('/');
+      });
+      if (prefixes.every(p => p !== null) && new Set(prefixes).size === 1) {
+        return {
+          kind: 'logicmod', target: L.logicModsDir, strip: prefixes[0],
+          reason: '包含 LogicMods\\ 目录，按 UE4SS 逻辑模组落盘到 SB\\Content\\Paks\\LogicMods\\'
+        };
+      }
+    }
+
     if (onlyDirs('Content', 'Binaries')) {
       const hasContent = has('Content');
       const hasBinaries = has('Binaries');
@@ -239,6 +292,44 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
         target: path.join(L.ue4ssModsDir, pkgName),
         strip: 'Scripts',
         reason: '包含 Scripts\\ 目录，按 UE4SS 脚本模组落盘到 ue4ss\\Mods\\' + pkgName
+      };
+    }
+
+    // ---- (b) 没有 LogicMods 层，但包本身就是 Logic Mod（具名特征） ----
+    //
+    // ATOOL 本体（mod 1662）的官方安装说明是「把主文件压缩包里的**文件夹**放进
+    // `Paks\LogicMods`」，所以归档里**没有** `LogicMods\` 这一层 —— (a) 抓不到。
+    // 实测的两种形态（见 `docs/ATOOL-调研与支持方案.md` §5.2）：
+    //     V2 平铺      HD-ATOOL_P.pak
+    //     V3 单文件夹  HD-ATOOL_P\HD-ATOOL_P.pak
+    // 两者都得落 `Paks\LogicMods\`，否则进 `~Mods\` 就是白装。
+    //
+    // 判据：任一目录段的 basename，或任一文件的 stem（去扩展名），等于 `HD-ATOOL_P`。
+    //  · V2  `HD-ATOOL_P.pak`             → stem 命中
+    //  · V3  `HD-ATOOL_P/HD-ATOOL_P.pak`  → stem 与目录段都命中
+    //        `HD-ATOOL_P/audio/1.wav`     → 目录段命中（伴生音频跟着一起走）
+    //
+    // ⚠️ **刻意不用 `/^HD-ATOOL/i` 这种宽松前缀**：ATOOL 的动画包里有
+    //    `HD-ATOOL-animtest`（mod 7703）这类**应当落 `~Mods`** 的包，宽松匹配会把
+    //    它们误塞进 LogicMods。要求精确等于 `HD-ATOOL_P` 才两者都能分开。
+    // ⚠️ 也**刻意没有**实现「pak 基名 == 同级目录名」这条通用伴随目录判据：
+    //    普通 mod 常见 `MySuit\MySuit_P.pak` 这种单文件夹包装（它该落 `~Mods` 根级），
+    //    单靠名字相等无法与 Logic Mod 的伴随目录区分 → 会**新增**一批误装。
+    //    等 P1 有了 `atoolStatus()` / LogicMods 扫描做交叉印证再收紧实现。
+    //
+    // ⚠️ 顺序：这条在 `structuralRules` 内，天然早于 `contentRules` 的
+    //    「全是 pak → ~Mods」；否则 V2/V3 又会被塞进 ~Mods。
+    const isAtoolCore = (s) => /^hd-atool_p$/i.test(s);
+    const atoolNamed = files.some(f => {
+      const parts = f.path.split('/');
+      const base = parts[parts.length - 1];
+      if (isAtoolCore(base.replace(/\.[^.]+$/, ''))) return true;
+      return parts.slice(0, -1).some(isAtoolCore);
+    });
+    if (atoolNamed) {
+      return {
+        kind: 'logicmod', target: L.logicModsDir, strip: null,
+        reason: '命中 ATOOL 本体（HD-ATOOL_P）特征，落盘到 SB\\Content\\Paks\\LogicMods\\'
       };
     }
     return null;
@@ -748,6 +839,27 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
     ? (cnsHit ? '包含 CustomNanosuitSystem\\ 服装数据目录' : '包含 CNS 服装数据文件（.dekcns / .dekani）')
     : null;
 
+  // ---- 依赖识别：这个包是不是 ATOOL 体系的 Logic Mod ----
+  //
+  // 判据：落盘后的相对路径里出现 ATOOL 本体的**具名特征** —— 目录段或文件名
+  //      stem（去扩展名）等于 `HD-ATOOL_P`。
+  //
+  // ⚠️ **不能用「落点在 LogicMods」当判据**：CNS 的主体 `DekCNS_P.pak` 同样住在
+  //    `LogicMods\`，那样会给每个 CNS 包都挂上一条凭空的「需要 ATOOL」错误依赖。
+  // ⚠️ ATOOL 的**动画包**（落 `~Mods\`、文件名各异，见 `_probe/atool-catalog.json`
+  //    的 45 个下游 mod）无法从包内文件识别（pak 是二进制，看不到内部路径）。
+  //    那要靠 Nexus 反向依赖查询，属 P1，见方案 §8.4。
+  const isAtoolStem = (s) => /^hd-atool_p$/i.test(s);
+  const atoolHit = mapping.find(m => {
+    const rel = '/' + String(m.rel || '').replace(/\\/g, '/');
+    const parts = rel.split('/').filter(Boolean);
+    if (!parts.length) return false;
+    const stem = parts[parts.length - 1].replace(/\.[^.]+$/, '');
+    return isAtoolStem(stem) || parts.slice(0, -1).some(isAtoolStem);
+  });
+  const requiresAtool = !!atoolHit;
+  const requiresAtoolReason = requiresAtool ? '包含 ATOOL 本体（HD-ATOOL_P）文件' : null;
+
   // ---- 冲突检测 ----
   //
   // 🔴 **「覆盖自己上次装的文件」不算冲突**（实测踩坑，2026-10-13，mod 1595）。
@@ -800,6 +912,8 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
     targetLabel: describeTarget(L, plan.target),
     requiresCns,
     requiresCnsReason,
+    requiresAtool,
+    requiresAtoolReason,
     fileCount: mapping.length,
     totalBytes: mapping.reduce((s, m) => s + m.size, 0),
     mapping,
@@ -830,6 +944,8 @@ function describeTarget(L, target) {
   const under = (base) => t === norm(base) || t.startsWith(norm(base) + path.sep.toLowerCase()) || t.startsWith(norm(base) + '/');
 
   if (t === norm(L.modsDir)) return '~Mods（Pak 模组目录）';
+  if (t === norm(L.logicModsDir)) return 'LogicMods（UE4SS 逻辑 / 蓝图模组目录）';
+  if (under(L.logicModsDir)) return 'LogicMods\\' + path.basename(target);
   if (t === norm(L.ue4ssModsDir)) return 'ue4ss\\Mods（脚本模组目录）';
   if (under(L.ue4ssModsDir)) return 'ue4ss\\Mods\\' + path.basename(target);
   if (t === norm(L.sb)) return 'SB\\（游戏模组根，Content + Binaries 合并）';

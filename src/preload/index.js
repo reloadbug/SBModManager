@@ -24,7 +24,8 @@ contextBridge.exposeInMainWorld('api', {
     inspect: () => invoke('game:inspect'),
     detect: () => invoke('game:detect'),
     setRoot: (root) => invoke('game:setRoot', root),
-    ensureModsDir: () => invoke('game:ensureModsDir')
+    ensureModsDir: () => invoke('game:ensureModsDir'),
+    ensureLogicModsDir: () => invoke('game:ensureLogicModsDir')
   },
 
   mods: {
@@ -66,6 +67,14 @@ contextBridge.exposeInMainWorld('api', {
     ids: () => invoke('blacklist:ids'),
     add: (modId, meta) => invoke('blacklist:add', modId, meta),
     remove: (modId) => invoke('blacklist:remove', modId)
+  },
+
+  /** 浏览页喜欢（点了 👍 的 mod）—— 与黑名单同形、同为纯本地 */
+  favorites: {
+    list: () => invoke('favorites:list'),
+    ids: () => invoke('favorites:ids'),
+    add: (modId, meta) => invoke('favorites:add', modId, meta),
+    remove: (modId) => invoke('favorites:remove', modId)
   },
 
   nxm: {

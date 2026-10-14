@@ -71,8 +71,10 @@ t('按钮显示剩余数量', () => /加载更多（还有 \$\{browseRest\(b\)/.
 //    别再写死 `b.onlyUninstalled`，否则加了黑名单筛选后这里会假失败。
 t('前端筛选时的剩余量按服务端偏移算（browseRest）', () => /const seen = isLocalFiltering\(b\) \? b\.offset : b\.items\.length;/.test(code));
 t('翻页偏移按服务端推进（+= page.items.length）', () => /b\.offset \+= page\.items\.length;/.test(code));
-t('本地黑名单列表不走分页偏移（那是「只看黑名单」专用的另一条路）', () =>
-  /async function loadBlockedList[\s\S]{0,1800}b\.offset = b\.items\.length;/.test(code));
+t('本地列表视图不走分页偏移（「只看黑名单 / 只看喜欢」专用的另一条路）', () =>
+  // 2026-10-14：`loadBlockedList` 泛化成 `loadLocalList(reset, kind)`，黑名单与
+  // 「只看喜欢」共用这条路；函数改名了，断言跟着改。
+  /async function loadLocalList[\s\S]{0,1800}b\.offset = b\.items\.length;/.test(code));
 t('前端筛选剔完不满一屏会自动续翻', () => /if \(!isLocalFiltering\(b\) \|\| b\.done \|\| b\.items\.length - before >= BROWSE_PAGE\) break;/.test(code));
 t('自动续翻有页数兜底（不会把整个站翻完）', () => /if \(\+\+guard >= 20\)/.test(code));
 t('卡片状态变化只替换单卡片（不整页 renderBrowse）', () => /card\.replaceWith\(wrap\.firstElementChild\)/.test(code));

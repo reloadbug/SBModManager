@@ -359,7 +359,14 @@ function createNexus({ getApiKey, timeout = 20000 } = {}) {
     };
   }
 
-  return { listMods, getFacets, getMod, getModFiles, clearCache: () => cache.clear(), GAME_DOMAIN, GAME_ID };
+  // ⚠️ `pickPrimaryFile` **必须挂在实例上**：ipc.js 的 `resolvePrimaryFile()` 走的是
+  //    `nexus.pickPrimaryFile(files)`（实例方法，不是模块函数）。
+  //    第二十七轮加「授权前补 fileId」时只写了模块级函数、忘了挂到实例上，
+  //    于是所有「入队时没有 fileId」的任务（卡片直点下载 / 批量下载 / fileId 失效自愈）
+  //    补齐时必抛 `nexus.pickPrimaryFile is not a function`，而且被
+  //    `autoAuthorizeTask` 兜成「取不到这个 Mod 的文件列表（网络或接口问题）」——
+  //    **把代码缺陷说成了网络问题**，用户点多少次都救不回来。
+  return { listMods, getFacets, getMod, getModFiles, pickPrimaryFile, clearCache: () => cache.clear(), GAME_DOMAIN, GAME_ID };
 }
 
 /**

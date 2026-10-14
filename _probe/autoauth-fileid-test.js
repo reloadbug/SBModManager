@@ -21,6 +21,8 @@
  *   F. 三条分层文案同时存在于源码、keys.json 与 13 个语言包
  *   G. **fileId 失效自愈**：任务自带的 fileId 变成死号（作者更新后旧文件被归档/删掉）时，
  *      重查主文件换新 fileId 再试一次，而不是把「作者只开了手动下载」甩给用户
+ *   H. **实例契约**（第二十九轮回归钉子）：`createNexus()` 返回对象上真的有 ipc.js
+ *      会调的那些方法 —— 第二十七轮这里漏挂了 `pickPrimaryFile`，A~G 全绿也照样线上崩
  *
  * 用法：node _probe/autoauth-fileid-test.js
  */
@@ -316,6 +318,46 @@ t('自愈是**一次性**的，不会自己套娃（源码里只出现一个守�
 });
 
 t('首次 fetchNxm 用的是 let 绑定（自愈能改写它）', () => /let\s+r\s*=\s*await\s+nexusAutoAuth\.fetchNxm\(/.test(FN) ? true : '不是 let r =');
+
+/* ================= H. 实例契约（第二十九轮回归钉子） =================
+ * 第二十七轮把 `pickPrimaryFile` 写成了**模块级函数**，却在 ipc.js 里按
+ * `nexus.pickPrimaryFile(...)`（**实例方法**）调用 —— 实例上根本没挂，
+ * 于是所有「入队时没有 fileId」的任务（卡片直点下载 / 批量下载 / fileId 失效自愈）
+ * 补齐时必抛 `nexus.pickPrimaryFile is not a function`，
+ * 还被 `autoAuthorizeTask` 兜成「取不到这个 Mod 的文件列表（网络或接口问题）」。
+ *
+ * ⚠️ 只断言「模块里有个 pickPrimaryFile 函数」是**抓不到这个 bug 的** ——
+ *    上面 A 段就是这么写的，所以它一直全绿。修 bug 之外必须补**实例契约**断言。
+ */
+const NEXUS_INST = nexus.createNexus({ getApiKey: () => '' });
+
+t('★ createNexus() 实例上挂有 pickPrimaryFile（ipc.js 走的是实例方法）',
+  () => (typeof NEXUS_INST.pickPrimaryFile === 'function'
+    ? true
+    : '实例上没有 pickPrimaryFile —— resolvePrimaryFile 必抛 TypeError，补齐链路全废'));
+
+t('实例方法与模块级导出是**同一个实现**（口径不会分叉）',
+  () => (NEXUS_INST.pickPrimaryFile === nexus.pickPrimaryFile
+    ? true
+    : '两者不是同一个函数，主进程内部可能挑出不同的文件'));
+
+t('ipc.js 的调用点确实是实例方法 `nexus.pickPrimaryFile(files)`',
+  () => (/nexus\.pickPrimaryFile\(files\)/.test(IPC)
+    ? true
+    : 'IPC 调用点写法变了 —— 若改成裸函数名，本契约断言要一起改'));
+
+t('ipc.js 没有改成「从模块直接解构 pickPrimaryFile」（换条路仍会漏挂）',
+  () => (!/require\(['"]\.\/nexus['"]\)[\s\S]{0,120}pickPrimaryFile/.test(IPC)
+    ? true
+    : 'IPC 直接从模块解构了 pickPrimaryFile —— 与实例契约脱节'));
+
+t('真实例在真文件列表上能挑出 fileId（链路端到端可用）', () => {
+  const f = NEXUS_INST.pickPrimaryFile([
+    { fileId: 10001, categoryRaw: 'MAIN', primary: false },
+    { fileId: 10002, categoryRaw: 'OPTIONAL', primary: false }
+  ]);
+  return (f && Number(f.fileId) === 10001) ? true : '没挑出第一个 MAIN';
+});
 
 console.log('');
 console.log('---');
