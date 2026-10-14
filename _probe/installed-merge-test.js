@@ -308,6 +308,67 @@ console.log('\n[5] 渲染层接线（源码级断言）');
   t('CSS 有 .ibar（排序栏 + 右侧按钮一行）', () => /\.ibar\{/.test(css) || '缺失');
 }
 
+// ================================================================ 6. 文件行显示**实际磁盘文件名**
+
+console.log('\n[6] 抽屉文件行：显示磁盘实际文件名（不是被 Nexus 名覆盖的显示名）');
+
+// 用户 2026-10-14 截图：同一个 Mod 装了两次，抽屉里两行都叫
+// 「Captain EVE (CNS compatible)」、都是 v1.01、都写「文件 10808」—— 只有磁盘文件名不同。
+// 根因：`scanner.js` 里 pak 组 `name: reg && reg.name ? reg.name : g.name`，
+// 注册表在就把 Nexus 名盖在了文件名上（见 src/main/scanner.js:65）。
+{
+  const SRC_AUX = pick(/const FILE_AUX_EXT = [^\n]*;/, 'FILE_AUX_EXT');
+  const SRC_NAMEFN = pick(/function installedFileName\([\s\S]*?\n}/, 'installedFileName');
+  const c6 = {};
+  vm.createContext(c6);
+  vm.runInContext(SRC_AUX + '\n' + SRC_NAMEFN + '\nthis.fn = installedFileName;', c6);
+  const fn = c6.fn;
+
+  // ---- 用户截图现场 ----
+  const two = [
+    item({ id: 'k1', name: 'Captain EVE (CNS compatible)', kind: 'pak', enabled: true,
+           files: [{ name: 'Captain EVE (CNS compatible).pak', size: 125_400_000 }] }),
+    item({ id: 'k2', name: 'Captain EVE (CNS compatible)', kind: 'pak', enabled: true,
+           files: [{ name: 'Captain EVE (CNS compatible) CNS.pak', size: 126_400_000 }] })
+  ];
+  eq(fn(two[0]), 'Captain EVE (CNS compatible).pak', 'pak 组取 .pak 的实际文件名');
+  t('★ 同一个 Nexus 名下的两个文件，渲染出来的名字**不再相同**（用户诉求本体）',
+    () => (fn(two[0]) !== fn(two[1])) || `两条仍相同：${fn(two[0])}`);
+
+  // ---- 挑主文件：.pak 优先于 .ucas / .utoc ----
+  eq(fn(item({ files: [{ name: 'A.ucas' }, { name: 'A.pak' }, { name: 'A.utoc' }] })),
+     'A.pak', '.pak 排在后面也能被挑出来（不看目录里的排列顺序）');
+  eq(fn(item({ files: [{ name: 'A.utoc' }, { name: 'A.ucas' }] })),
+     'A.utoc', '只有附属文件时退回第一个（不返回空）');
+
+  // ---- 禁用状态：磁盘上真的叫 `X.pak.disabled` ----
+  eq(fn(item({ files: [{ name: 'A.pak.disabled' }] })), 'A.pak',
+     '剥掉 .disabled 再判扩展名（且不把 .ucas.disabled 当主文件）');
+  eq(fn(item({ files: [{ name: 'A.ucas.disabled' }, { name: 'A.pak.disabled' }] })), 'A.pak',
+     '全是 .disabled 时仍挑出 .pak');
+
+  // ---- 其它 kind ----
+  eq(fn(item({ kind: 'prereq', name: 'UE4SS', files: [{ name: 'dwmapi.dll' }, { name: 'ue4ss/' }] })),
+     'UE4SS', '前置组件保留可读名（files 里是零件名，显示 dwmapi.dll 没意义）');
+  eq(fn(item({ kind: 'script', name: 'Nexus 上的名字', files: [{ name: 'BPModLoader/', dir: true }] })),
+     'BPModLoader', 'script mod 用目录名，且去掉结尾斜杠');
+  eq(fn(item({ kind: 'cns', name: 'CNS', files: [{ name: 'DekCNS_P.pak' }] })),
+     'DekCNS_P.pak', '注册表 / CNS 组用 manifest 里的相对文件名');
+
+  // ---- 兜底 ----
+  eq(fn(item({ name: 'X', files: [] })), 'X', '没有 files 时回退到 name（不返回空串）');
+  eq(fn(null), '', 'null 不抛异常');
+
+  // ---- 接线：installedFilesHtml 必须用这个函数 ----
+  t('installedFilesHtml 用 installedFileName(it) 取显示名',
+    () => /const shown = installedFileName\(it\);/.test(code) || '缺失');
+  t('fli-name 里显示的是 shown，不是 it.name',
+    () => /<div class="fli-name" data-i18n-skip title="\$\{esc\(shown\)\}">\$\{esc\(shown\)\}/.test(code)
+      || '仍在使用 it.name');
+  t('文件行仍带 data-i18n-skip（文件名是运行时数据，不该进词表）',
+    () => /class="fli-name" data-i18n-skip/.test(code) || '缺失');
+}
+
 // ================================================================
 
 console.log('');

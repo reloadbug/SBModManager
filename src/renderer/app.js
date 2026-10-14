@@ -777,6 +777,37 @@ function archiveBlockHtml(m) {
     <div class="txt" style="color:var(--dim2);font-size:11.5px;margin-top:6px">${note}</div>`;
 }
 
+/** pak mod 的附属文件后缀：`.pak` 本体之外还有 `.ucas` / `.utoc` 两个索引，展示时挑 `.pak` */
+const FILE_AUX_EXT = /\.(ucas|utoc)$/i;
+
+/**
+ * 「已安装的文件」每行显示的**名字** —— 必须是磁盘上的实际文件名。
+ *
+ * 为什么不能用 `it.name`：`scanner.js` 里 pak 组的 `name` 被注册表的 `reg.name`
+ * （Nexus 上的 Mod 名）覆盖了 —— 同一个 Mod 装了**两个不同文件**时，两行会显示成
+ * 同一个 Nexus 名，用户根本分不清哪行是哪个（2026-10-14 用户截图：
+ * 「多组文件的名称一致，无法区分，要根据实际的文件名显示」）。
+ * 实际文件名一直在 `it.files[].name` 里（如 `Captain EVE (CNS compatible).pak`）。
+ *
+ * 前置组件（`kind === 'prereq'`）例外：它不是「用户装的包」，没有多文件重名问题，
+ * 而 `files[0].name` 是 `dwmapi.dll` 这种零件名 —— 显示「UE4SS」才有意义。
+ */
+function installedFileName(it) {
+  if (!it) return '';
+  if (it.kind === 'prereq') return it.name || '';
+  const files = ((it.files) || []).filter(f => f && f.name);
+  if (!files.length) return it.name || '';
+  // ⚠️ 禁用状态下的磁盘文件名是 `X.pak.disabled` —— 必须先剥掉尾巴再判扩展名，
+  // 否则 `.pak$` 匹配不上、反而可能挑中 `X.ucas.disabled` 当主文件。
+  const bare = f => String(f.name).replace(/\.disabled$/i, '');
+  const main = files.find(f => /\.pak$/i.test(bare(f)))
+    || files.find(f => !FILE_AUX_EXT.test(bare(f)))
+    || files[0];
+  // script mod 的 `files[0].name` 是目录名（结尾带 `/`），去掉更顺眼；
+  // 也**不带** `.disabled` —— 那行的「已禁用」标记已经说清楚了，不必再占字符。
+  return bare(main).replace(/\/+$/, '');
+}
+
 /**
  * 「已安装的文件」逐条列表 —— 一个 Nexus Mod 装了多个文件时才真正有用。
  *
@@ -800,6 +831,7 @@ function installedFilesHtml(g) {
     const src = (it.meta && it.meta.source) || {};
     const fileId = src.fileId ? String(src.fileId) : '';
     const ver = (it.meta && it.meta.version) || src.version || '';
+    const shown = installedFileName(it);
     const sub = [
       KIND_LABEL[it.kind] || it.kind,
       ver ? verText(ver) : '',
@@ -821,7 +853,7 @@ function installedFilesHtml(g) {
 
     return `<div class="fli${it.enabled ? '' : ' off'}">
       <div class="fli-main">
-        <div class="fli-name" data-i18n-skip title="${esc(it.name)}">${esc(it.name)} ${st}</div>
+        <div class="fli-name" data-i18n-skip title="${esc(shown)}">${esc(shown)} ${st}</div>
         <div class="fli-sub">${esc(sub)}</div>
       </div>
       <div class="fli-act">${acts}</div>
@@ -2585,13 +2617,18 @@ async function refreshDownloads() {
  * 但那一下点的是网页按钮；程序自己调同一个端点就能替用户省掉这一步（38/38 实测命中）。
  * 用户要的是「点下载就完事」，那就先把静默通路走到底。
  */
-async function dlEnqueue(meta, { authorize = true } = {}) {
+async function dlEnqueue(meta, { authorize = true, goto = true } = {}) {
   let r;
   try { r = await call(window.api.download.enqueue(meta), { silent: true }); }
   catch (e) { toast(e.message, 'err'); return null; }
 
   await refreshDownloads();
-  switchPage('p-download');
+  // `goto:false` —— 浏览页点下载**不跳走**（2026-10-14 用户要求：「点击下载不切换到
+  // 下载页面，直接后台加入下载，只在当前 mod 上显示状态」）。留在原列表，让卡片自己
+  // 变成「● 下载中 / 查看进度」；用户真想看细节，卡片上那个按钮就是入口。
+  // 批量下载仍传默认值 true —— 一次下十几个，用户本来就想看整队进度。
+  if (goto) switchPage('p-download');
+  else scheduleCardStateRefresh();
 
   if (r && r.duplicate) { toast('这个 Mod 已经在下载队列里了'); return r; }
 
@@ -4712,7 +4749,7 @@ function bindEvents() {
         summary: m.summary || '', image: m.image || '', pictureUrl: m.pictureUrl || '',
         images: m.images || (m.image ? [m.image] : []),
         sourceUrl: 'https://www.nexusmods.com/stellarblade/mods/' + (m.modId || '')
-      });
+      }, { goto: false });
       return;
     }
     // 黑名单：「不喜欢」立刻拉黑 / 「移出黑名单」立刻恢复（都要抢在 .card 之前处理）
@@ -4752,7 +4789,7 @@ function bindEvents() {
         meta.fileVersion = f.version || '';
         meta.fileSize = f.sizeInBytes || 0;
       }
-      await dlEnqueue(meta);
+      await dlEnqueue(meta, { goto: false });
       return;
     }
     const dlAutoAuth = t.closest('[data-dl-autoauth]');
