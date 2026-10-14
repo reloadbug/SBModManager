@@ -47,6 +47,16 @@ const store = fs.readFileSync(STORE, 'utf8').replace(/\r\n/g, '\n');
 const S0 = code.indexOf('let filtersReady = false;');
 const S1 = code.indexOf('/** 就地摘掉一张卡片');
 if (S0 < 0 || S1 <= S0) { console.error('抽不出「记住筛选」源码段，app.js 结构变了？'); process.exit(1); }
+// `applyLastFilters` 要用到已安装排序的白名单与默认方向，这三段定义在 app.js 前部，
+// 不在上面那段里 —— 一起抽真身注入沙箱，别在套件里手抄一份（会漂移）。
+const pick = (re, what) => {
+  const m = code.match(re);
+  if (!m) throw new Error('抽不到 ' + what + ' 的源码，正则要跟着改');
+  return m[0];
+};
+const SRC_SORTS = pick(/const INSTALLED_SORTS = \[[\s\S]*?\n\];/, 'INSTALLED_SORTS');
+const SRC_DIRS = pick(/const SORT_DIRS = \[[^\]]*\];/, 'SORT_DIRS');
+const SRC_DEFDIR = pick(/function sortDefaultDir\([\s\S]*?\n}/, 'sortDefaultDir');
 const SRC = code.slice(S0, S1);
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -62,11 +72,11 @@ function makeHarness(cfg) {
         blocked: new Set(), blockMode: 'hide', liked: new Set(), onlyLiked: false
       },
       installedSort: 'time',
+      installedSortDir: 'desc',   // 0.2.8：已安装页排序方向
       showBuiltin: false,
       config: Object.assign({ rememberFilters: true, lastFilters: null }, cfg || {})
     },
-    // 与 app.js:347 的真实取值一致
-    INSTALLED_SORTS: [{ value: 'time' }, { value: 'name' }, { value: 'modid' }, { value: 'kind' }],
+    // INSTALLED_SORTS / SORT_DIRS / sortDefaultDir 由下面 runInContext 的真身源码提供
     window: { api: { config: { set: (patch) => ['set', patch] } } },
     call: (p) => { calls.push(p); return Promise.resolve(p); },
     $: () => null,
@@ -77,8 +87,9 @@ function makeHarness(cfg) {
   };
   const ctx = vm.createContext(sb);
   const api = vm.runInContext(
-    SRC + '\n;({browseFilterSnapshot, applyLastFilters, saveFilters, syncBrowseFilterUI,'
-        + '_ready:(v) => { filtersReady = v; }, _readyVal:() => filtersReady});',
+    [SRC_SORTS, SRC_DIRS, SRC_DEFDIR, SRC].join('\n')
+      + '\n;({browseFilterSnapshot, applyLastFilters, saveFilters, syncBrowseFilterUI,'
+      + '_ready:(v) => { filtersReady = v; }, _readyVal:() => filtersReady});',
     ctx
   );
   return { api, state: sb.state, calls };
@@ -158,6 +169,7 @@ function makeHarness(cfg) {
           onlyUninstalled: true, onlyLiked: true, category: 'Outfits', tags: ['CNS', 'Bikini']
         },
         installedSort: 'modid',
+        installedSortDir: 'desc',
         showBuiltin: true
       }
     });
@@ -170,7 +182,28 @@ function makeHarness(cfg) {
     eq(H.state.browse.category, 'Outfits', '分类恢复');
     eq(JSON.stringify(H.state.browse.tags), '["CNS","Bikini"]', '标签恢复');
     eq(H.state.installedSort, 'modid', '已安装页排序恢复');
+    eq(H.state.installedSortDir, 'desc', '已安装页排序**方向**恢复（modid 默认 asc，这里是用户自己翻过的 desc）');
     eq(H.state.showBuiltin, true, '已安装页「显示内置脚本」恢复');
+  }
+
+  {
+    // 方向：缺字段 / 非法值 一律退回「该排序方式的默认方向」
+    const H = makeHarness({ lastFilters: { installedSort: 'name' } });
+    H.api.applyLastFilters();
+    eq(H.state.installedSort, 'name', '只存了排序也能恢复');
+    eq(H.state.installedSortDir, 'asc', '快照里没提方向 → 用 name 的默认方向 asc');
+
+    const H2 = makeHarness({ lastFilters: { installedSort: 'time' } });
+    H2.api.applyLastFilters();
+    eq(H2.state.installedSortDir, 'desc', 'time 的默认方向是 desc（最新装的最上面）');
+
+    const H3 = makeHarness({ lastFilters: { installedSort: 'kind', installedSortDir: 'sideways' } });
+    H3.api.applyLastFilters();
+    eq(H3.state.installedSortDir, 'asc', '非法方向被拒 → 退回 kind 的默认方向');
+
+    const H4 = makeHarness({ lastFilters: { installedSort: 'modid', installedSortDir: 'asc' } });
+    H4.api.applyLastFilters();
+    eq(H4.state.installedSortDir, 'asc', '合法方向原样采纳（不因为等于默认值就丢掉）');
   }
 
   {
@@ -199,7 +232,14 @@ function makeHarness(cfg) {
     eq(H.state.browse.adultMode, 'all', '非法 adultMode 被拒 → 退回默认');
     eq(H.state.browse.blockMode, 'hide', '非法 blockMode 被拒 → 退回默认');
     eq(H.state.installedSort, 'time', '非法 installedSort 被拒 → 退回默认');
+    eq(H.state.installedSortDir, 'desc', '非法 installedSort 时方向也跟着退回 time 的默认 desc');
     eq(H.state.showBuiltin, false, 'showBuiltin 非布尔时不采纳');
+
+    // 方向合法但排序方式非法：方向不能单独成立（否则会得到一个「说不清是什么排序」的方向）
+    const H2 = makeHarness({ lastFilters: { installedSort: 'zzz', installedSortDir: 'asc' } });
+    H2.api.applyLastFilters();
+    eq(H2.state.installedSort, 'time', '非法 installedSort 仍退回默认 time');
+    eq(H2.state.installedSortDir, 'desc', '方向随排序方式一起退回默认（不采纳孤立的 asc）');
   }
 
   {
@@ -246,18 +286,21 @@ function makeHarness(cfg) {
     eq(Array.isArray(payload) && payload[0] === 'set', true, '落盘走 config.set');
     t('写入的是 { lastFilters: {...} }', () => !!(payload[1] && payload[1].lastFilters) || '没有 lastFilters');
     eq(payload[1].lastFilters.installedSort, 'time', 'payload 里带已安装页排序');
+    eq(payload[1].lastFilters.installedSortDir, 'desc', 'payload 里带已安装页排序方向');
     eq(payload[1].lastFilters.showBuiltin, false, 'payload 里带内置脚本开关');
     eq(payload[1].lastFilters.browse.sort, 'downloads', 'payload 里带浏览页筛选');
 
     // 改完再存 → 落盘的是最后一次的值
     H.state.browse.sort = 'newest';
     H.state.installedSort = 'name';
+    H.state.installedSortDir = 'asc';
     H.state.showBuiltin = true;
     H.api.saveFilters();
     await sleep(420);
     eq(H.calls.length, 2, '新的一轮改动重新落盘');
     eq(H.calls[1][1].lastFilters.browse.sort, 'newest', '落盘的是最新排序');
     eq(H.calls[1][1].lastFilters.installedSort, 'name', '落盘的是最新已安装排序');
+    eq(H.calls[1][1].lastFilters.installedSortDir, 'asc', '落盘的是最新已安装排序方向');
     eq(H.calls[1][1].lastFilters.showBuiltin, true, '落盘的是最新内置脚本开关');
     eq(H.calls[1][1].lastFilters.browse.search, undefined, '落盘内容里没有搜索词');
   }
@@ -292,8 +335,12 @@ function makeHarness(cfg) {
       /if \(reset\) \{[\s\S]{0,500}saveFilters\(\);/.test(code) || '缺失');
     t('已安装页「内置脚本开关」后保存', () =>
       /state\.showBuiltin = !state\.showBuiltin;\s*\n\s*renderInstalled\(\);\s*\n\s*saveFilters\(\);/.test(code) || '缺失');
-    t('已安装页「排序」后保存', () =>
-      /state\.installedSort = isort\.dataset\.isort \|\| 'time';\s*\n\s*renderInstalled\(\);\s*\n\s*saveFilters\(\);/.test(code) || '缺失');
+    t('已安装页「排序」后保存（0.2.8：换模式时方向回到该模式默认值）', () =>
+      /state\.installedSort = v;\s*\n\s*state\.installedSortDir = sortDefaultDir\(v\);[\s\S]{0,80}renderInstalled\(\);\s*\n\s*saveFilters\(\);/.test(code) || '缺失');
+    t('已安装页「方向按钮」后保存', () =>
+      /const idir = t\.closest\('\[data-isortdir\]'\);[\s\S]{0,60}toggleInstalledSortDir\(\);/.test(code) || '缺失');
+    t('toggleInstalledSortDir 里也 saveFilters()（方向也是要记住的筛选条件）', () =>
+      /function toggleInstalledSortDir\(\) \{\s*\n\s*state\.installedSortDir = [^\n]*;\s*\n\s*renderInstalled\(\);\s*\n\s*saveFilters\(\);/.test(code) || '缺失');
 
     t('saveFilters 开头有「启动未完成不落盘」闸门', () =>
       /function saveFilters\(\) \{\s*\n\s*if \(!filtersReady\) return;/.test(code) || '缺失');

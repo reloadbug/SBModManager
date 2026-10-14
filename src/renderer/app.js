@@ -17,6 +17,10 @@ const state = {
   // ⚠️ 图表上显示的是**分组后的卡片**，`state.installed` 仍是磁盘扫描出来的原始项
   //    （侧栏计数、启用数都还按原始项算），两者不要混。
   installedSort: 'time',
+  // 已安装页排序方向：'asc'（正序）/ 'desc'（倒序）。
+  // 每种排序各有自己的**默认方向**（安装时间默认倒序 —— 最新装的在最上面；其余默认正序），
+  // 切换排序时会用它重置；点方向按钮、或再点一次当前排序名，都能翻转。
+  installedSortDir: 'desc',
   installedGroups: [],
   // 默认「全部内容」—— 不隐藏任何 mod（用户 2026-10-12 明确要求）
   // blocked = 点了「不喜欢」的 modId 集合（字符串）；blockMode = hide（默认不显示）/ all / only
@@ -344,12 +348,23 @@ async function fillGallery(modId, { force = false } = {}) {
  * 同时也给了兜底口径 ——「优先按时间，其次按 Mod ID，mod 名称」：
  * 时间一样时按 Mod ID、再一样按名称，保证顺序**确定**（不会两次刷新换个位置）。
  */
+// 已安装页的排序方式。`defDir` = 这种排序的**默认方向**：
+// 「安装时间」默认倒序（最新装的最上面，符合直觉），其余默认正序。
 const INSTALLED_SORTS = [
-  { value: 'time', label: '安装时间', title: '按安装时间倒序 —— 最新装的排最上面' },
-  { value: 'name', label: '名称', title: '按 Mod 名称排序' },
-  { value: 'modid', label: 'Mod ID', title: '按 Nexus Mod ID 排序' },
-  { value: 'kind', label: '类型', title: '按类型排序（前置组件 → Pak → 脚本）' }
+  { value: 'time', label: '安装时间', title: '按安装时间排序 —— 默认最新装的排最上面', defDir: 'desc' },
+  { value: 'name', label: '名称', title: '按 Mod 名称排序', defDir: 'asc' },
+  { value: 'modid', label: 'Mod ID', title: '按 Nexus Mod ID 排序', defDir: 'asc' },
+  { value: 'kind', label: '类型', title: '按类型排序（前置组件 → Pak → 脚本）', defDir: 'asc' }
 ];
+
+/** 排序方向的合法取值（配置被手工改坏时靠它兜底） */
+const SORT_DIRS = ['asc', 'desc'];
+
+/** 某种排序方式的默认方向（未知 mode 一律正序） */
+function sortDefaultDir(mode) {
+  const s = INSTALLED_SORTS.find(x => x.value === mode);
+  return (s && s.defDir) || 'asc';
+}
 
 // 逻辑模组（Logic Mod）与 pak 一样是「已安装的实体模组」，排在 pak 旁边
 const KIND_RANK = { prereq: 0, pak: 1, logicmod: 1, script: 2 };
@@ -365,34 +380,57 @@ function groupMtime(items) {
  * 已安装列表的比较器 —— 每个模式都带**兜底键**，保证全序、结果稳定可复现。
  * 默认口径即用户说的：时间倒序 → Mod ID 升序 → 名称升序。
  */
-function compareInstalled(a, b, mode) {
-  const byModId = () => {
-    // 没有 modId 的（手动丢进 ~Mods、未登记的）排在**最后**，别跟 Nexus 来源的混排
+/**
+ * 已安装页排序比较器。
+ *
+ * `dir` 是方向（'asc' / 'desc'），**不传时用该排序方式的默认方向** ——
+ * 所以老的 `compareInstalled(a, b, 'time')` 行为与加方向之前一字不差。
+ *
+ * ⚠️ 方向**只作用于主键**，主键相同时靠次键（Mod ID / 名称）稳定排列的那一段不跟着翻转：
+ *   · 否则「倒序」就成了「正序的完全逆序」，两个方向下的相对次序都得重新解释；
+ *   · 更要紧的是 `byModId` 里「没有 modId 的恒排最后」这条约定 —— 它表示**来源不明**、
+ *     不是大小关系，整体取反会把手动丢进 ~Mods 的包一股脑翻到最前面去。
+ */
+function compareInstalled(a, b, mode, dir) {
+  const sign = (SORT_DIRS.includes(dir) ? dir : sortDefaultDir(mode)) === 'desc' ? -1 : 1;
+
+  /** Mod ID 比较（`s` 为方向：-1 降序）。没有 modId 的**恒排最后**，与方向无关 */
+  const byModId = (s) => {
     const av = a.modId || 0;
     const bv = b.modId || 0;
-    if (av === bv) return 0;
-    return (av || Infinity) - (bv || Infinity);
+    if (!av && !bv) return 0;
+    if (!av) return 1;
+    if (!bv) return -1;
+    return s < 0 ? bv - av : av - bv;
   };
-  const byName = () => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN', { numeric: true });
+  /** 名称比较（`s` 为方向） */
+  const byName = (s) => (s < 0
+    ? String(b.name || '').localeCompare(String(a.name || ''), 'zh-Hans-CN', { numeric: true })
+    : String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN', { numeric: true }));
 
   let r = 0;
   if (mode === 'name') {
-    r = byName();
-    if (!r) r = byModId();
+    r = byName(sign);
+    if (!r) r = byModId(1);
   } else if (mode === 'modid') {
-    r = byModId();
-    if (!r) r = byName();
+    r = byModId(sign);
+    if (!r) r = byName(1);
   } else if (mode === 'kind') {
-    r = (KIND_RANK[a.kind] ?? 3) - (KIND_RANK[b.kind] ?? 3);
-    if (!r) r = byName();
-    if (!r) r = byModId();
+    const ra = KIND_RANK[a.kind], rb = KIND_RANK[b.kind];
+    const ua = ra === undefined, ub = rb === undefined;
+    if (ua !== ub) r = ua ? 1 : -1;                             // 未知类型恒排最后
+    else if (ra !== rb) r = ((ra ?? 0) - (rb ?? 0)) * sign;
+    if (!r) r = byName(1);
+    if (!r) r = byModId(1);
   } else {
-    // time（默认）：安装时间倒序 → Mod ID → 名称
+    // time：安装时间 → Mod ID → 名称（默认倒序 = 最新装的排最上面）
+    // ⚠️ `groupMtime` 返回的是 **ISO 字符串**，只能比大小、不能相减（相减得 NaN，
+    // 会静默退化成「按 Mod ID 排」，主键整个失效）。
     const at = groupMtime(a.items);
     const bt = groupMtime(b.items);
-    if (at !== bt) r = at < bt ? 1 : -1;
-    if (!r) r = byModId();
-    if (!r) r = byName();
+    if (at !== bt) r = (at < bt ? -1 : 1) * sign;
+    if (!r) r = byModId(1);
+    if (!r) r = byName(1);
   }
   return r;
 }
@@ -690,12 +728,26 @@ function renderInstalled() {
   state.installedGroups = groupInstalled(visible);
   const sorted = state.installedGroups
     .slice()
-    .sort((a, b) => compareInstalled(a, b, state.installedSort));
+    .sort((a, b) => compareInstalled(a, b, state.installedSort, state.installedSortDir));
 
-  const sortBar = `<div class="tabs" id="instSort" title="排序方式">
-    ${INSTALLED_SORTS.map(s => `<button data-isort="${esc(s.value)}" class="${
-      state.installedSort === s.value ? 'on' : ''
-    }" title="${esc(s.title)}">${esc(s.label)}</button>`).join('')}
+  // 排序条：选中的那个按钮带一枚方向箭头（↑ 正序 / ↓ 倒序），右侧那颗按钮专门翻转方向。
+  // 再点一次**当前排序名**也能翻转 —— 表格表头的习惯，顺手。
+  const desc = state.installedSortDir === 'desc';
+  const arrow = desc ? '↓' : '↑';
+  const sortBar = `<div class="sortgrp">
+    <div class="tabs" id="instSort" title="排序方式">
+      ${INSTALLED_SORTS.map(s => {
+        const on = state.installedSort === s.value;
+        // ⚠️ 箭头必须放在**独立元素**里：i18n 按文本节点整串查表，
+        // 写成 `${label}${arrow}` 会拼成「安装时间 ↓」，表里没这条 → 整串不翻译。
+        return `<button data-isort="${esc(s.value)}" class="${on ? 'on' : ''}" title="${
+          esc(s.title)
+        }">${esc(s.label)}${on ? `<span class="dir">${arrow}</span>` : ''}</button>`;
+      }).join('')}
+    </div>
+    <button class="btn sm" data-isortdir="1" title="切换正序 / 倒序（也可以再点一次排序名）"><span class="dir">${
+      arrow
+    }</span><span>${desc ? '倒序' : '正序'}</span></button>
   </div>`;
 
   const toggleRow = builtinScripts.length
@@ -714,6 +766,13 @@ function renderInstalled() {
     state.installedGroups.filter(g => g.enabled && !g.partial).length
   } 个已启用`;
   syncInstalledNav();
+}
+
+/** 翻转已安装页的排序方向并重画（点方向按钮、或再点一次当前排序名都走这里） */
+function toggleInstalledSortDir() {
+  state.installedSortDir = state.installedSortDir === 'desc' ? 'asc' : 'desc';
+  renderInstalled();
+  saveFilters();
 }
 
 /**
@@ -1643,6 +1702,7 @@ function saveFilters() {
     const last = {
       browse: browseFilterSnapshot(),
       installedSort: state.installedSort,
+      installedSortDir: state.installedSortDir,
       showBuiltin: !!state.showBuiltin
     };
     call(window.api.config.set({ lastFilters: last }), { silent: true }).catch(() => {});
@@ -1678,6 +1738,12 @@ function applyLastFilters() {
   if (INSTALLED_SORTS.some(s => s.value === last.installedSort)) {
     state.installedSort = last.installedSort;
   }
+  // 方向：存了合法值就用存的；缺（0.2.7 及更早的快照没有这个字段）或非法 →
+  // 退回**该排序方式自己的默认方向**，不能沿用上一个排序的方向（否则从「安装时间 ↓」
+  // 升级过来，改成「名称」会变成 Z→A，看着像坏了）。
+  state.installedSortDir = (
+    SORT_DIRS.includes(last.installedSortDir) && INSTALLED_SORTS.some(s => s.value === last.installedSort)
+  ) ? last.installedSortDir : sortDefaultDir(state.installedSort);
   if (typeof last.showBuiltin === 'boolean') state.showBuiltin = last.showBuiltin;
   return true;
 }
@@ -4755,12 +4821,24 @@ function bindEvents() {
       return;
     }
 
+    // 排序方向翻转（右侧那颗「↑ 正序 / ↓ 倒序」）
+    const idir = t.closest('[data-isortdir]');
+    if (idir) { toggleInstalledSortDir(); return; }
+
     // 已安装页排序切换（默认「安装时间」倒序）
     const isort = t.closest('[data-isort]');
     if (isort) {
-      state.installedSort = isort.dataset.isort || 'time';
-      renderInstalled();
-      saveFilters();
+      const v = isort.dataset.isort || 'time';
+      // 点**已经选中的**那个排序名 = 翻转正序 / 倒序（表格表头的习惯）；
+      // 点别的 = 换排序方式，方向回到它自己的默认值。
+      if (v === state.installedSort) {
+        toggleInstalledSortDir();
+      } else {
+        state.installedSort = v;
+        state.installedSortDir = sortDefaultDir(v);
+        renderInstalled();
+        saveFilters();
+      }
       return;
     }
 

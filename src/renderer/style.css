@@ -169,7 +169,13 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 
 /* 已安装页工具条：左边排序切换，右边「显示 UE4SS 内置脚本」按钮（推到最右） */
 .ibar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
-.ibar .btn{margin-left:auto}
+/* ⚠️ 必须是子选择器：排序条右侧那颗「正序 / 倒序」按钮在 `.sortgrp` 里，
+   用后代选择器会把它一起推到最右边，和「显示内置脚本」按钮挤成一坨。 */
+.ibar > .btn{margin-left:auto}
+/* 已安装页排序条：排序按钮组 + 方向翻转按钮 */
+.sortgrp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tabs button .dir{margin-left:5px;font-size:11px}
+.btn .dir{margin-right:3px;font-size:11px}
 
 /* 抽屉「已安装的文件」逐条列表 —— 每行右侧两个按钮，只作用于这一个文件 */
 .flist{display:flex;flex-direction:column;gap:6px}
