@@ -29,10 +29,14 @@ for (const m of String(pkg.scripts['test:all']).matchAll(/npm run ([a-zA-Z0-9:_-
 }
 
 // `--only=test:a,test:b` 只跑指定套件（调试用，不写结果文件）
+// `--skip=test:e2e-ue4ss,test:inject` 跳过指定套件 —— 这两个会起 Electron GUI，
+// 在本沙箱里偶发挂起（某一轮实测跑了 21 分钟没完），调试时可以直接跳过。
 const onlyArg = process.argv.find(a => a.startsWith('--only='));
 const only = onlyArg ? onlyArg.slice(7).split(',').filter(Boolean) : null;
-const runNames = only ? names.filter(n => only.includes(n)) : names;
-const writeResult = !only;
+const skipArg = process.argv.find(a => a.startsWith('--skip='));
+const skip = skipArg ? skipArg.slice(7).split(',').filter(Boolean) : [];
+const runNames = (only ? names.filter(n => only.includes(n)) : names.filter(n => !skip.includes(n)));
+const writeResult = !only && !skip.length;
 
 // ---- 清 trash 残留（逐个文件删，绕开 50 文件阈值） ----
 function cleanTrash() {

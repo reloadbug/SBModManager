@@ -298,5 +298,36 @@ t('完成后切到下载页并汇总提示', () => /await refreshDownloads\(\);[
 t('启动时初始化工具栏状态', () => /selUpdateBar\(\);\s*\/\/ 多选工具栏初始态/.test(code));
 t('暴露自动化入口', () => /window\.__batch = \{ batchDownload, selToggle, selSelectAll, selSetMode, selUpdateBar, pickPrimaryFile, batchSummary \};/.test(code));
 
+// ---------- 浏览页点「⬇ 下载」不切页（2026-10-14 用户要求）----------
+// 「浏览 mod 的时候点击下载不切换到下载页面，直接后台加入下载，只在当前 mod 上显示状态」
+console.log('\n[3] 浏览页点下载：留在原列表，状态只体现在卡片上');
+t('dlEnqueue 有 goto 开关（默认 true，保持原有调用方不受影响）',
+  () => /async function dlEnqueue\(meta, \{ authorize = true, goto = true \} = \{\}\)/.test(code));
+t('goto 为真才切到下载页', () => /if \(goto\) switchPage\('p-download'\);/.test(code));
+t('goto 为假时不是「什么都不做」，而是刷卡片状态',
+  () => /else scheduleCardStateRefresh\(\);/.test(code));
+t('卡片上的「⬇ 下载」传 goto:false', () => /await dlEnqueue\(meta, \{ goto: false \}\);/.test(code));
+t('抽屉里「文件列表的下载按钮」也传 goto:false', () => /\}, \{ goto: false \}\);/.test(code));
+t('★ 两处浏览页入口都改了（只改一处会漏掉抽屉那条路）',
+  () => (code.match(/goto: false/g) || []).length === 2
+    || `实际出现 ${(code.match(/goto: false/g) || []).length} 次`);
+t('批量下载仍然跳转（一次十几个，用户本来就想看整队进度）',
+  () => /await refreshDownloads\(\);[\s\S]{0,120}switchPage\('p-download'\);[\s\S]{0,80}toast\(batchSummary\(out\)/.test(code));
+t('nxm:// 外部入口仍然切页（主进程已接手，界面得让人看到进度）',
+  () => /window\.api\.nxm\.onIncoming\([\s\S]{0,900}switchPage\('p-download'\)/.test(code));
+t('卡片状态刷新会顺带刷新开着的抽屉', () =>
+  /function scheduleCardStateRefresh\(\)[\s\S]{0,600}applyDrawerLocalState/.test(code));
+// 光有 goto:false 还不够 —— 卡片之所以能立刻显示「● 下载中」，
+// 是因为入队瞬间的任务状态就被 localState 判成了 downloading。
+t('★ 入队即是 downloading（queued / resolving / awaiting_authorization 都算），卡片立刻亮状态',
+  () => {
+    const ls = fs.readFileSync(path.join(ROOT, 'src', 'main', 'localState.js'), 'utf8');
+    return (/(awaiting_authorization|queued|resolving): 'downloading'/.test(ls)
+      && (/queued: 'downloading'/.test(ls) && /resolving: 'downloading'/.test(ls)))
+      || '状态映射缺失，点下载后卡片不会有反应';
+  });
+t('下载中状态对应的卡片按钮是「查看进度」（用户想细看时自己点）',
+  () => /downloading: \{ badge: '[^']*', cls: 'busy', btn: '[^']*', act: 'download' \}/.test(code));
+
 console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
 if (fail) process.exit(1);
