@@ -285,6 +285,14 @@ async function main() {
       /function browseCard\(n\)[\s\S]{0,2600}\$\{voteHtml\(n\)\}/.test(code) || '缺失');
     t('旧的「🚫 不喜欢」文字按钮已移除', () => !/🚫 不喜欢</.test(code) || '还残留文字按钮');
     t('旧的 noBtn 变量已移除', () => !/const noBtn = /.test(code) || '还残留 noBtn');
+    // 第三十一轮：投票按钮与下载按钮同处一个 .acts 容器，且不再画在封面里。
+    t('👍/👎 与「下载 / 已安装」按钮同处 .acts 容器（操作集中）', () =>
+      /<div class="acts">\$\{voteHtml\(n\)\}\$\{action\}<\/div>/.test(code) || '缺失');
+    t('投票按钮不再画在封面里（改到 .cbody 内）', () => {
+      const iVote = code.indexOf('${voteHtml(n)}');
+      const iCbody = code.indexOf('<div class="cbody">');
+      return (iVote > 0 && iCbody > 0 && iVote > iCbody) || `cbody@${iCbody} vote@${iVote}`;
+    });
     t('data-like 的点击处理在 .card 之前', () => {
       const iLike = code.indexOf("t.closest('[data-like]')");
       const iCard = code.indexOf("const card = t.closest('.card');");
@@ -297,7 +305,11 @@ async function main() {
     });
 
     // ---- 图标按钮的样式 ----
-    t('CSS 有 .vote 容器（绝对定位贴在封面右下角）', () => /\.vote\{[\s\S]{0,200}position:absolute/.test(css) || '缺失');
+    // 第三十一轮：👍/👎 从「封面右下角绝对定位」下移到卡片底部，与下载按钮并排（操作集中）。
+    t('CSS 有 .vote 容器（卡片底部，不再是绝对定位）', () =>
+      (/\.vote\{[^}]*display:flex/.test(css) && !/\.vote\{[^}]*position:absolute/.test(css)) || '缺失');
+    t('CSS 有 .acts 容器（操作类按钮集中，margin-left:auto 推到行末）', () =>
+      /\.acts\{[^}]*margin-left:auto/.test(css) || '缺失');
     t('CSS 有 .vbtn', () => /\.vbtn\{/.test(css) || '缺失');
     t('CSS 有 .vbtn.up.on（点亮色）', () => /\.vbtn\.up\.on\{/.test(css) || '缺失');
     t('CSS 有 .vbtn.down.on（点亮色）', () => /\.vbtn\.down\.on\{/.test(css) || '缺失');
@@ -328,7 +340,8 @@ async function main() {
     t('「只看喜欢」与「只看黑名单」互斥（点一个关掉另一个）', () =>
       /if \(mode === 'only' && state\.browse\.onlyLiked\)/.test(code) || '缺失');
     t('空态有「只看喜欢」的专门文案', () => /还没有点过喜欢的 Mod/.test(code) || '缺失');
-    t('空态提示告诉用户去哪儿点 👍', () => /在卡片右下角点 👍 就会收在这里/.test(code) || '缺失');
+    t('空态提示告诉用户去哪儿点 👍', () => /点卡片上的 👍 就会收在这里/.test(code) || '缺失');
+    t('空态提示（不喜欢）也跟着改口径', () => /点卡片上的 👎 就会加到这里/.test(code) || '缺失');
     t('filterSummary 会显示「只看喜欢」', () => /只看喜欢/.test(code) || '缺失');
     t('loadLocalList 的报错是两条完整字面量（避免中英混排）', () =>
       /isLiked \? '[^']*' : '[^']*'/.test(code) || '缺失');

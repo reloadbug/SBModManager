@@ -98,13 +98,17 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .cover .sw.part::after{right:9px}
 /* 「N 个已装文件」角标 —— 挪到左下角，避开左上角的类型 tag 和右上角的开关 */
 .cover .tag.nfile{top:auto;bottom:8px;left:8px;color:var(--blue);border-color:rgba(74,158,255,.45);background:rgba(74,158,255,.16)}
-/* 封面右下角：👍 / 👎 一对图标按钮（无文字）。浏览页老布局的左下角 `.cat` 分类角标在左，互不遮挡 */
-.vote{position:absolute;bottom:8px;right:8px;display:flex;gap:5px}
-.vbtn{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);background:rgba(20,22,26,.88);color:var(--dim);cursor:pointer;padding:0;box-shadow:0 1px 6px rgba(0,0,0,.4);transition:.13s}
+/* 卡片底部的操作区：👍 / 👎 与「下载 / 已安装」按钮并排，操作类按钮集中在一处。
+   用户 2026-10-14：「喜欢和不喜欢按钮下移，与下载按钮放在一起，操作类的按钮尽量集中」——
+   原来是绝对定位贴在封面右下角的，现随 `.meta` 排到行末（`margin-left:auto` 推右），
+   不再压住封面图，也顺带把「动作」都收拢到同一块。 */
+.acts{display:flex;align-items:center;gap:6px;margin-left:auto}
+.vote{display:flex;gap:5px}
+.vbtn{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--panel2);color:var(--dim);cursor:pointer;padding:0;transition:.13s}
 .vbtn svg{display:block}
 .vbtn:hover{color:var(--text);border-color:var(--border2)}
-.vbtn.up.on{color:#7ED8A0;border-color:rgba(63,185,80,.6);background:rgba(18,42,26,.93)}
-.vbtn.down.on{color:#F0908C;border-color:rgba(217,83,79,.6);background:rgba(52,20,20,.93)}
+.vbtn.up.on{color:#7ED8A0;border-color:rgba(63,185,80,.6);background:rgba(63,185,80,.14)}
+.vbtn.down.on{color:#F0908C;border-color:rgba(217,83,79,.6);background:rgba(217,83,79,.14)}
 .cbody{padding:10px 12px 12px;display:flex;flex-direction:column;gap:3px;flex:1}
 .cbody h3{font-size:12.8px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cbody .zh{font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:15px}

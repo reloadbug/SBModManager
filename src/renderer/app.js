@@ -1026,10 +1026,14 @@ const LOCAL_UI = {
 };
 
 /**
- * 卡片封面右下角那对 👍 / 👎（纯图标，无文字）。
+ * 卡片底部那对 👍 / 👎（纯图标，无文字）。
  *
  * 用户 2026-10-14：「mod 图标上增加喜欢按钮，与不喜欢对应，不显示文字，
  * 只显示两个图标，大拇指向上，大拇指向下」。
+ *
+ * 同日追加：「喜欢和不喜欢按钮下移，与下载按钮放在一起，操作类的按钮尽量集中」
+ * —— 原来绝对定位贴在封面右下角，现移到 `.meta` 行右端、与「下载 / 已安装」
+ * 按钮同处一个 `.acts` 容器，所有操作类按钮集中在一处，也不再压住封面图。
  *
  * 用内联 SVG 而不是 emoji：emoji（👍👎）在 Windows 上是**彩色**的，
  * 点亮与未点亮几乎看不出区别；`currentColor` 让图标跟随 `on` 类变色，状态一目了然。
@@ -1077,7 +1081,6 @@ function browseCard(n) {
       ${st ? `<span class="lb ${st.cls}">${st.badge}</span>` : ''}
       ${n.categoryZh ? `<span class="cat">${esc(n.categoryZh)}</span>` : ''}
       ${n.adult ? `<span class="tag" style="color:#E88;border-color:#5A2A28;background:rgba(217,83,79,.16)">成人内容</span>` : ''}
-      ${voteHtml(n)}
     </div>
     <div class="cbody">
       <h3 data-i18n-skip title="${esc(n.name)}">${esc(n.name)}</h3>
@@ -1087,7 +1090,7 @@ function browseCard(n) {
         ${n.author ? `<span>${esc(n.author)}</span>` : ''}
         <span>⬇ ${fmtNum(n.downloads)}</span>
         <span>♥ ${fmtNum(n.endorsements)}</span>
-        ${action}
+        <div class="acts">${voteHtml(n)}${action}</div>
       </div>
     </div>
   </div>`;
@@ -1391,8 +1394,8 @@ function renderBrowse() {
   if (!b.items.length) {
     const title = b.onlyLiked ? '还没有点过喜欢的 Mod'
       : (b.blockMode === 'only' ? '黑名单是空的' : '没有结果');
-    const hint = b.onlyLiked ? '在卡片右下角点 👍 就会收在这里。'
-      : (b.blockMode === 'only' ? '在卡片右下角点 👎 就会加到这里。'
+    const hint = b.onlyLiked ? '点卡片上的 👍 就会收在这里。'
+      : (b.blockMode === 'only' ? '点卡片上的 👎 就会加到这里。'
       : (b.search ? '换个关键词试试。'
       : (b.category || b.tags.length || b.onlyUninstalled) ? '当前筛选条件下没有 Mod，试试放宽条件。'
       : '暂时拿不到数据，请检查网络。'));
@@ -4759,7 +4762,7 @@ function bindEvents() {
     const undislike = t.closest('[data-undislike]');
     if (undislike) { await undislikeMod(undislike.dataset.undislike); return; }
 
-    // 「喜欢」👍 —— 与 👎 同一位置（封面右下角）、同为一对开关。
+    // 「喜欢」👍 —— 与 👎 同一位置（卡片底部 `.acts`，紧挨下载按钮）、同为一对开关。
     // 同样必须抢在 `.card` 之前 return：否则点图标会连带打开 Mod 详情抽屉。
     const like = t.closest('[data-like]');
     if (like) { await likeMod(like.dataset.like); return; }
