@@ -17,6 +17,9 @@ function layout(root) {
     launcher: path.join(root, LAUNCHER_REL),
     paks: path.join(sb, 'Content', 'Paks'),
     modsDir: path.join(sb, 'Content', 'Paks', '~Mods'),
+    // UE4SS 蓝图/逻辑模组（Logic Mod）的落点 —— CNS 主体、ATOOL 本体都住这里。
+    // ⚠️ 与 ~Mods 是**两套互不相通的加载机制**：放错了游戏直接不加载（文件静静躺着）。
+    logicModsDir: path.join(sb, 'Content', 'Paks', 'LogicMods'),
     ue4ssDir: path.join(win64, 'ue4ss'),
     ue4ssModsDir: path.join(win64, 'ue4ss', 'Mods'),
     ue4ssDll: path.join(win64, 'ue4ss', 'UE4SS.dll'),
@@ -215,7 +218,7 @@ function cnsStatus(L) {
   // 主体 pak 的伴生文件：CNS 用的是 IoStore，正常应该是 .pak + .ucas + .utoc 三个
   let companions = [];
   try {
-    companions = fs.readdirSync(path.join(L.paks, 'LogicMods'), { withFileTypes: true })
+    companions = fs.readdirSync(L.logicModsDir, { withFileTypes: true })
       .filter(e => e.isFile() && CNS_LOGICMOD_FILES.test(e.name))
       .map(e => e.name)
       .sort();
@@ -246,8 +249,135 @@ function cnsStatus(L) {
     coreTotal: core.length,
     missingCore,
     companions,
-    logicModsDir: path.join(L.paks, 'LogicMods'),
+    logicModsDir: L.logicModsDir,
     note: notes.length ? notes.join('；') : null
+  };
+}
+
+/* ---------------- ATOOL（Animation Tool，mod 1662） ---------------- */
+
+/**
+ * ATOOL 本体的特征文件。
+ *
+ * ## 为什么按文件判定而不是猜目录
+ *
+ * ATOOL 是 UE4SS **Logic Mod**（不是普通 pak 替换），落地有三种兼容形态
+ * （详见 `docs/ATOOL-调研与支持方案.md` §5.2）：
+ *   · 平铺  `LogicMods\HD-ATOOL_P.pak`
+ *   · 内层  `LogicMods\HD-ATOOL_P\HD-ATOOL_P.pak`
+ * 两者都由安装器正确识别，所以探测必须**两种都认**，否则用户装完界面说「没装」。
+ *
+ * | 特征 | 路径（相对游戏根） | 说明 |
+ * |---|---|---|
+ * | 核心 | `SB\Content\Paks\LogicMods\HD-ATOOL_P.pak` | ATOOL 主体 |
+ * | 核心 | 同目录 `HD-ATOOL_P.ucas` + `.utoc` | IoStore 三件套，齐了才算完整 |
+ * | 可选 | `...\LogicMods\HD-ATOOL_P\audio\*.wav` | 外置音频（**手工放置**，作者说明里要求） |
+ *
+ * ⚠️ 与 CNS 的关键区别：CNS 的 `.dekcns` 数据住在 `~Mods`，ATOOL 的一切都在
+ *    `LogicMods`。两者落点不同，可以共存（本机现状就是 CNS 已在 LogicMods）。
+ */
+const ATOOL_PAK_STEM = /^hd-atool_p$/i;
+const ATOOL_EXT = ['pak', 'ucas', 'utoc'];
+
+/**
+ * ATOOL 探测 —— 按特征文件确定性判定。
+ *
+ * 平铺与内层两种落点都查，取**先命中**的那个作为基准（两者互斥，同时存在说明
+ * 用户装重复了，会在 note 里提示）。
+ * @param {object} L game.layout(root) 的结果
+ */
+function atoolStatus(L) {
+  const flatBase = L.logicModsDir;                                  // LogicMods\
+  const innerBase = path.join(L.logicModsDir, 'HD-ATOOL_P');         // LogicMods\HD-ATOOL_P\
+
+  // 主体三件套：平铺优先，找不到再找内层
+  const layoutKind = fs.existsSync(path.join(flatBase, 'HD-ATOOL_P.pak')) ? 'flat'
+    : (fs.existsSync(path.join(innerBase, 'HD-ATOOL_P.pak')) ? 'inner' : null);
+  const base = layoutKind === 'inner' ? innerBase : flatBase;
+
+  const markers = ATOOL_EXT.map((ext, i) => {
+    const abs = path.join(base, 'HD-ATOOL_P.' + ext);
+    const st = dirStat(abs);
+    // 两种形态都找一遍，UI 上「期望路径」才不会误导（用户可能装在另一种形态下）
+    const alt = path.join(base === flatBase ? innerBase : flatBase, 'HD-ATOOL_P.' + ext);
+    return {
+      key: ext,
+      core: true,
+      isDir: false,
+      what: 'ATOOL 主体（' + ext + '）',
+      label: 'SB\\Content\\Paks\\LogicMods\\HD-ATOOL_P.' + ext,
+      path: abs,
+      altPath: alt,
+      exists: st.exists,
+      size: st.size || 0,
+      mtime: st.mtime || null,
+      fileCount: 0
+    };
+  });
+
+  // 可选：外置音频目录（作者要求手工把 .wav 放进来，文件名 = 动画编号）
+  const audioAbs = path.join(base, 'audio');
+  const audioSt = dirStat(audioAbs);
+  let audioCount = 0;
+  if (audioSt.exists) {
+    audioCount = countFiles(audioAbs, n => /\.wav$/i.test(n));
+  } else {
+    // 另一种形态下可能放着 audio
+    const alt = path.join(base === flatBase ? innerBase : flatBase, 'audio');
+    if (dirStat(alt).exists) audioCount = countFiles(alt, n => /\.wav$/i.test(n));
+  }
+  markers.push({
+    key: 'audio',
+    core: false,
+    isDir: true,
+    what: '外置音频目录（可选）',
+    label: 'SB\\Content\\Paks\\LogicMods\\HD-ATOOL_P\\audio\\',
+    path: audioAbs,
+    altPath: path.join(base === flatBase ? innerBase : flatBase, 'audio'),
+    exists: audioSt.exists || audioCount > 0,
+    size: 0,
+    mtime: null,
+    fileCount: audioCount
+  });
+
+  const core = markers.filter(m => m.core);
+  const coreFound = core.filter(m => m.exists);
+  const missingCore = core.filter(m => !m.exists);
+
+  // 三件套齐 = 完整；只命中一部分 = 装了一半（只解压了 .pak 没解压伴生文件是常见事故，
+  // 游戏加载 IoStore 资源时会直接失败或黑屏）
+  const installed = coreFound.length === core.length;
+  const partial = !installed && coreFound.length > 0;
+
+  const notes = [];
+  if (partial) {
+    notes.push('ATOOL 安装不完整：缺少 ' + missingCore.map(m => m.label).join('、') +
+      '。把包里的 HD-ATOOL_P\\ 文件夹与三件套一起解压进 LogicMods 即可补全。');
+  }
+  if (layoutKind) {
+    notes.push('检测到 ' + (layoutKind === 'inner' ? '内层目录' : '平铺') + '落点（LogicMods\\' +
+      (layoutKind === 'inner' ? 'HD-ATOOL_P\\' : '') + 'HD-ATOOL_P.pak）。');
+  }
+  if (installed && audioCount === 0) {
+    notes.push('没有外置音频（audio\\ 里没有 .wav）—— ATOOL 自带的动画不需要它，' +
+      '但用到外置音频的动画 Mod 会静音。');
+  }
+
+  return {
+    installed,
+    partial,
+    // 判定依据是特征文件而非命名猜测
+    confident: true,
+    markers,
+    found: markers.filter(m => m.exists),
+    coreFound: coreFound.length,
+    coreTotal: core.length,
+    missingCore,
+    layoutKind,                                    // 'flat' | 'inner' | null
+    logicModsDir: L.logicModsDir,
+    audioDir: audioAbs,
+    audioCount,
+    note: notes.length ? notes.join(' ') : null
   };
 }
 
@@ -258,6 +388,7 @@ function inspect(root) {
   const launcher = dirStat(L.launcher);
   const paks = dirStat(L.paks);
   const modsDirExists = fs.existsSync(L.modsDir);
+  const logicModsDirExists = fs.existsSync(L.logicModsDir);
 
   const paksFiles = (() => {
     try {
@@ -283,8 +414,16 @@ function inspect(root) {
       exists: modsDirExists,
       fileCount: modsDirExists ? countFiles(L.modsDir) : 0
     },
+    // Logic Mods 与 ~Mods 是两套互不相通的加载机制，各自独立报状态，
+    // 界面据此提示「你的 mod 到底该放哪」。
+    logicModsDir: {
+      path: L.logicModsDir,
+      exists: logicModsDirExists,
+      fileCount: logicModsDirExists ? countFiles(L.logicModsDir) : 0
+    },
     ue4ss: ue4ssStatus(L),
-    cns: cnsStatus(L)
+    cns: cnsStatus(L),
+    atool: atoolStatus(L)
   };
 }
 
@@ -295,7 +434,15 @@ function ensureModsDir(root) {
   return L.modsDir;
 }
 
+/** 确保 LogicMods 目录存在（UE4SS 蓝图模组落点） */
+function ensureLogicModsDir(root) {
+  const L = layout(root);
+  if (!fs.existsSync(L.logicModsDir)) fs.mkdirSync(L.logicModsDir, { recursive: true });
+  return L.logicModsDir;
+}
+
 module.exports = {
-  EXE_REL, layout, isGameRoot, detectCandidates, inspect, ensureModsDir, listDrives,
-  CNS_MARKERS
+  EXE_REL, layout, isGameRoot, detectCandidates, inspect,
+  ensureModsDir, ensureLogicModsDir, listDrives,
+  CNS_MARKERS, atoolStatus
 };

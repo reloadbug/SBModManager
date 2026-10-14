@@ -18,6 +18,7 @@ const installFlow = require('./installFlow');
 const { createDownloadEngine } = require('./downloadEngine');
 const localState = require('./localState');
 const { createBlacklist } = require('./blacklist');
+const { createFavorites } = require('./favorites');
 const archive = require('./archive');
 const nexusBrowser = require('./nexusBrowser');
 const nexusAutoAuth = require('./nexusAutoAuth');
@@ -29,7 +30,7 @@ const { createImageCache } = require('./imageCache');
 const variantCover = require('./variantCover');
 const { readJson, writeJson } = require('./store');
 
-let config, registry, nexus, translator, engine, watcher, gallery, blacklist;
+let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites;
 
 /** UE4SS 最新 Release 的短时缓存（避免每次进前置组件页都打 GitHub API） */
 let ue4ssReleaseCache = { at: 0, release: null };
@@ -77,6 +78,7 @@ function init() {
   translator = createTranslator({ cacheFile: paths.translateCache, targetLang: config.get('targetLang') });
   gallery = createGalleryFetcher({ cacheDir: paths.GALLERY, logger });
   blacklist = createBlacklist(paths.blacklistFile);
+  favorites = createFavorites(paths.favoritesFile);
 
   engine = createDownloadEngine({
     file: paths.downloadQueueFile,
@@ -920,6 +922,12 @@ function register() {
     if (!root) throw new Error('尚未配置有效的游戏目录');
     return game.ensureModsDir(root);
   });
+  // UE4SS 蓝图模组（Logic Mod）的落点 —— 与 ~Mods 是两套互不相通的加载机制
+  handle('game:ensureLogicModsDir', () => {
+    const root = currentRoot();
+    if (!root) throw new Error('尚未配置有效的游戏目录');
+    return game.ensureLogicModsDir(root);
+  });
 
   /* 已安装 Mod */
   handle('mods:list', () => {
@@ -1666,7 +1674,9 @@ function register() {
             fileId: p.fileId,
             version: p.version || null,
             url: p.pageUrl || null,
-            author: 'Dekita / CNS',
+            // ⚠️ 原先是硬编码的 'Dekita / CNS'（当时只有 CNS 走这条路）。
+            //    现在 ATOOL 也走同一条通道，作者必须跟着 PREREQS 走，否则会显示成 CNS 的作者。
+            author: p.author || null,
             isPrereq: true
           }
         });
@@ -1698,6 +1708,12 @@ function register() {
   handle('blacklist:ids', () => blacklist.ids());
   handle('blacklist:add', (modId, meta) => blacklist.add(modId, meta || {}));
   handle('blacklist:remove', (modId) => blacklist.remove(modId));
+  /* 浏览页「喜欢」（👍）—— 与黑名单同形、同为纯本地。
+     用户 2026-10-14：「mod 图标上增加喜欢按钮，与不喜欢对应」。 */
+  handle('favorites:list', () => favorites.all());
+  handle('favorites:ids', () => favorites.ids());
+  handle('favorites:add', (modId, meta) => favorites.add(modId, meta || {}));
+  handle('favorites:remove', (modId) => favorites.remove(modId));
   handle('nexus:detail', (modId) => nexus.getMod(modId));
   handle('nexus:files', (modId) => nexus.getModFiles(modId));
   handle('nexus:parseUrl', (url) => parseNexusUrl(url));

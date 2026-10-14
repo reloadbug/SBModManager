@@ -153,12 +153,19 @@ console.log('\n[3] verText() / installedCard()：版本号不拼成 vv2.3、卡�
     fmtDate: () => '—'
   };
   vm.createContext(c2);
+  // ⚠️ 2026-10-14 起 `installedCard()` 吃的是**组对象**（内部读 `g.items.length`
+  // 画「N 个已装文件」角标），不再是磁盘上的单个条目。所以这里把 `groupInstalled()`
+  // 一起抽进来，走**真实的「单条 → 分组 → 画卡」链路**（与 `renderInstalled()` 一致），
+  // 而不是手工补几个组字段 —— 后者会掩盖「分组产物喂不进卡片」这类真问题。
   vm.runInContext(
-    extract('esc') + '\n' + extract('fmtSize') + '\n' + extract('verText') + '\n'
-    + extract('installedCard') + '\n' + 'this.f = installedCard;',
+    extract('groupMtime') + '\n' + extract('groupInstalled') + '\n'
+    + extract('esc') + '\n' + extract('fmtSize') + '\n' + extract('verText') + '\n'
+    + extract('installedCard') + '\n'
+    + 'this.f = { installedCard, groupInstalled };',
     c2
   );
-  const installedCard = c2.f;
+  // 单条 entry → 一张卡的便捷包装（本组断言里每条都只装一个文件）
+  const installedCard = (m) => c2.f.installedCard(c2.f.groupInstalled([m])[0]);
 
   const html = installedCard({
     id: 'nexus:1312:5836', name: 'A2 Midriff', kind: 'pak', enabled: true,

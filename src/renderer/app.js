@@ -13,9 +13,15 @@ const state = {
   prereqs: [],
   prereqBusy: null,
   showBuiltin: false,
+  // 已安装页：排序方式（time = 安装时间倒序，默认）与最近一次分组结果。
+  // ⚠️ 图表上显示的是**分组后的卡片**，`state.installed` 仍是磁盘扫描出来的原始项
+  //    （侧栏计数、启用数都还按原始项算），两者不要混。
+  installedSort: 'time',
+  installedGroups: [],
   // 默认「全部内容」—— 不隐藏任何 mod（用户 2026-10-12 明确要求）
   // blocked = 点了「不喜欢」的 modId 集合（字符串）；blockMode = hide（默认不显示）/ all / only
-  browse: { sort: 'downloads', search: '', offset: 0, items: [], total: 0, loading: false, done: false, adultMode: 'all', category: '', tags: [], facets: null, gen: 0, onlyUninstalled: false, blocked: new Set(), blockMode: 'hide' },
+  // liked = 点了「喜欢」的 modId 集合（字符串）；onlyLiked = 「只看喜欢」视图（走本地记录，不碰 Nexus）
+  browse: { sort: 'downloads', search: '', offset: 0, items: [], total: 0, loading: false, done: false, adultMode: 'all', category: '', tags: [], facets: null, gen: 0, onlyUninstalled: false, blocked: new Set(), blockMode: 'hide', liked: new Set(), onlyLiked: false },
   // 浏览页多选 / 批量下载：ids 是 modId 字符串集合（跨滚动保留），
   // all = 「已全选当前列表」，之后追加加载的新卡片自动并入选择。
   sel: { on: false, all: false, busy: false, ids: new Set() },
@@ -267,7 +273,7 @@ function renderSidebar() {
   $('#gamePath').textContent = ok
     ? `${g.root}\nUE4SS ${g.ue4ss.installed ? '✓' : '✗'} · CNS ${g.cns.installed ? '✓' : '✗'}`
     : (g && g.configured) || '—';
-  $('#navCountInstalled').textContent = state.installed.filter(m => !m.builtin).length;
+  syncInstalledNav();
 
   const active = (state.downloads || []).filter(t => DL_ACTIVE.has(t.status)).length;
   const badge = $('#navCountDownload');
@@ -279,7 +285,7 @@ function renderSidebar() {
 
 /* ---------------- 已安装 Mod ---------------- */
 
-const KIND_LABEL = { pak: 'Pak 模组', script: '脚本模组', prereq: '前置组件' };
+const KIND_LABEL = { pak: 'Pak 模组', script: '脚本模组', logicmod: '逻辑模组', prereq: '前置组件' };
 
 /** 优先用下载时缓存到本地的封面（离线也能显示），其次回落到注册表里的来源图 */
 function coverForMod(modId) {
@@ -329,44 +335,180 @@ async function fillGallery(modId, { force = false } = {}) {
     : `<div class="lbl">图集</div><div class="txt" style="color:var(--dim2)">没能取到图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。</div>`;
 }
 
-function installedCard(m) {
-  const meta = m.meta || {};
+/* ---------------- 已安装 Mod：分组与排序 ---------------- */
+
+/**
+ * 已安装页的排序方式。
+ *
+ * 用户 2026-10-14 要求：默认**按安装时间倒序**（最新装的排最上面），并且要能切换。
+ * 同时也给了兜底口径 ——「优先按时间，其次按 Mod ID，mod 名称」：
+ * 时间一样时按 Mod ID、再一样按名称，保证顺序**确定**（不会两次刷新换个位置）。
+ */
+const INSTALLED_SORTS = [
+  { value: 'time', label: '安装时间', title: '按安装时间倒序 —— 最新装的排最上面' },
+  { value: 'name', label: '名称', title: '按 Mod 名称排序' },
+  { value: 'modid', label: 'Mod ID', title: '按 Nexus Mod ID 排序' },
+  { value: 'kind', label: '类型', title: '按类型排序（前置组件 → Pak → 脚本）' }
+];
+
+// 逻辑模组（Logic Mod）与 pak 一样是「已安装的实体模组」，排在 pak 旁边
+const KIND_RANK = { prereq: 0, pak: 1, logicmod: 1, script: 2 };
+
+/** 一组里最「新」的安装时间（注册表里的 installedAt，没有就退回文件 mtime） */
+function groupMtime(items) {
+  let t = '';
+  for (const m of items) if (m.mtime && m.mtime > t) t = m.mtime;
+  return t;
+}
+
+/**
+ * 已安装列表的比较器 —— 每个模式都带**兜底键**，保证全序、结果稳定可复现。
+ * 默认口径即用户说的：时间倒序 → Mod ID 升序 → 名称升序。
+ */
+function compareInstalled(a, b, mode) {
+  const byModId = () => {
+    // 没有 modId 的（手动丢进 ~Mods、未登记的）排在**最后**，别跟 Nexus 来源的混排
+    const av = a.modId || 0;
+    const bv = b.modId || 0;
+    if (av === bv) return 0;
+    return (av || Infinity) - (bv || Infinity);
+  };
+  const byName = () => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN', { numeric: true });
+
+  let r = 0;
+  if (mode === 'name') {
+    r = byName();
+    if (!r) r = byModId();
+  } else if (mode === 'modid') {
+    r = byModId();
+    if (!r) r = byName();
+  } else if (mode === 'kind') {
+    r = (KIND_RANK[a.kind] ?? 3) - (KIND_RANK[b.kind] ?? 3);
+    if (!r) r = byName();
+    if (!r) r = byModId();
+  } else {
+    // time（默认）：安装时间倒序 → Mod ID → 名称
+    const at = groupMtime(a.items);
+    const bt = groupMtime(b.items);
+    if (at !== bt) r = at < bt ? 1 : -1;
+    if (!r) r = byModId();
+    if (!r) r = byName();
+  }
+  return r;
+}
+
+/**
+ * 把已安装项按 **Nexus Mod ID** 归并成「一张卡」。
+ *
+ * 用户 2026-10-14：「多个同 mod id 的不同模组文件合并显示，与浏览 mod 里面一致，
+ * 点击单个 mod，可以看到不同模组文件」。
+ * 浏览页本来就是「一个 Nexus Mod 一张卡」，这里保持同一口径：
+ *   · **有 modId** 的 → 同一个 Mod 的多个已安装文件合成一张卡，
+ *     抽屉里逐个列出，每个文件可单独启用 / 禁用 / 卸载；
+ *   · **没有 modId** 的（手动丢进 `~Mods`、未登记的）→ 各自一张卡。
+ *     它们之间没有任何依据能证明是同一个东西，硬并就是瞎猜。
+ *
+ * ⚠️ 组对象**刻意做成与单个 installed 项同形**（id / name / kind / enabled / size /
+ *    files / meta …），这样 `installedCard()` 与 `openInstalledDrawer()` 不用大改；
+ *    多出来的 `items` 才是「这个 Mod 装了哪几个文件」。
+ */
+function groupInstalled(list) {
+  const byKey = new Map();
+  for (const m of list || []) {
+    const src = (m.meta && m.meta.source) || {};
+    const modId = Number(src.modId || (m.meta && m.meta.modId) || 0) || 0;
+    const key = modId ? ('mod:' + modId) : ('one:' + m.id);
+    let g = byKey.get(key);
+    if (!g) { g = { key, modId, items: [] }; byKey.set(key, g); }
+    g.items.push(m);
+  }
+
+  const groups = [];
+  for (const g of byKey.values()) {
+    const items = g.items;
+    // 卡片上的名字优先取**带来源信息**的那条（Nexus 上的正式名），没有才用磁盘上的目录名
+    const head = items.find(m => m.meta && (m.meta.name || m.meta.source)) || items[0];
+    const meta = head.meta || {};
+    const enabledN = items.filter(m => m.enabled).length;
+    groups.push({
+      key: g.key,
+      modId: g.modId,
+      items,
+      id: items[0].id,                                   // 兜底：reveal 之类需要一个具体 id
+      name: head.name || items[0].name,
+      kind: items[0].kind,
+      builtin: items.some(m => m.builtin),
+      registered: items.some(m => m.registered),
+      enabled: enabledN > 0,
+      partial: enabledN > 0 && enabledN < items.length,   // 部分启用
+      size: items.reduce((n, m) => n + (m.size || 0), 0),
+      fileCount: items.reduce((n, m) => n + (m.fileCount || 0), 0),
+      files: items.flatMap(m => m.files || []),
+      mtime: groupMtime(items),
+      archive: (items.find(m => m.archive) || {}).archive || null,
+      location: items[0].location,
+      meta
+    });
+  }
+  return groups;
+}
+
+/** 按组键取回上一次渲染出来的分组（点击卡片 / 抽屉按钮用） */
+function groupOf(key) {
+  return (state.installedGroups || []).find(g => g.key === key) || null;
+}
+
+function installedCard(g) {
+  const meta = g.meta || {};
   const src = meta.source || {};
-  const modId = src.modId || meta.modId || null;
+  const modId = g.modId || src.modId || meta.modId || null;
   const img = coverForMod(modId) || meta.image || src.pictureUrl || '';
   const zh = meta.nameZh || meta.summaryZh || meta.summary || src.summary || '';
   const version = meta.version || src.version || '';
   const author = meta.author || src.author || '';
   const cover = img
     ? `<img src="${esc(img)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'图片加载失败'}))">`
-    : `<div class="ph">${m.kind === 'prereq' ? '前置组件' : '本地文件<br>无封面图'}</div>`;
-  const tagCls = m.kind === 'prereq' ? 'tag pre' : (m.kind === 'script' ? 'tag script' : 'tag');
-  const tagTxt = m.builtin ? '内置' : (m.registered ? KIND_LABEL[m.kind] : '未登记');
+    : `<div class="ph">${g.kind === 'prereq' ? '前置组件' : '本地文件<br>无封面图'}</div>`;
+  const tagCls = g.kind === 'prereq' ? 'tag pre' : (g.kind === 'script' ? 'tag script' : 'tag');
+  const tagTxt = g.builtin ? '内置' : (g.registered ? KIND_LABEL[g.kind] : '未登记');
+  // 一个 Mod 装了多个文件时，卡片上直接标出来（点开能逐个看）
+  const n = g.items.length;
+  const multi = n > 1
+    ? `<span class="tag nfile" title="这个 Mod 装了 ${n} 个文件，点开卡片可以逐个启用 / 禁用 / 卸载">${n} 个已装文件</span>`
+    : '';
+  const swTitle = g.partial ? '部分文件已启用 —— 点击全部启用' : (g.enabled ? '点击禁用' : '点击启用');
 
   return `
-  <div class="card${m.enabled ? '' : ' off'}" data-id="${esc(m.id)}">
+  <div class="card${g.enabled ? '' : ' off'}" data-gid="${esc(g.key)}">
     <div class="cover">
       ${cover}
       <span class="${tagCls}">${esc(tagTxt)}</span>
-      ${m.kind === 'prereq' ? '' : `<button class="sw${m.enabled ? '' : ' off'}" data-toggle="${esc(m.id)}" title="${m.enabled ? '点击禁用' : '点击启用'}"></button>`}
+      ${multi}
+      ${g.kind === 'prereq' ? '' : `<button class="sw${g.enabled ? '' : ' off'}${g.partial ? ' part' : ''}" data-gtoggle="${esc(g.key)}" title="${esc(swTitle)}"></button>`}
     </div>
     <div class="cbody">
-      <h3 data-i18n-skip title="${esc(m.name)}">${esc(m.name)}</h3>
-      <div class="zh"${zh ? ' data-i18n-skip' : ''} title="${esc(zh)}">${esc(zh || (m.kind === 'prereq' ? 'Mod 运行依赖' : '本地已安装'))}</div>
+      <h3 data-i18n-skip title="${esc(g.name)}">${esc(g.name)}</h3>
+      <div class="zh"${zh ? ' data-i18n-skip' : ''} title="${esc(zh)}">${esc(zh || (g.kind === 'prereq' ? 'Mod 运行依赖' : '本地已安装'))}</div>
       <div class="meta">
         ${modId ? `<span class="chip mid" title="Nexus Mod ID（Nexus 网址 /mods/ 后面那个数字）">#${esc(String(modId))}</span>` : ''}
         ${version ? `<span class="chip">${esc(verText(version))}</span>` : ''}
         ${author ? `<span>${esc(author)}</span>` : ''}
-        <span>${fmtSize(m.size)}</span>
+        <span>${fmtSize(g.size)}</span>
         <span>·</span>
-        <span>${m.fileCount} 个文件</span>
+        <span>${g.fileCount} 个文件</span>
       </div>
     </div>
   </div>`;
 }
 
-/** 「待处理」的原因 —— 一句话说清要用户做什么 */
-function reviewWhy(t) {
+/**
+ * 「要你处理」的原因 —— 一句话说清要用户做什么。
+ *
+ * 2026-10-14 之前它服务已安装页顶部那条「N 项待处理」列表；那批任务统一挪到下载页之后，
+ * 这里改为给**下载页卡片**用（`dlItem()`）—— 待确认时它比 `install.reason` 那句泛泛的话
+ * 具体得多：会区分「有互斥组 → 点一键安装」和「结构认不出来 → 手动指定安装位置」。
+ */
+function taskWhy(t) {
   const inst = t.install || {};
   const plan = inst.plan;
   // 「这包不是游戏 Mod」这类**结论性**诊断优先 —— 它不是「结构没见过」，
@@ -488,39 +630,18 @@ function conflictDetailsOf(t) {
 function liveStrip() {
   const all = state.downloads || [];
   const busy = all.filter(t => DL_BUSY.has(t.status));
-  // 「需要你处理」的两种：结构没识别出来（待确认）、安装失败但包还在。
-  // 它们都是**等用户操作**的，不是程序在跑 —— 混进 busy 里配个转圈进度条，
-  // 用户会以为卡死了（实测就是这么报上来的）。
-  const review = all.filter(t =>
-    t.status === 'needs_review' || (t.status === 'failed' && t.archivePath));
-  if (!busy.length && !review.length) return '';
+  // ⚠️ 这里**刻意只显示「正在跑」的任务**（2026-10-14 用户要求）：
+  //    「待确认 / 安装失败但包还在」这类**等用户操作**的任务不再列在已安装页 ——
+  //    同一批任务在下载页已经有完整列表（带原因、带「一键安装 / 去处理」按钮），
+  //    两个页面各列一遍，用户反而要在两处来回找、不知道该以哪个为准。
+  //    已安装页的实时条只保留「不用切页也能看到进度」这一个价值。
+  //    → 原因解释逻辑没丢，搬到了下载页（见 `taskWhy()` / `dlItem()`）。
+  if (!busy.length) return '';
 
-  const title = [];
-  if (busy.length) title.push(`正在处理 ${busy.length} 项`);
-  if (review.length) title.push(`${review.length} 项待处理`);
-
-  const row = (t, isReview) => {
+  const row = (t) => {
     const meta = t.meta || {};
     const st = DL_STATUS[t.status] || { t: t.status, c: 'run' };
     const label = esc(meta.name || ('Mod #' + (meta.modId || '?')));
-
-    if (isReview) {
-      // 能一键装的（有默认选择集、且不是「工程源文件」这种结论性诊断）→ 直接给「一键安装」，
-      // 用户不用点开对话框再点第二次（2026-10-14 要求「不要手工一个一个确认」）。
-      const plan = t.install && t.install.plan;
-      const canDefault = !!(plan && !plan.diagnosis
-        && Array.isArray(plan.defaultPick) && plan.defaultPick.length);
-      const btn = canDefault
-        ? `<button class="btn p sm" data-dl-confirmdefault="${esc(t.id)}" title="${plan.hasConflicts ? '按默认选择直接安装：每组取第一套' : '这几套互不覆盖，直接全部安装'}">一键安装</button>`
-        : `<button class="btn p sm" data-dl-confirm="${esc(t.id)}">去处理</button>`;
-      return `<div class="li rev" data-live="${esc(t.id)}">
-        <b>${label}</b>
-        <span class="dl-st ${st.c}">${esc(st.t)}</span>
-        <span class="why">${esc(reviewWhy(t))}</span>
-        ${btn}
-      </div>`;
-    }
-
     const pct = t.progress && t.progress.percent;
     const bar = pct == null
       ? '<div class="prog ind"><i></i></div>'
@@ -535,19 +656,20 @@ function liveStrip() {
 
   return `
   <div class="live">
-    <h4>${busy.length ? '<span class="spin"></span> ' : ''}${title.join(' · ')}</h4>
-    ${busy.map(t => row(t, false)).join('')}
-    ${review.map(t => row(t, true)).join('')}
+    <h4><span class="spin"></span> 正在处理 ${busy.length} 项</h4>
+    ${busy.map(row).join('')}
   </div>`;
 }
 
 function renderInstalled() {
   const area = $('#installedArea');
   if (!state.game || !state.game.found) {
+    state.installedGroups = [];
     area.innerHTML = emptyNoGame();
     return;
   }
   if (!state.installed.length) {
+    state.installedGroups = [];
     area.innerHTML = liveStrip() + `
       <div class="empty">
         <h3>还没有检测到任何 Mod</h3>
@@ -563,22 +685,46 @@ function renderInstalled() {
     ? state.installed
     : state.installed.filter(m => !(m.builtin && m.kind === 'script'));
 
-  const sorted = [...visible].sort((a, b) => {
-    const rank = { prereq: 0, pak: 1, script: 2 };
-    const r = (rank[a.kind] ?? 3) - (rank[b.kind] ?? 3);
-    if (r) return r;
-    return a.name.localeCompare(b.name);
-  });
+  // 先把「同一个 Nexus Mod 的多个文件」并成一张卡，再排序。
+  // 用户 2026-10-14：合并显示 + 默认按安装时间倒序 + 可切换排序。
+  state.installedGroups = groupInstalled(visible);
+  const sorted = state.installedGroups
+    .slice()
+    .sort((a, b) => compareInstalled(a, b, state.installedSort));
 
-  const toggleRow = builtinScripts.length ? `
-    <div style="margin-bottom:12px">
-      <button class="btn sm" data-showbuiltin="1">
-        ${state.showBuiltin ? '隐藏' : '显示'} UE4SS 自带的 ${builtinScripts.length} 个内置脚本模组
-      </button>
-    </div>` : '';
+  const sortBar = `<div class="tabs" id="instSort" title="排序方式">
+    ${INSTALLED_SORTS.map(s => `<button data-isort="${esc(s.value)}" class="${
+      state.installedSort === s.value ? 'on' : ''
+    }" title="${esc(s.title)}">${esc(s.label)}</button>`).join('')}
+  </div>`;
 
-  area.innerHTML = liveStrip() + toggleRow + `<div class="grid">${sorted.map(installedCard).join('')}</div>`;
-  $('#sub').textContent = `共 ${state.installed.length} 项 · ${state.installed.filter(m => m.enabled).length} 个已启用`;
+  const toggleRow = builtinScripts.length
+    ? `<button class="btn sm" data-showbuiltin="1">${
+        state.showBuiltin ? '隐藏' : '显示'
+      } UE4SS 自带的 ${builtinScripts.length} 个内置脚本模组</button>`
+    : '';
+
+  area.innerHTML = liveStrip()
+    + `<div class="ibar">${sortBar}${toggleRow}</div>`
+    + `<div class="grid">${sorted.map(installedCard).join('')}</div>`;
+
+  // 计数口径：**合并后的卡片数**（= Mod 数），不是磁盘上的条目数。
+  // 否则「侧栏 258 / 列表 240 张卡」这种对不上的数字会让人以为是漏显示了。
+  $('#sub').textContent = `共 ${state.installedGroups.length} 项 · ${
+    state.installedGroups.filter(g => g.enabled && !g.partial).length
+  } 个已启用`;
+  syncInstalledNav();
+}
+
+/**
+ * 侧栏「已安装 Mod」计数 —— 与列表**同一口径**（合并后的 Mod 数，不计 UE4SS 内置脚本）。
+ * 每次都从 `state.installed` 现算，不受「显示/隐藏内置脚本」开关影响。
+ */
+function syncInstalledNav() {
+  const el = $('#navCountInstalled');
+  if (!el) return;
+  const gs = groupInstalled(state.installed).filter(g => !g.builtin);
+  el.textContent = gs.length;
 }
 
 function emptyNoGame() {
@@ -631,12 +777,83 @@ function archiveBlockHtml(m) {
     <div class="txt" style="color:var(--dim2);font-size:11.5px;margin-top:6px">${note}</div>`;
 }
 
-function openInstalledDrawer(m) {
+/**
+ * 「已安装的文件」逐条列表 —— 一个 Nexus Mod 装了多个文件时才真正有用。
+ *
+ * 用户 2026-10-14：「多个同 mod id 的不同模组文件合并显示…点击单个 mod，
+ * 可以看到不同模组文件」，并在追问里选了「**抽屉里逐文件可操作**」。
+ *
+ * 所以这里不是只读清单：每行右侧两个按钮（启用/禁用、卸载）都带
+ * `data-iid`（= 那一条 installed 项自己的 id），主进程的
+ * `mods:setEnabled` / `mods:uninstall` 本来就是**按单条 id** 定位的
+ * （重新扫描后 `list.find(m => m.id === id)`），所以逐文件操作不需要改主进程。
+ *
+ * ⚠️ 前置组件（`kind === 'prereq'`）不给开关和卸载：`setEnabled` 会直接抛
+ *    「前置组件不支持禁用」，`uninstall` 对没有回滚清单的前置也会拒绝。
+ *    与其给两个点了就报错的按钮，不如如实说明。
+ */
+function installedFilesHtml(g) {
+  const items = (g && g.items) || [];
+  if (!items.length) return '';
+
+  const rows = items.map(it => {
+    const src = (it.meta && it.meta.source) || {};
+    const fileId = src.fileId ? String(src.fileId) : '';
+    const ver = (it.meta && it.meta.version) || src.version || '';
+    const sub = [
+      KIND_LABEL[it.kind] || it.kind,
+      ver ? verText(ver) : '',
+      fileId ? ('文件 ' + fileId) : '',
+      fmtSize(it.size),
+      it.mtime ? fmtDate(it.mtime) : ''
+    ].filter(Boolean).join(' · ');
+
+    const st = it.enabled
+      ? '<span class="dl-st ok">已启用</span>'
+      : '<span class="dl-st dim">已禁用</span>';
+
+    const acts = it.kind === 'prereq'
+      ? `<span class="fli-note">前置组件，不可单独禁用或卸载</span>`
+      : `<button class="btn sm" data-iid="${esc(it.id)}" data-iact="toggle" title="${
+          it.enabled ? '把这个文件重命名为 .disabled' : '去掉 .disabled 后缀恢复启用'
+        }">${it.enabled ? '禁用' : '启用'}</button>
+         <button class="btn sm d" data-iid="${esc(it.id)}" data-iact="uninstall" title="移除这个文件（移到 data\\backup\\uninstalled\\，可找回）">卸载</button>`;
+
+    return `<div class="fli${it.enabled ? '' : ' off'}">
+      <div class="fli-main">
+        <div class="fli-name" data-i18n-skip title="${esc(it.name)}">${esc(it.name)} ${st}</div>
+        <div class="fli-sub">${esc(sub)}</div>
+      </div>
+      <div class="fli-act">${acts}</div>
+    </div>`;
+  }).join('');
+
+  const head = items.length > 1
+    ? `已安装的文件（${items.length} 个，可逐个操作）`
+    : '已安装的文件';
+
+  return `<div class="lbl">${head}</div>
+    <div class="flist">
+      ${rows}
+      ${g.location ? `<div class="fli-sub" style="margin-top:6px">位置：${esc(g.location)}</div>` : ''}
+    </div>`;
+}
+
+/**
+ * 已安装 Mod 的详情抽屉。
+ *
+ * 参数是**组对象**（`groupInstalled()` 的产出）：一个 Mod 装了多个文件时，
+ * 「文件清单」升级成「已安装的文件」逐条列表，每条能单独启用 / 禁用 / 卸载
+ * （用户 2026-10-14：「合并显示…点击单个 mod，可以看到不同模组文件」）。
+ * 组对象与单个 installed 项**同形**，所以下面沿用 `m` 这个名字，改动最小。
+ */
+function openInstalledDrawer(g) {
+  const m = g;
   const meta = m.meta || {};
   const src = meta.source || {};
   const imgs = cachedImagesOf(meta);
   const img = meta.image || '';
-  const srcModId = Number(src.modId || meta.modId || 0) || 0;
+  const srcModId = Number(g.modId || src.modId || meta.modId || 0) || 0;
   state.drawer = { open: true, kind: 'installed', mod: m, lang: 'zh', translated: null, translating: false, files: [] };
 
   $('#dTitle').textContent = m.name;
@@ -668,7 +885,9 @@ function openInstalledDrawer(m) {
     <div class="kv"><span>类型</span><span>${KIND_LABEL[m.kind] || m.kind}${m.builtin ? '（内置）' : ''}</span></div>
     ${srcModId ? `<div class="kv"><span>Mod ID</span><span>#${srcModId}${src.fileId
       ? `<span style="color:var(--dim2)"> · 文件 ${esc(String(src.fileId))}</span>` : ''}</span></div>` : ''}
-    <div class="kv"><span>状态</span><span style="color:${m.enabled ? 'var(--ok)' : 'var(--dim)'}">${m.enabled ? '已启用' : '已禁用'}</span></div>
+    <div class="kv"><span>状态</span><span style="color:${m.enabled ? 'var(--ok)' : 'var(--dim)'}">${
+      g.partial ? '部分启用' : (m.enabled ? '已启用' : '已禁用')
+    }</span></div>
     <div class="kv"><span>位置</span><span>${esc(m.location)}</span></div>
     <div class="kv"><span>文件数</span><span>${m.fileCount}</span></div>
     <div class="kv"><span>占用</span><span>${fmtSize(m.size)}</span></div>
@@ -677,18 +896,26 @@ function openInstalledDrawer(m) {
 
     ${archiveBlockHtml(m)}
 
-    <div class="lbl">文件清单</div>
-    <div class="filelist">${m.files.map(f => esc(f.name)).join('<br>')}</div>
+    ${installedFilesHtml(g)}
   `;
 
+  // 底部按钮作用于**整组**（这个 Mod 装的全部文件）。
+  // 单个文件的操作在上面 `installedFilesHtml()` 的每一行里。
+  const n = (g.items || []).length;
+  const multi = n > 1;
+  const footToggle = g.partial ? '全部启用' : (g.enabled ? '全部禁用' : '全部启用');
   $('#dFoot').innerHTML = `
     <button class="btn" data-reveal="${esc(m.id)}">打开所在文件夹</button>
     ${m.archive && m.archive.exists
       ? `<button class="btn" data-reveal-path="${esc(m.archive.path)}" title="在资源管理器中定位原压缩包：${esc(m.archive.path)}">📦 定位原压缩包</button>`
       : ''}
     ${m.kind !== 'prereq' ? `
-      <button class="btn" data-toggle2="${esc(m.id)}">${m.enabled ? '禁用' : '启用'}</button>
-      <button class="btn d" data-uninstall="${esc(m.id)}">卸载</button>` : ''}
+      <button class="btn" data-gtoggle="${esc(g.key)}" title="${multi
+        ? '作用于这个 Mod 已安装的全部 ' + n + ' 个文件' : '重命名文件以启用 / 禁用'}">${
+        multi ? footToggle : (m.enabled ? '禁用' : '启用')}</button>
+      <button class="btn d" data-guninstall="${esc(g.key)}" title="${
+        multi ? '逐个移除这 ' + n + ' 个文件' : '移除这个文件'
+      }">${multi ? '卸载这个 Mod' : '卸载'}</button>` : ''}
   `;
 
   showDrawer();
@@ -766,14 +993,36 @@ const LOCAL_UI = {
   downloading: { badge: '● 下载中', cls: 'busy', btn: '查看进度', act: 'download' }
 };
 
+/**
+ * 卡片封面右下角那对 👍 / 👎（纯图标，无文字）。
+ *
+ * 用户 2026-10-14：「mod 图标上增加喜欢按钮，与不喜欢对应，不显示文字，
+ * 只显示两个图标，大拇指向上，大拇指向下」。
+ *
+ * 用内联 SVG 而不是 emoji：emoji（👍👎）在 Windows 上是**彩色**的，
+ * 点亮与未点亮几乎看不出区别；`currentColor` 让图标跟随 `on` 类变色，状态一目了然。
+ */
+const ICON_THUMB_UP = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
+  '<path fill="currentColor" d="M1 21h4V9H1v12zM23 10c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.58 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>';
+const ICON_THUMB_DOWN = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
+  '<path fill="currentColor" d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.58-6.59c.37-.36.59-.86.59-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>';
+
+function voteHtml(n) {
+  const liked = state.browse.liked.has(String(n.modId));
+  const blocked = state.browse.blocked.has(String(n.modId));
+  return `<div class="vote">
+    <button class="vbtn up${liked ? ' on' : ''}" ${
+      liked ? `data-unlike="${n.modId}"` : `data-like="${n.modId}"`
+    } title="${liked ? '取消喜欢' : '喜欢 —— 可以用「只看喜欢」筛出来，列表里也会排在前面'}">${ICON_THUMB_UP}</button>
+    <button class="vbtn down${blocked ? ' on' : ''}" ${
+      blocked ? `data-undislike="${n.modId}"` : `data-dislike="${n.modId}"`
+    } title="${blocked ? '移出黑名单，之后会重新显示' : '不喜欢 —— 加入黑名单，之后不再显示，也不会出现在下载队列里'}">${ICON_THUMB_DOWN}</button>
+  </div>`;
+}
+
 function browseCard(n) {
   const img = n.thumbnail || n.image;
   const st = n.local ? LOCAL_UI[n.local.state] : null;
-  // 「不喜欢」按钮：已在黑名单里就变成「移出黑名单」（「只看黑名单」视图里点得到）
-  const isBlocked = state.browse.blocked.has(String(n.modId));
-  const noBtn = isBlocked
-    ? `<button class="btn sm no on" data-undislike="${n.modId}" title="移出黑名单，之后会重新显示">♻ 移出黑名单</button>`
-    : `<button class="btn sm no" data-dislike="${n.modId}" title="加入黑名单，之后不再显示">🚫 不喜欢</button>`;
   let action;
   if (!st) {
     action = `<button class="btn sm" data-dl-add="${n.modId}" title="加入下载队列（之后自动下载并安装）">⬇ 下载</button>`;
@@ -796,6 +1045,7 @@ function browseCard(n) {
       ${st ? `<span class="lb ${st.cls}">${st.badge}</span>` : ''}
       ${n.categoryZh ? `<span class="cat">${esc(n.categoryZh)}</span>` : ''}
       ${n.adult ? `<span class="tag" style="color:#E88;border-color:#5A2A28;background:rgba(217,83,79,.16)">成人内容</span>` : ''}
+      ${voteHtml(n)}
     </div>
     <div class="cbody">
       <h3 data-i18n-skip title="${esc(n.name)}">${esc(n.name)}</h3>
@@ -806,7 +1056,6 @@ function browseCard(n) {
         <span>⬇ ${fmtNum(n.downloads)}</span>
         <span>♥ ${fmtNum(n.endorsements)}</span>
         ${action}
-        ${noBtn}
       </div>
     </div>
   </div>`;
@@ -1108,12 +1357,16 @@ function renderBrowse() {
     return;
   }
   if (!b.items.length) {
+    const title = b.onlyLiked ? '还没有点过喜欢的 Mod'
+      : (b.blockMode === 'only' ? '黑名单是空的' : '没有结果');
+    const hint = b.onlyLiked ? '在卡片右下角点 👍 就会收在这里。'
+      : (b.blockMode === 'only' ? '在卡片右下角点 👎 就会加到这里。'
+      : (b.search ? '换个关键词试试。'
+      : (b.category || b.tags.length || b.onlyUninstalled) ? '当前筛选条件下没有 Mod，试试放宽条件。'
+      : '暂时拿不到数据，请检查网络。'));
     area.innerHTML = `<div class="empty">
-      <h3>${b.blockMode === 'only' ? '黑名单是空的' : '没有结果'}</h3>
-      <p>${b.blockMode === 'only' ? '在卡片上点「🚫 不喜欢」就会加到这里。'
-        : b.search ? '换个关键词试试。'
-        : (b.category || b.tags.length || b.onlyUninstalled) ? '当前筛选条件下没有 Mod，试试放宽条件。'
-        : '暂时拿不到数据，请检查网络。'}</p>
+      <h3>${title}</h3>
+      <p>${hint}</p>
     </div>`;
     updateBrowseChrome();
     return;
@@ -1150,6 +1403,7 @@ function filterSummary() {
     parts.push('标签「' + zh.join(' / ') + '」');
   }
   if (b.onlyUninstalled) parts.push('只看未安装');
+  if (b.onlyLiked) parts.push('只看喜欢');
   if (b.blockMode === 'only') parts.push('只看黑名单');
   else if (b.blockMode === 'hide' && b.blocked.size) parts.push(`已隐藏黑名单（共 ${b.blocked.size} 个）`);
   return parts.length ? ' · ' + parts.join(' · ') : '';
@@ -1175,10 +1429,16 @@ async function installedIdsOf(items) {
 }
 
 /**
- * 前端本地筛选：**黑名单（默认隐藏）** + 只看未安装。
+ * 前端本地筛选：**黑名单（默认隐藏）** + 只看未安装 + **喜欢的排前面**。
  *
- * 两者都要「整页拉回来再剔」（Nexus 没有这两个筛选条件），所以合成一处 ——
+ * 前两者都要「整页拉回来再剔」（Nexus 没有这两个筛选条件），所以合成一处 ——
  * 分开写会让 `loadBrowse` 的续翻条件算错（见 `isLocalFiltering` 的说明）。
+ *
+ * ⚠️ 「喜欢的排前面」的作用范围**只是本次传入的这一批**（= 一页）：
+ *    Nexus 是 24 条一页的游标分页，本地没有全量列表，不可能把第 5 页的
+ *    一个喜欢项提到第 1 页去。所以口径如实写成「本页内喜欢的置顶」，
+ *    别在文案里承诺「所有喜欢的都在最上面」（那是做不到的）。
+ *    用稳定排序（V8 的 `Array.sort` 稳定）—— 同组内保持 Nexus 的原有排序。
  */
 async function applyLocalFilter(items) {
   const b = state.browse;
@@ -1190,19 +1450,28 @@ async function applyLocalFilter(items) {
   if (b.blockMode === 'hide' && b.blocked.size) {
     kept = kept.filter(m => !b.blocked.has(String(m.modId)));
   }
+  if (b.liked.size) {
+    const rank = (m) => (b.liked.has(String(m.modId)) ? 0 : 1);
+    kept = kept.slice().sort((x, y) => rank(x) - rank(y));
+  }
   return kept;
 }
 
 /**
- * 「只看黑名单」：**不走 Nexus 分页**，直接渲染本地黑名单记录。
+ * 本地记录列表视图：「只看黑名单」（👎）与「只看喜欢」（👍）**共用**这一条路径。
  *
- * 为什么不复用 `loadBrowse` 的筛选：黑名单通常只有几条，而 Nexus 有 3000+ 个 mod，
- * 靠「翻页 + 过滤」要翻遍全站才凑得出来（一次 24 个，翻 20 页也才 480 个）——
- * 用户点「只看黑名单」等半分钟还看不到东西。本地记录里存了 name/author/thumbnail，
- * 零网络请求，秒开。
+ * 都**不走 Nexus 分页**，直接渲染本地记录（`blacklist.json` / `favorites.json`）。
+ *
+ * 为什么不复用 `loadBrowse` 的筛选：黑名单 / 喜欢通常只有几条到几十条，
+ * 而 Nexus 有 3000+ 个 mod，靠「翻页 + 过滤」要翻遍全站才凑得出来
+ * （一次 24 个，翻 20 页也才 480 个）—— 用户点「只看黑名单」等半分钟还看不到东西。
+ * 本地记录里存了 name/author/thumbnail，零网络请求，秒开。
+ *
+ * @param {'blocked'|'liked'} kind 看哪份记录
  */
-async function loadBlockedList(reset) {
+async function loadLocalList(reset, kind) {
   const b = state.browse;
+  const isLiked = kind === 'liked';
   const gen = (b.gen = (b.gen || 0) + 1);
   const stale = () => b.gen !== gen;
   b.loading = true;
@@ -1216,9 +1485,9 @@ async function loadBlockedList(reset) {
   updateBrowseChrome();
   renderBrowse();
   try {
-    let list = await call(window.api.blacklist.list());
+    let list = await call(isLiked ? window.api.favorites.list() : window.api.blacklist.list());
     if (stale()) return;
-    // 黑名单视图里也支持搜索框 —— 本地按名字过滤（服务端筛选在这里没有意义）
+    // 本地视图里也支持搜索框 —— 本地按名字过滤（服务端筛选在这里没有意义）
     if (b.search) {
       const q = b.search.toLowerCase();
       list = (list || []).filter(x => String((x && x.name) || '').toLowerCase().includes(q));
@@ -1228,8 +1497,11 @@ async function loadBlockedList(reset) {
       name: x.name || ('Mod #' + x.modId),
       author: x.author || '',
       thumbnail: x.thumbnail || '',
-      summary: x.at ? ('加入黑名单于 ' + String(x.at).slice(0, 10)) : '已加入黑名单',
-      blocked: true
+      summary: x.at
+        ? ((isLiked ? '喜欢于 ' : '加入黑名单于 ') + String(x.at).slice(0, 10))
+        : (isLiked ? '已加入喜欢' : '已加入黑名单'),
+      blocked: !isLiked,
+      liked: isLiked
     }));
     b.total = b.items.length;
     b.offset = b.items.length;
@@ -1237,7 +1509,12 @@ async function loadBlockedList(reset) {
   } catch (e) {
     if (stale()) return;
     b.items = []; b.total = 0; b.done = true;
-    $('#browseStats').innerHTML = `<span style="color:var(--red)">读取黑名单失败：${esc(e.message)}</span>`;
+    // ⚠️ 报错句写成**两条完整字面量**，不要用 `读取${kind}失败：` 拼 ——
+    //    拼出来的两个静态片段（`读取` / `失败：`）在 i18n 里是独立词条，
+    //    译文会拼成「Read喜欢列表失败：」这种中英混排（实测踩过）。
+    $('#browseStats').innerHTML = `<span style="color:var(--red)">${
+      isLiked ? '读取喜欢列表失败：' : '读取黑名单失败：'
+    }${esc(e.message)}</span>`;
   } finally {
     if (stale()) return;
     b.loading = false;
@@ -1258,6 +1535,21 @@ async function loadBlacklist() {
     state.browse.blocked = new Set((ids || []).map(String));
   } catch { /* 取不到就当没有黑名单 —— 宁可多显示，也不能凭空把 mod 藏掉 */ }
   updateBlockTabs();
+}
+
+/** 拉一次「喜欢」集合（启动时 / 喜欢 / 取消后维护） */
+async function loadFavorites() {
+  try {
+    const ids = await call(window.api.favorites.ids(), { silent: true });
+    state.browse.liked = new Set((ids || []).map(String));
+  } catch { /* 取不到就当没有 —— 宁可少置顶，也不能凭空把 mod 藏掉 */ }
+  updateLikeTabs();
+}
+
+/** 同步顶部「只看喜欢」按钮的选中态 */
+function updateLikeTabs() {
+  const on = !!state.browse.onlyLiked;
+  $$('#likeTabs button').forEach(x => x.classList.toggle('on', on));
 }
 
 /** 就地摘掉一张卡片（调用方决定要不要同步 `b.items`） */
@@ -1290,8 +1582,9 @@ async function dislikeMod(modId) {
   b.blocked.add(id);
   updateBlockTabs();
 
-  if (b.blockMode === 'only') {
-    // 「只看黑名单」里点的 → 卡片留在原地，按钮换成「移出黑名单」
+  if (b.blockMode === 'only' || b.onlyLiked) {
+    // 「只看黑名单」/「只看喜欢」里点的 → 卡片留在原地，按钮换成「移出黑名单」
+    // （卡片的数据来源是本地记录，跟黑名单的显示模式无关，摘掉反而像误触）
     replaceBrowseCard(item);
   } else {
     removeBrowseCard(id);
@@ -1320,7 +1613,7 @@ async function undislikeMod(modId) {
   b.blocked.delete(id);
   updateBlockTabs();
 
-  if (b.blockMode === 'only') {
+  if (b.blockMode === 'only' && !b.onlyLiked) {
     // 「只看黑名单」里移出 → 这张卡片该从当前视图消失
     removeBrowseCard(id);
     b.items = b.items.filter(x => String(x.modId) !== id);
@@ -1339,10 +1632,59 @@ async function undislikeMod(modId) {
   }
 }
 
+/**
+ * 「👍 喜欢」→ 立刻记下并点亮图标。
+ *
+ * 与 `dislikeMod()` **同一套做法**：界面不等落盘（先改内存集合、就地重画这张卡），
+ * IPC 异步写盘，失败只提示不回滚 —— 把图标闪回去只会让人以为自己没点中。
+ *
+ * ⚠️ 与「不喜欢」最大的不同：**喜欢不隐藏任何东西**。卡片留在原地、不进不出，
+ *    只是图标点亮 + 之后可以在「只看喜欢」里筛出来、在本页里排到前面。
+ */
+async function likeMod(modId) {
+  const b = state.browse;
+  const id = String(modId);
+  if (b.liked.has(id)) return;
+  const item = (b.items || []).find(x => String(x.modId) === id) || null;
+  b.liked.add(id);
+  replaceBrowseCard(item);
+  try {
+    await call(window.api.favorites.add(Number(id), item
+      ? { name: item.name, author: item.author, thumbnail: item.thumbnail || item.image || null }
+      : {}), { silent: true });
+    toast('已加入喜欢', 'ok');
+  } catch (e) {
+    toast('加入喜欢失败：' + e.message, 'err');
+  }
+}
+
+/** 「👍 再点一次」→ 取消喜欢（在「只看喜欢」视图里点就是把卡片从这里移出去） */
+async function unlikeMod(modId) {
+  const b = state.browse;
+  const id = String(modId);
+  b.liked.delete(id);
+  if (b.onlyLiked) {
+    removeBrowseCard(id);
+    b.items = b.items.filter(x => String(x.modId) !== id);
+    b.total = b.items.length;
+    updateBrowseChrome();
+    selUpdateBar();
+  } else {
+    replaceBrowseCard((b.items || []).find(x => String(x.modId) === id) || null);
+  }
+  try {
+    await call(window.api.favorites.remove(Number(id)), { silent: true });
+    toast('已取消喜欢', 'ok');
+  } catch (e) {
+    toast('取消喜欢失败：' + e.message, 'err');
+  }
+}
+
 async function loadBrowse(reset) {
   const b = state.browse;
-  // 「只看黑名单」走本地记录，不碰 Nexus（见 loadBlockedList 的说明）
-  if (b.blockMode === 'only') return loadBlockedList(reset);
+  // 「只看喜欢」/「只看黑名单」都走本地记录，不碰 Nexus（见 `loadLocalList` 的说明）
+  if (b.onlyLiked) return loadLocalList(reset, 'liked');
+  if (b.blockMode === 'only') return loadLocalList(reset, 'blocked');
   // 代际令牌：reset（换筛选/排序/搜索）要能**抢占**正在飞的追加请求，
   // 否则「加载更多」途中点筛选会被静默忽略，旧页数据还会混进新结果。
   // 追加请求撞车仍然直接忽略（有请求在飞就够了）。
@@ -1683,6 +2025,9 @@ function renderPrereq() {
   if (!g || !g.found) { area.innerHTML = emptyNoGame(); return; }
 
   const u = g.ue4ss, c = g.cns;
+  // ATOOL 也是可选前置（P0 新增）—— 用 `|| {}` 兜底：老版本主进程回来的
+  // inspect() 没有这个字段，硬取会在渲染时抛错、整页白掉。
+  const a = g.atool || { markers: [], note: null, installed: false, partial: false };
   const u4 = state.ue4ssInfo || null;
   const u4Latest = u4 && u4.tag ? u4.tag : null;
   const u4Same = !!(u4Latest && u.installed && state.ue4ssInstalledTag && state.ue4ssInstalledTag === u4Latest);
@@ -1752,6 +2097,39 @@ function renderPrereq() {
 
     <div class="pre">
       <div class="pre-h">
+        <div class="ic">💃</div>
+        <div>
+          <h3>Animation Tool（ATOOL）</h3>
+          <p>姿势 / 表情 / 自定义动画加载框架 · 大量舞蹈与动画 Mod 的前置 · Nexus #1662</p>
+        </div>
+        <span class="st ${a.installed ? 'ok' : (a.partial ? 'mid' : 'no')}">${
+          a.installed ? '已安装' : (a.partial ? '安装不完整' : '未安装')}</span>
+      </div>
+      <div class="lbl">判定依据 · 特征文件</div>
+      ${(a.markers || []).map(m => `<div class="row">${m.exists ? '✓' : '✗'} ${esc(m.what)} <code>${esc(m.label)}</code>${
+        m.exists && m.isDir ? ` · ${m.fileCount} 个文件` : ''}</div>`).join('')}
+      <div class="row">目标路径 <code>${esc(g.root)}\\SB\\Content\\Paks\\LogicMods\\</code>（不是 ~Mods —— 两者是互不相通的加载机制）</div>
+      <div class="row">来源 <code>https://www.nexusmods.com/stellarblade/mods/1662</code> · 主文件 v6.1（默认键位 / k2 / k3 三版互斥，只能装一个）</div>
+      ${a.note ? `<div class="callout warn">${esc(a.note)}</div>` : ''}
+      ${u.installed ? '' : '<div class="callout err">需要先安装 UE4SS —— ATOOL 是 UE4SS 蓝图模组（Logic Mod），没有加载器装了也不会生效</div>'}
+      <div class="row" style="border-top:none">
+        <button class="btn sm p" id="atoolInstall" ${u.installed ? '' : 'disabled'}
+          title="${u.installed ? '打开 Nexus 安装助手，把该点的下载按钮高亮出来' : '请先安装 UE4SS'}">
+          ${a.installed ? '重装 / 更新 ATOOL' : '一键安装 ATOOL'}
+        </button>
+        <button class="btn sm" data-openurl="https://www.nexusmods.com/stellarblade/mods/1662?tab=files">打开 Nexus 下载页</button>
+        <button class="btn sm" id="atoolPickLocal">从本地压缩包安装…</button>
+      </div>
+      <div class="hint" style="margin-top:8px;font-size:11px;color:var(--dim2)">
+        一键安装流程与 CNS 相同：先点高亮的 Manual download，再点下一页的 Slow download，下载由本程序接管。
+      </div>
+      <div class="hint" style="margin-top:4px;font-size:11px;color:var(--dim2)">
+        ATOOL 本体落在 LogicMods；动画 Mod 是普通 pak，仍然装到 ~Mods。外置音频需要手工放进 LogicMods\\HD-ATOOL_P\\audio\\（文件名 = 动画编号，如 33.wav）。
+      </div>
+    </div>
+
+    <div class="pre">
+      <div class="pre-h">
         <div class="ic">📁</div>
         <div>
           <h3>Mod 落点目录</h3>
@@ -1760,9 +2138,12 @@ function renderPrereq() {
         <span class="st ${g.modsDir.exists ? 'ok' : 'mid'}">${g.modsDir.exists ? '已就绪' : '不存在'}</span>
       </div>
       <div class="row">~Mods <code>${esc(g.modsDir.path)}</code> ${g.modsDir.exists ? `✓ ${g.modsDir.fileCount} 个文件` : '✗'}</div>
+      <div class="row">LogicMods <code>${esc((g.logicModsDir || {}).path || '')}</code> ${
+        (g.logicModsDir && g.logicModsDir.exists) ? `✓ ${g.logicModsDir.fileCount} 个文件` : '✗（蓝图模组 / CNS / ATOOL 的落点）'}</div>
       <div class="row">脚本 Mods <code>${esc(g.root)}\\SB\\Binaries\\Win64\\ue4ss\\Mods\\</code></div>
       <div class="row" style="border-top:none">
         ${g.modsDir.exists ? '' : '<button class="btn sm p" data-mkmods="1">创建 ~Mods 目录</button>'}
+        ${(g.logicModsDir && g.logicModsDir.exists) ? '' : '<button class="btn sm" data-mklogicmods="1">创建 LogicMods 目录</button>'}
         <button class="btn sm" data-openpath="${esc(g.modsDir.path)}">打开目录</button>
       </div>
     </div>
@@ -2067,7 +2448,12 @@ function dlItem(t) {
         <span>${esc(relTime(t.createdAt))}</span>
       </div>
       ${progress}
-      ${reason ? `<div class="dl-sub" style="color:var(--blue)">${esc(reason)}</div>` : ''}
+      ${(() => {
+        // 待确认时用 `taskWhy()` 给出**具体**原因（「包里有 3 套内容，其中 1 组是同一件东西…」），
+        // 比 `install.reason` 那句泛泛的描述有用。failed 不重复走它 —— 下面已经有红字错误。
+        const why = t.status === 'needs_review' ? (taskWhy(t) || reason) : reason;
+        return why ? `<div class="dl-sub" style="color:var(--blue)">${esc(why)}</div>` : '';
+      })()}
       ${(() => {
         // 「有 N 个文件会被覆盖」这种时候，用户要能**点开看清单**（谁的东西被盖了）
         const cd = conflictDetailsOf(t);
@@ -4009,8 +4395,28 @@ function bindEvents() {
     if (!btn) return;
     const mode = btn.dataset.block;
     if (state.browse.blockMode === mode) return;
+    // 「只看喜欢」与「只看黑名单」是两个互斥的本地视图，同时开没有意义
+    // （一个列表里不可能既只留喜欢的、又只留拉黑的）—— 点一个就把另一个关掉。
+    if (mode === 'only' && state.browse.onlyLiked) {
+      state.browse.onlyLiked = false;
+      updateLikeTabs();
+    }
     state.browse.blockMode = mode;
     updateBlockTabs();
+    loadBrowse(true);
+  });
+
+  // 只看喜欢（纯本地记录，秒开，不请求 Nexus）
+  $('#likeTabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-onlyliked]');
+    if (!btn) return;
+    const next = !state.browse.onlyLiked;
+    state.browse.onlyLiked = next;
+    if (next && state.browse.blockMode === 'only') {
+      state.browse.blockMode = 'hide';
+      updateBlockTabs();
+    }
+    updateLikeTabs();
     loadBrowse(true);
   });
 
@@ -4113,7 +4519,15 @@ function bindEvents() {
       return;
     }
 
+    const mklogic = t.closest('[data-mklogicmods]');
+    if (mklogic) {
+      try { await call(window.api.game.ensureLogicModsDir()); toast('已创建 LogicMods 目录', 'ok'); await refreshAll(); }
+      catch { /* 已提示 */ }
+      return;
+    }
+
     if (t.closest('#cnsInstall')) { await installPrereq('cns'); return; }
+    if (t.closest('#atoolInstall')) { await installPrereq('atool'); return; }
 
     // UE4SS：走 GitHub 直下，不需要用户在任何网页上点按钮
     if (t.closest('#ue4ssInstall')) { await installUe4ss(); return; }
@@ -4142,6 +4556,15 @@ function bindEvents() {
       return;
     }
 
+    // ATOOL 的备用入口（同上）。落到 LogicMods 由安装器的结构规则负责，这里不用额外指定落点。
+    if (t.closest('#atoolPickLocal')) {
+      try {
+        const p = await call(window.api.install.pickArchive(), { silent: true });
+        if (p) await openInstallDrawer(p, { name: 'Animation Tool (ATOOL)', modId: 1662, isPrereq: true }, { auto: true });
+      } catch { /* 已提示 */ }
+      return;
+    }
+
     const nexusBtn = t.closest('[data-nexus]');
     if (nexusBtn) { openNexusDrawer(Number(nexusBtn.dataset.nexus)); return; }
 
@@ -4157,6 +4580,14 @@ function bindEvents() {
 
     const sb = t.closest('[data-showbuiltin]');
     if (sb) { state.showBuiltin = !state.showBuiltin; renderInstalled(); return; }
+
+    // 已安装页排序切换（默认「安装时间」倒序）
+    const isort = t.closest('[data-isort]');
+    if (isort) {
+      state.installedSort = isort.dataset.isort || 'time';
+      renderInstalled();
+      return;
+    }
 
     const lang = t.closest('[data-lang]');
     if (lang) {
@@ -4184,6 +4615,34 @@ function bindEvents() {
         game: 'stellarblade', modId, fileId: null,
         key: null, expires: null, userId: null
       });
+      return;
+    }
+
+    // 整组开关（合并卡片上的那个小开关 / 抽屉底部 —— 一个 Mod 装了多个文件时作用于全部）
+    const gtg = t.closest('[data-gtoggle]');
+    if (gtg) { e.stopPropagation(); await doToggleGroup(gtg.dataset.gtoggle); return; }
+
+    // 卸载整组（抽屉底部「卸载这个 Mod」）
+    const gu2 = t.closest('[data-guninstall]');
+    if (gu2) { await doUninstallGroup(gu2.dataset.guninstall); return; }
+
+    // 抽屉里「已安装的文件」每行的 启用/禁用、卸载 —— 只作用于**这一个文件**
+    const iidBtn = t.closest('[data-iid]');
+    if (iidBtn) {
+      e.stopPropagation();
+      const iid = iidBtn.dataset.iid;
+      const act = iidBtn.dataset.iact;
+      const it = (state.installed || []).find(x => x.id === iid);
+      if (act === 'toggle' && it) {
+        try {
+          await call(window.api.mods.setEnabled(iid, !it.enabled));
+          toast(it.enabled ? '已禁用（文件重命名为 .disabled）' : '已启用', 'ok');
+          await refreshAll();
+          reopenInstalledDrawer();
+        } catch { /* 已提示 */ }
+      } else if (act === 'uninstall') {
+        await doUninstall(iid, { keepDrawer: true });
+      }
       return;
     }
 
@@ -4263,6 +4722,14 @@ function bindEvents() {
     const undislike = t.closest('[data-undislike]');
     if (undislike) { await undislikeMod(undislike.dataset.undislike); return; }
 
+    // 「喜欢」👍 —— 与 👎 同一位置（封面右下角）、同为一对开关。
+    // 同样必须抢在 `.card` 之前 return：否则点图标会连带打开 Mod 详情抽屉。
+    const like = t.closest('[data-like]');
+    if (like) { await likeMod(like.dataset.like); return; }
+
+    const unlike = t.closest('[data-unlike]');
+    if (unlike) { await unlikeMod(unlike.dataset.unlike); return; }
+
     const dlAdd = t.closest('[data-dl-add]');
     if (dlAdd) {
       const modId = Number(dlAdd.dataset.dlAdd);
@@ -4331,9 +4798,10 @@ function bindEvents() {
       // 多选模式：点卡片 = 勾选/取消，不弹详情抽屉（要下载的那颗按钮仍单独生效）
       if (state.sel.on && card.dataset.modid) { selToggle(card.dataset.modid); return; }
       if (card.dataset.modid) openNexusDrawer(Number(card.dataset.modid));
-      else if (card.dataset.id) {
-        const m = state.installed.find(x => x.id === card.dataset.id);
-        if (m) openInstalledDrawer(m);
+      else if (card.dataset.gid) {
+        // 已安装页：一张卡 = 一个 Mod（同 Mod ID 的多个文件已合并），点开看它装了哪几个文件
+        const g = groupOf(card.dataset.gid);
+        if (g) openInstalledDrawer(g);
       }
       return;
     }
@@ -4586,7 +5054,89 @@ async function doToggle(id) {
   } catch { /* 已提示 */ }
 }
 
-async function doUninstall(id) {
+/**
+ * 合并卡片上那颗小开关 / 抽屉底部那颗「全部启用·全部禁用」——
+ * 作用于**这个 Mod 当前已安装的全部文件**。
+ *
+ * 三态语义（与 `installedCard()` 里那个 `sw` 的 `part` 类对应）：
+ *   · 全部禁用（`enabled=false, partial=false`）→ 全部启用
+ *   · 部分启用（`partial=true`）              → 全部启用（补齐剩下的）
+ *   · 全部启用（`enabled=true, partial=false`）→ 全部禁用
+ * 所以判定必须是 `g.partial || !g.enabled`，**不能只写 `!g.enabled`** ——
+ * 部分启用时 `enabled` 已经是 true，会错成「全部禁用」，而按钮的 tooltip
+ * 明写着「点击全部启用」，点了做反事最难排查。
+ */
+async function doToggleGroup(key) {
+  const g = groupOf(key);
+  if (!g) return;
+  // 前置组件不吃开关（主进程会抛「前置组件不支持禁用」）
+  const items = (g.items || []).filter(m => m.kind !== 'prereq');
+  if (!items.length) return;
+  const target = g.partial || !g.enabled;
+  try {
+    for (const m of items) {
+      if (!!m.enabled !== target) await call(window.api.mods.setEnabled(m.id, target));
+    }
+    toast(target ? `已启用 ${items.length} 个文件` : `已禁用 ${items.length} 个文件`, 'ok');
+    await refreshAll();
+  } catch { /* call() 已提示 */ }
+  reopenInstalledDrawer(key);
+}
+
+/** 逐个卸载整个 Mod —— 组里每一文件各调一次 `mods:uninstall`（主进程按单条 id 定位） */
+async function doUninstallGroup(key) {
+  const g = groupOf(key);
+  if (!g) return;
+  const items = (g.items || []).filter(m => m.kind !== 'prereq');
+  if (!items.length) return;
+  const files = items.flatMap(m => m.files || []);
+  const n = items.length;
+  const okDel = confirm(
+    `确定卸载「${g.name}」吗？\n\n` +
+    (n > 1 ? `这个 Mod 装了 ${n} 个文件。` : '') +
+    `将被移除的文件（${files.length} 个）：\n` +
+    files.slice(0, 8).map(f => '  · ' + f.name).join('\n') +
+    (files.length > 8 ? `\n  … 等共 ${files.length} 个` : '') +
+    `\n\n文件不会直接删除，而是移动到：\n  data\\backup\\uninstalled\\\n可以手动找回。`
+  );
+  if (!okDel) return;
+  let restored = [];
+  let failed = 0;
+  for (const m of items) {
+    try {
+      const r = await call(window.api.mods.uninstall(m.id, { purge: false }));
+      if (r && r.restored) restored = restored.concat(r.restored);
+    } catch { failed++; }   // 单条失败不中断，最后统一报数
+  }
+  const extra = restored.length ? `，并还原了 ${restored.length} 个被覆盖的原文件` : '';
+  // ⚠️ 两条 toast 各自**单独成形**（别把成败拼进同一句）：
+  //    「已卸载 2 / 3 个文件，有 1 个失败」这种多数字混拼在 i18n 里
+  //    只能靠形状键整句登记，语序一变就拼不回去。拆开各自成句最省事。
+  if (failed) toast(`已卸载 ${n - failed} / ${n} 个文件，有 ${failed} 个失败`, 'err');
+  else toast(`已卸载 ${n} 个文件${extra}，文件已备份到 data\\backup\\uninstalled\\`, 'ok');
+  closeDrawer();
+  await refreshAll();
+}
+
+/**
+ * 逐文件操作之后，如果抽屉还开在同一组上就**重建**它，
+ * 让按钮文案（启用/禁用）、状态行、文件条数立刻反映新状态。
+ * 组已经不存在（最后一个文件被卸掉）就顺手关上。
+ */
+function reopenInstalledDrawer(key) {
+  const d = state.drawer;
+  if (!d || !d.open || d.kind !== 'installed') return;
+  const want = key || (d.mod && d.mod.key);
+  const g = want ? groupOf(want) : null;
+  if (g) openInstalledDrawer(g); else closeDrawer();
+}
+
+/**
+ * 卸载一条 installed 记录。
+ * `keepDrawer`：逐文件卸载时用 —— 关掉再重开会让用户「点着点着抽屉没了」，
+ * 所以此时不关抽屉；全部卸完 `reopenInstalledDrawer()` 会自己收尾。
+ */
+async function doUninstall(id, { keepDrawer = false } = {}) {
   const m = state.installed.find(x => x.id === id);
   if (!m) return;
   const okDel = confirm(
@@ -4602,8 +5152,9 @@ async function doUninstall(id) {
     const extra = (r.restored && r.restored.length)
       ? `，并还原了 ${r.restored.length} 个被覆盖的原文件` : '';
     toast(`已卸载${extra}，文件已备份到 ${r.backupDir}`, 'ok');
-    closeDrawer();
+    if (!keepDrawer) closeDrawer();
     await refreshAll();
+    if (keepDrawer) reopenInstalledDrawer();
   } catch { /* 已提示 */ }
 }
 
@@ -4738,6 +5289,8 @@ window.__refreshAll = refreshAll;
 
   // 黑名单要**先拿到** —— 否则首屏会把用户已经拉黑的 mod 又显示一遍（等于白拉黑）
   await loadBlacklist();
+  // 「喜欢」同理：要先拿到，首屏的卡片才能画成已经点亮的 👍（否则点一下才变）
+  await loadFavorites();
 
   await refreshAll();
 

@@ -107,7 +107,9 @@ console.log('\n[3] 持久化 + 移出 + 清空');
 // ================================================================ 2. 前端筛选口径（跑真身）
 
 console.log('\n[4] isLocalFiltering：前端筛选口径（从 app.js 抽真身跑）');
-const code = fs.readFileSync(APP, 'utf8');
+// ⚠️ 工作区 app.js 是 CRLF，必须归一成 LF —— 否则断言里写死的 `\n`
+// 永远匹配不上（`\r` 卡在中间），整段静默变「缺失」。
+const code = fs.readFileSync(APP, 'utf8').replace(/\r\n/g, '\n');
 {
   const m = code.match(/function isLocalFiltering\([\s\S]*?\n}/);
   t('app.js 里能找到 isLocalFiltering 定义', () => !!m || '找不到');
@@ -184,7 +186,13 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
   // ---- 卡片按钮 ----
   t('browseCard 有「不喜欢」按钮（data-dislike）', () => /data-dislike="\$\{n\.modId\}"/.test(code) || '缺失');
   t('browseCard 有「移出黑名单」按钮（data-undislike）', () => /data-undislike="\$\{n\.modId\}"/.test(code) || '缺失');
-  t('卡片按 state.browse.blocked 决定显示哪个按钮', () => /isBlocked[\s\S]{0,80}state\.browse\.blocked\.has/.test(code) || '缺失');
+  // 本轮把「🚫 不喜欢」文字按钮换成了 👍/👎 两只纯图标按钮（voteHtml），
+  // 但「只有已被拉黑的卡片才给移除入口」这条口径没变 —— 断言跟着改看新函数。
+  t('卡片按 state.browse.blocked 决定显示哪只「不喜欢」按钮', () => {
+    const i = code.indexOf('const blocked = state.browse.blocked.has(String(n.modId));');
+    const pair = /blocked \? `data-undislike="\$\{n\.modId\}"` : `data-dislike="\$\{n\.modId\}"`/;
+    return (i > 0 && pair.test(code)) || '缺失';
+  });
   t('CSS 有 .btn.no（低调的次要按钮）', () => /\.btn\.no\{/.test(css) || '缺失');
 
   // ---- 点击委托：必须排在 .card 之前 ----
@@ -208,11 +216,14 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
   t('loadBrowse 的过滤走 applyLocalFilter', () => /const kept = await applyLocalFilter\(page\.items\)/.test(code) || '缺失');
 
   // ---- 「只看黑名单」走本地记录 ----
-  t('loadBrowse 开头分支到 loadBlockedList', () => /if \(b\.blockMode === 'only'\) return loadBlockedList\(reset\)/.test(code) || '缺失');
-  t('loadBlockedList 直接读本地黑名单（零网络请求）', () =>
-    /async function loadBlockedList[\s\S]{0,900}window\.api\.blacklist\.list\(\)/.test(code) || '缺失');
-  t('loadBlockedList 里没有翻页（一次给全，done=true）', () =>
-    /async function loadBlockedList[\s\S]{0,1600}b\.done = true/.test(code) || '缺失');
+  // 本轮把 loadBlockedList 泛化成了 loadLocalList(reset, kind)：黑名单与「只看喜欢」
+  // 共用同一条纯本地视图路径，断言跟着看这个函数。
+  t('loadBrowse 开头分支到本地视图（黑名单 / 只看喜欢）', () =>
+    /if \(b\.onlyLiked\) return loadLocalList\(reset, 'liked'\)[\s\S]{0,120}if \(b\.blockMode === 'only'\) return loadLocalList\(reset, 'blocked'\)/.test(code) || '缺失');
+  t('loadLocalList 直接读本地记录（零网络请求）', () =>
+    /async function loadLocalList[\s\S]{0,1000}window\.api\.(blacklist|favorites)\.list\(\)/.test(code) || '缺失');
+  t('本地视图一次给全（done=true，没有翻页）', () =>
+    /async function loadLocalList[\s\S]{0,2000}b\.done = true/.test(code) || '缺失');
   t('「只看黑名单」空态有专门文案', () => /黑名单是空的/.test(code) || '缺失');
 
   // ---- 立刻生效 ----
@@ -224,9 +235,10 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
     /async function undislikeMod[\s\S]{0,400}b\.blocked\.delete\(id\)[\s\S]{0,900}window\.api\.blacklist\.remove/.test(code) || '缺失');
   t('黑名单状态同步到 tabs（updateBlockTabs）', () => /function updateBlockTabs\(\)/.test(code) || '缺失');
   t('#blockTabs 点击切换模式并重载', () =>
-    /#blockTabs'\)\.addEventListener\('click'[\s\S]{0,400}loadBrowse\(true\)/.test(code) || '缺失');
-  t('启动时先拉黑名单再刷新（否则首屏会把拉黑的又显示一遍）', () =>
-    /await loadBlacklist\(\);\s*\n\s*await refreshAll\(\)/.test(code) || '缺失');
+    // 窗口放宽到 700：本轮在切模式与重载之间插了「关掉只看喜欢」的互斥处理与注释
+    /#blockTabs'\)\.addEventListener\('click'[\s\S]{0,700}loadBrowse\(true\)/.test(code) || '缺失');
+  t('启动时先拉黑名单与「喜欢」再刷新（否则首屏画不对）', () =>
+    /await loadBlacklist\(\);[\s\S]{0,200}await loadFavorites\(\);[\s\S]{0,160}await refreshAll\(\);/.test(code) || '缺失');
 
   // ---- 主进程接线 ----
   t('preload 暴露 blacklist.list/ids/add/remove', () =>
