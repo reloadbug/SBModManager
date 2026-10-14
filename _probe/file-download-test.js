@@ -37,7 +37,7 @@ const end = code.indexOf('\n}\n', start);
 assert.ok(end > start, '应能找到 renderFiles 的结束花括号');
 const renderSrc = code.slice(start, end + 3);
 
-/** 搭一个够真的假 DOM：只有 #filesBox 和底部那颗 data-dl-add 按钮 */
+/** 搭一个够真的假 DOM：只有 #filesBox 和那颗 data-dl-add 按钮 */
 function makeSandbox(files, mod, footBtn) {
   const box = { innerHTML: '', textContent: '' };
   const ctx = {
@@ -45,7 +45,9 @@ function makeSandbox(files, mod, footBtn) {
     esc: (s) => String(s == null ? '' : s),
     fmtSize: (n) => (Number(n) || 0) + 'B',
     state: { drawer: { files, mod } },
-    document: { querySelector: (sel) => (sel === '#dFoot [data-dl-add]' ? footBtn : null) },
+    // ⚠️ 选择器必须与 renderFiles 里的一字不差：那颗按钮现在可能在**内容区顶部**
+    //    `#dActions`（浏览页 Mod 详情）或底部固定栏 `#dFoot`（已安装 / 下载详情）。
+    document: { querySelector: (sel) => (sel === '#dActions [data-dl-add], #dFoot [data-dl-add]' ? footBtn : null) },
     box
   };
   vm.createContext(ctx);

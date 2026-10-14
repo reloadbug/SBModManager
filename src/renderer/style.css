@@ -165,6 +165,13 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .langsw button{padding:4px 12px;font-size:11px;cursor:pointer;color:var(--dim);background:none;border:none;font-family:inherit}
 .langsw button.on{background:var(--accent);color:#1A1206;font-weight:600}
 .dfoot{padding:11px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex:none;flex-wrap:wrap}
+/* 浏览页 Mod 详情把操作按钮放进了内容区顶部，底部栏就是空的 —— 空的别占一条高度 */
+.dfoot:empty{display:none}
+/* 内容区里的操作按钮行（浏览页 Mod 详情：图片 / 文件之后，不滚动就能点） */
+.dactrow{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+/* 浏览页 Mod 详情的文件列表：多文件 mod（.pak/.ucas/.utoc 各一版）能列十几行，
+   不封顶会把下面的操作按钮顶出屏幕 —— 「尽量不滚动就能点」就落空了。 */
+.nxfiles{max-height:240px;overflow:auto;padding-right:4px}
 .filelist{font-family:Consolas,monospace;font-size:11px;color:var(--dim);line-height:1.9;word-break:break-all}
 
 /* 已安装页工具条：左边排序切换，右边「显示 UE4SS 内置脚本」按钮（推到最右） */
@@ -394,7 +401,8 @@ body.sel .cover .tag{left:38px}
 .cfl-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:7px 10px;
   border:1px solid var(--border);background:var(--panel2);border-radius:7px;cursor:pointer;
   font-family:inherit;transition:.13s}
-/* 行内两个动作：定位 / 对比。塞在右下角，别把归属信息挤掉 */
+/* 行内动作区：对比按钮搬去了列表顶部的 .cfl-cmpbar（同一组 mod 只出一个入口），
+   现在这里通常只剩「定位」一个按钮。 */
 .cfl-act{display:flex;gap:5px;align-self:flex-end;margin-top:3px}
 .cfl-btn{font-family:inherit;font-size:10px;padding:2px 8px;border-radius:5px;cursor:pointer;
   border:1px solid var(--border2);background:var(--panel3);color:var(--dim);transition:.13s}
@@ -411,6 +419,18 @@ body.sel .cover .tag{left:38px}
 .cfl-s.ok{color:var(--ok)}
 .cfl-s.warn{color:var(--accent)}
 .cfl-more{font-size:10.5px;color:var(--dim2);padding:3px 2px}
+/* 顶部对比入口（用户 2026-10-14：「这 3 个文件是一组 mod，只显示一个对比框即可」）：
+   同一组 mod 的 N 个文件原来各挂一个一模一样的「对比」按钮，现在合并成这里的一个，
+   按钮上标出涉及几个文件。
+   `position:sticky` —— 清单本身有 `max-height:300px` 会自己滚，粘住顶部才不至于
+   滚两下入口就跑没影（用户的要求就是「尽量不滚动就能点」）。 */
+.cfl-cmpbar{position:sticky;top:0;z-index:1;background:var(--panel);
+  display:flex;flex-wrap:wrap;gap:6px;margin-bottom:7px;padding-bottom:8px;
+  border-bottom:1px dashed var(--border)}
+/* 按钮里是三个 span（对比 / 名字 / 文件数）—— 让它们基线上对齐、别换行 */
+.cfl-cmpbar .cfl-btn.cmp{display:inline-flex;align-items:baseline;gap:4px;
+  font-size:11px;padding:4px 10px;max-width:100%}
+.cfl-cmpbar .cfl-btn.cmp span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ---- 覆盖对比：要装的新 Mod vs 已装的旧 Mod（左右并列）---- */
 .cmpgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}

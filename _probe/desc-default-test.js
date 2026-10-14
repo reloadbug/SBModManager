@@ -115,7 +115,10 @@ t('English 页显示原文', () => {
 console.log('\n=== 静态接线断言（防回归）===');
 t('nexus 抽屉初始渲染走 descBoxHtml（不再手写 if/else）', () => /id="descBox">\$\{descBoxHtml\(state\.drawer\)\}/.test(code));
 t('语言切换也走 descBoxHtml', () => /\$\('#descBox'\)\.innerHTML = descBoxHtml\(d\);/.test(code));
-t('openNexusDrawer 在渲染前已把 mod 放进 state.drawer', () => /state\.drawer\.mod = m;[\s\S]{0,800}descBoxHtml\(state\.drawer\)/.test(code));
+// ⚠️ 窗口 1600 而不是 800：`#dBody` 里现在会先铺「图集 → 文件 → 操作按钮」，
+//    从 `state.drawer.mod = m;` 到 `descBoxHtml()` 之间的模板变长了。
+//    这条断言要保的是**先后顺序**（先落 state 再渲染），别被字符数绑死。
+t('openNexusDrawer 在渲染前已把 mod 放进 state.drawer', () => /state\.drawer\.mod = m;[\s\S]{0,1600}descBoxHtml\(state\.drawer\)/.test(code));
 t('翻译提示只有一处定义（不在代码里散落硬编码）', () => (code.match(/点下方按钮把说明翻译成中文/g) || []).length === 1);
 t('语言页签带 title 说明各自含义', () => /data-lang="zh" title="翻译成中文后显示在这里"/.test(code) && /data-lang="en" title="Nexus 上的原文（无论英文中文）"/.test(code));
 

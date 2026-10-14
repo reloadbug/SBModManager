@@ -141,45 +141,70 @@ function closeModal() { $('#modal').classList.remove('on'); }
 let cmpCtx = null;
 
 /**
+ * 对比框右侧「要装进去（新）」的那份 meta。
+ *
+ * ⚠️ **由 `conflictListHtml(..., { incoming })` 的调用方在渲染冲突清单时写入** ——
+ *    那一刻上下文（下载任务的 `t.meta` / 安装计划的 `install.meta`）是明确的。
+ *
+ *    曾经这里靠 `state.modalTask` 去取：可它是**任务 id 字符串**而不是任务对象，
+ *    `st.meta` 永远是 undefined；另一个候选 `state.cmpIncoming` 则**从未被赋值过**。
+ *    于是 `meta` 恒为 `{}` —— 对比框右侧整块显示成「Mod #? / 版本 — / 作者 — / 没有封面图」
+ *    （用户 2026-10-14 的截图）。改成显式传参，不再事后猜 state。
+ */
+let cmpIncomingMeta = {};
+
+/**
  * 「和已装的那个 Mod 做对比」—— 用户要求：
  * > 这种需要覆盖的要提供对比按钮，并列显示对应的已安装模组的信息，尤其是图片。
  *
  * 左右两栏并列，每栏给：封面/图集、名字、版本、作者、Mod ID、文件清单。
  *   · **左边（旧）**：已装着的那个 Mod —— 按 modId 从主进程拉图集（本地有缓存就是瞬时）
- *   · **右边（新）**：正要装进去的这个 —— 用任务 meta 里已有的图
+ *   · **右边（新）**：正要装进去的这个 —— 先用 meta 里已有的图，meta 里没有就按 modId 去拉
+ *
+ * 用户 2026-10-14 补充：「其实主要是比较截图」—— 所以两侧都会**主动拉图集**，
+ * 只给一张封面是不够比的。
  *
  * @param {number} oldModId 已装 Mod 的 Nexus modId
  * @param {string} [oldName] 显示名（主进程已经给了，省一次查询）
+ * @param {{version?:string,author?:string,pictureUrl?:string}} [oldInfo]
+ *        已装那个 mod 的版本 / 作者 / 封面 —— 来自 installFlow 的 `owners`，
+ *        有了它左栏第一帧就是完整的，不用等图集拉回来（用户说「显示不完整」就是指这个）。
  */
-async function openCmpModal(oldModId, oldName) {
-  const st = state.modalTask || {};
-  const meta = (state.cmpIncoming) || st.meta || {};
+async function openCmpModal(oldModId, oldName, oldInfo = {}) {
+  const meta = cmpIncomingMeta || {};
   const incomingImgs = (meta.images || []).filter(x => x && x.localUrl);
 
   const faceOf = (local) => local
     ? `<img class="cmp-face" src="${esc(local)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cmp-face ph',textContent:'封面加载失败'}))">`
     : `<div class="cmp-face ph">没有封面图</div>`;
 
+  const kv = (k, v) => v
+    ? `<div class="cmp-kv"><b>${esc(k)}</b><span>${esc(String(v))}</span></div>`
+    : `<div class="cmp-kv"><b>${esc(k)}</b><span>—</span></div>`;
+
+  // 两侧都先摆「名字 + Mod ID + 版本 + 作者 + 封面」，图集/文件清单随后异步补进来。
   openModal('覆盖对比：已装的 vs 要装的', `
-    <div class="cmpwrap cmpwrap">
+    <div class="cmpwrap">
       <div class="cmpgrid">
         <div class="cmpcol old">
           <h4>已装着（会被替换掉）</h4>
           <div class="cmp-body">
-            <div id="cmpOldFace">${faceOf(meta.__oldCover || '')}</div>
+            <div id="cmpOldFace">${faceOf(oldInfo.pictureUrl || '')}</div>
             <div class="cmp-name">${esc(oldName || 'Mod #' + oldModId)}</div>
-            <div class="cmp-kv"><b>Mod ID</b><span>#${esc(String(oldModId))}</span></div>
+            ${kv('Mod ID', '#' + oldModId)}
+            ${kv('版本', verText(oldInfo.version))}
+            ${kv('作者', oldInfo.author)}
             <div class="cmp-files" id="cmpOldFiles"><span class="spin"></span> 正在读取已装 Mod 的文件清单…</div>
           </div>
         </div>
         <div class="cmpcol new">
           <h4>要装进去（新）</h4>
           <div class="cmp-body">
-            ${faceOf(incomingImgs[0] ? incomingImgs[0].localUrl : (meta.image || meta.pictureUrl || ''))}
+            <div id="cmpNewFace">${faceOf(incomingImgs[0] ? incomingImgs[0].localUrl : (meta.image || meta.pictureUrl || ''))}</div>
             <div class="cmp-name">${esc(meta.name || 'Mod #' + (meta.modId || '?'))}</div>
-            <div class="cmp-kv"><b>Mod ID</b><span>#${esc(String(meta.modId || '?'))}</span></div>
-            <div class="cmp-kv"><b>版本</b><span>${esc(verText(meta.version) || '—')}</span></div>
-            <div class="cmp-kv"><b>作者</b><span>${esc(meta.author || '—')}</span></div>
+            ${kv('Mod ID', meta.modId ? '#' + meta.modId : '')}
+            ${kv('版本', verText(meta.version))}
+            ${kv('作者', meta.author)}
             <div class="cmp-files">${(meta.fileName ? esc(meta.fileName) : '（文件清单见下载卡片）')}</div>
           </div>
         </div>
@@ -200,13 +225,11 @@ async function openCmpModal(oldModId, oldName) {
   try {
     const imgs = await call(window.api.modImages(oldModId, null, undefined), { silent: true }) || [];
     const faceBox = document.getElementById('cmpOldFace');
-    if (faceBox && !document.getElementById('modal').classList.contains('on') === false) {
-      if (imgs.length) {
-        faceBox.innerHTML = faceOf(imgs[0].localUrl)
-          + (imgs.length > 1
-            ? `<div class="lbl" style="margin-top:6px">图集 · ${imgs.length} 张</div>${imageGrid(imgs)}`
-            : '');
-      }
+    if (faceBox && $('#modal') && $('#modal').classList.contains('on') && imgs.length) {
+      faceBox.innerHTML = faceOf(imgs[0].localUrl)
+        + (imgs.length > 1
+          ? `<div class="lbl" style="margin-top:6px">图集 · ${imgs.length} 张</div>${imageGrid(imgs)}`
+          : '');
     }
   } catch { /* 拿不到图就保持「没有封面图」 */ }
 
@@ -219,6 +242,22 @@ async function openCmpModal(oldModId, oldName) {
         : '（这条记录没有文件清单）';
     }
   } catch { /* 忽略 */ }
+
+  // 新 Mod 的图集 —— meta 里通常只有一张封面，而用户看对比**主要就是看截图**，
+  // 所以按 modId 再正儿八经拉一次图集（走同一条本地缓存，拉过一次就是瞬时的）。
+  const newModId = Number(meta.modId) || 0;
+  if (newModId && !incomingImgs.length) {
+    try {
+      const imgs = await call(window.api.modImages(newModId, null, undefined), { silent: true }) || [];
+      const faceBox = document.getElementById('cmpNewFace');
+      if (faceBox && $('#modal') && $('#modal').classList.contains('on') && imgs.length) {
+        faceBox.innerHTML = faceOf(imgs[0].localUrl)
+          + (imgs.length > 1
+            ? `<div class="lbl" style="margin-top:6px">图集 · ${imgs.length} 张</div>${imageGrid(imgs)}`
+            : '');
+      }
+    } catch { /* 忽略 */ }
+  }
 }
 
 /* ---------------- 导航 ---------------- */
@@ -597,6 +636,56 @@ function taskWhy(t) {
  */
 function conflictListHtml(d, opts = {}) {
   if (!d || !d.items || !d.items.length) return '';
+  // 「对比」按钮要用「要装进去的那份」的 meta（名字 / 图集 / 版本 / 作者）——
+  // 由调用方从当前上下文显式给（下载任务是 t.meta，安装确认是 plan 对应的 install.meta）。
+  // ⚠️ 别在这里去猜 state：`state.modalTask` 存的是**任务 id 字符串**不是任务对象，
+  //    曾经照着它取 `.meta` 永远拿到 undefined，对比框右侧整块都是「Mod #? / —」。
+  if (opts.incoming) cmpIncomingMeta = opts.incoming;
+
+  // ---- 对比入口：按**目标 mod** 去重 ----
+  // 用户 2026-10-14：「这 3 个文件是一组 mod，只显示一个对比框即可，信息里面罗列 3 个文件即可」。
+  // 同一组 mod 的 N 个文件（.pak / .ucas / .utoc）原来各挂一个**一模一样**的「对比」按钮
+  // —— 3 行 3 个按钮，点哪个都是同一个对比框。改成：按目标去重、在列表顶部出一个入口，
+  // 按钮上标出它会替换掉几个文件。行内不再放对比按钮。
+  const tgtOf = (x) => {
+    const owners = x.owners || (x.owner ? [x.owner] : []);
+    return owners.filter(o => !o.isSelf)[0] || owners[0] || null;
+  };
+  const tgtMap = new Map();
+  for (const x of d.items) {
+    const tg = tgtOf(x);
+    if (!tg || !tg.modId) continue;
+    const k = String(tg.modId);
+    if (!tgtMap.has(k)) {
+      // 顺手把**已装那个 mod** 的版本 / 作者 / 封面一起带上（installFlow 里已经给了）——
+      // 对比框左栏因此能立刻画出封面与版本作者，不用等按 modId 拉图回来
+      // （用户 2026-10-14：「目前对比的功能显示不完整」，左栏只报了一个名字）。
+      tgtMap.set(k, {
+        modId: tg.modId, name: tg.name || '', n: 0,
+        version: tg.version || '', author: tg.author || '', pictureUrl: tg.pictureUrl || ''
+      });
+    }
+    tgtMap.get(k).n++;
+  }
+  const cmpBar = tgtMap.size
+    ? `<div class="cfl-cmpbar">${[...tgtMap.values()].map(g => {
+        const label = g.name || ('Mod #' + g.modId);
+        // ⚠️ 文案拆成**三个独立的文本节点**，别拼成一句：i18n 是按文本节点整串查表的。
+        //    · `<span>⇄ 对比</span>` —— 字典里有这条原文，能整串命中翻掉
+        //    · `<span data-i18n-skip>` —— Mod 名是动态数据，不能被片段替换啃
+        //    · `<span>（3 个文件）</span>` —— 靠字典里已有的「个文件」片段剥数字翻
+        //    拼成一句「⇄ 与「X」对比（3 个文件）」的话整串查不到、片段替换又因
+        //    残留中文被拒，非中文界面会整句留在中文。
+        return `<button class="cfl-btn cmp" data-cmp="${esc(String(g.modId))}" data-cmp-name="${esc(g.name)}"
+          data-cmp-ver="${esc(String(g.version || ''))}" data-cmp-author="${esc(g.author || '')}"
+          data-cmp-pic="${esc(g.pictureUrl || '')}"
+          title="和「${esc(label)}」做左右对比（图片 / 版本 / 作者 / 文件）"
+          ><span>⇄ 对比</span><span data-i18n-skip>「${esc(clip(label, 20))}」</span>${
+            g.n > 1 ? `<span>（${g.n} 个文件）</span>` : ''
+          }</button>`;
+      }).join('')}</div>`
+    : '';
+
   const limit = opts.compact ? 3 : d.items.length;
   const rows = d.items.slice(0, limit).map(x => {
     // 归属：说清「原来是谁装的」「是不是同一个 mod」—— 用户明确要求的。
@@ -610,14 +699,6 @@ function conflictListHtml(d, opts = {}) {
       if (!v) return '';
       return (/^v/i.test(v) ? ' ' : ' v') + esc(v);
     };
-    // 「对比」按钮：有登记者才给（不是 mod 装的没东西可对比）。
-    // 有多个登记者时只挂第一个 non-self 的 modId —— 对比框是「新 vs 旧」，
-    // 一次比一个；剩下几个在对比框里会列出来。没有 other 时退回 owners[0]（自己）。
-    const cmpTarget = (others[0] || owners[0] || null);
-    const cmpBtn = cmpTarget && cmpTarget.modId
-      ? `<button class="cfl-btn cmp" data-cmp="${esc(String(cmpTarget.modId))}" data-cmp-name="${esc(cmpTarget.name || '')}"
-           title="和「${esc(cmpTarget.name || '这个 Mod')}」做左右对比（图片 / 版本 / 作者 / 文件）">⇄ 对比</button>`
-      : '';
     let own;
     if (!owners.length) {
       own = `<em class="tag gray">不是 mod 装的</em><span>游戏原文件（或手动放进去的）</span>`;
@@ -642,14 +723,13 @@ function conflictListHtml(d, opts = {}) {
         <span class="cfl-o">${own}</span>
         <span class="cfl-act">
           <button class="cfl-btn" data-reveal-path="${esc(x.path)}" title="在资源管理器中显示">定位</button>
-          ${cmpBtn}
         </span>
       </div>`;
   }).join('');
   const more = d.items.length > limit
     ? `<div class="cfl-more">还有 ${d.items.length - limit} 个没显示（共 ${d.total} 个）</div>`
     : '';
-  return `<div class="cflist">${rows}${more}</div>`;
+  return `<div class="cflist">${cmpBar}${rows}${more}</div>`;
 }
 
 /** 从任务里取「会被覆盖的文件」清单 */
@@ -2050,8 +2130,22 @@ async function openNexusDrawer(modId) {
     state.drawer.mod = m;
     $('#dTitle').textContent = m.name;
     $('#dSub').textContent = [m.version ? 'v' + m.version : '', m.author, m.category].filter(Boolean).join(' · ');
+    // 🔴 内容顺序（2026-10-14 用户要求）：
+    // 「文件信息、操作按钮都放到顶部，尽量不滚动就能点；图片依然在最顶端，然后说文件信息」。
+    // 所以图集永远第一个，紧接着就是**文件信息 + 操作按钮**，说明 / 来源 / 信息这些
+    // 「看过一次就不用再看」的元数据一律往下排。
+    //
+    // ⚠️ 操作按钮不再是底部固定栏（`#dFoot`）——「下载主文件」是最高频的动作，
+    //    放在要滚到底才看得见的地方不合理。改挂 `#dActions`（内容区顶部）。
+    //    `#dFoot` 在这个抽屉里清空（CSS `.dfoot:empty` 不占位），
+    //    其余两个抽屉（已安装 / 下载详情）仍在底部用它。
     $('#dBody').innerHTML = `
       <div id="galleryBox">${m.image ? `<img class="hero" src="${esc(m.image)}" alt="" onerror="this.style.display='none'">` : ''}</div>
+
+      <div class="lbl">文件</div>
+      <div id="filesBox" class="txt nxfiles" style="color:var(--dim2)">正在获取文件列表…</div>
+      <div id="dActions" class="dactrow"></div>
+
       <div class="lbl">说明</div>
       <div class="langsw">
         <button class="${state.drawer.lang === 'zh' ? 'on' : ''}" data-lang="zh" title="翻译成中文后显示在这里">中文</button>
@@ -2072,11 +2166,9 @@ async function openNexusDrawer(modId) {
       <div class="kv"><span>点赞数</span><span>${m.endorsements.toLocaleString()}</span></div>
       <div class="kv"><span>发布时间</span><span>${fmtDate(m.createdAt)}</span></div>
       <div class="kv"><span>更新时间</span><span>${fmtDate(m.updatedAt)}</span></div>
-
-      <div class="lbl">文件</div>
-      <div id="filesBox" class="txt" style="color:var(--dim2)">正在获取文件列表…</div>
     `;
-    $('#dFoot').innerHTML = `
+    $('#dFoot').innerHTML = '';                       // 这个抽屉不用底部栏
+    $('#dActions').innerHTML = `
       <button class="btn" data-openurl="${esc(m.url)}">在浏览器打开</button>
       <button class="btn" data-gallery="${m.modId}">刷新图集</button>
       <button class="btn" data-install="${m.modId}">手动安装</button>
@@ -2121,7 +2213,9 @@ async function applyDrawerLocalState(modId) {
   if (state.drawer.localKey === key) return;
   state.drawer.localKey = key;
 
-  const foot = $('#dFoot');
+  // ⚠️ 操作按钮所在容器**按抽屉类型分**：浏览页 Mod 详情把它们放在内容区顶部
+  //    （`#dActions`，图片下方 —— 不滚动就能点），已安装 / 下载详情仍在底部固定栏。
+  const foot = state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot');
   if (!foot || !st) return;
   const openBtn = `<button class="btn" data-openurl="${esc(cur.url)}">在浏览器打开</button>`;
   if (st.act === 'install') {
@@ -2172,8 +2266,9 @@ function renderFiles(showArchived, modId) {
 
   // 底部那颗「加入下载队列」在文件列表到位后改口径：多文件 mod 直接对准
   // 主文件，用户不用再到 Nexus 页面上从一堆按钮里挑。
+  // ⚠️ 它可能在内容区顶部（#dActions，浏览页 Mod 详情）或底部固定栏（#dFoot，其余抽屉）。
   const main = list.find(f => f.primary) || list[0];
-  const footBtn = document.querySelector('#dFoot [data-dl-add]');
+  const footBtn = document.querySelector('#dActions [data-dl-add], #dFoot [data-dl-add]');
   if (main && footBtn && state.drawer.mod && Number(state.drawer.mod.modId) === Number(modId)) {
     footBtn.innerHTML = '⬇ 下载主文件';
     footBtn.title = main.name + '（v' + main.version + '）';
@@ -3426,7 +3521,7 @@ function openDownloadDrawer(id) {
         安装前会先把这些文件<b>备份</b>下来，卸载或还原时能还回去。
         点任意一行可在<b>资源管理器</b>中定位到它。
       </div>
-      ${conflictListHtml(cd)}
+      ${conflictListHtml(cd, { incoming: meta })}
       <div style="height:10px"></div>`
     : '';
 
@@ -4298,7 +4393,10 @@ function renderInstallPlan() {
          <div style="margin-top:6px;font-size:11px;color:var(--dim2)">下面列出来的是具体是哪几个、原来是谁的；点一行可在资源管理器中定位。</div>
        </div>`
     : '';
-  const conflictList = conflictListHtml(p.conflictDetails);
+  // ⚠️ 这里必须显式把「要装进去的那份」的 meta 传下去（st.meta）——
+  //    对比框右侧（新 Mod 的封面 / 版本 / 作者 / 文件）全靠它。不传的话
+  //    就只能显示「Mod #? / 版本 — / 作者 —」，用户会以为对比功能坏了。
+  const conflictList = conflictListHtml(p.conflictDetails, { incoming: st.meta || {} });
 
   // 「软覆盖」：同名且**大小完全一致** —— 极可能就是同一个文件（很多 CNS 服装 mod
   // 都自带同一个底座 pak）。不算冲突、不拦自动安装，但要说一句，
@@ -4737,7 +4835,11 @@ function bindEvents() {
     const cmpBtn = t.closest('[data-cmp]');
     if (cmpBtn) {
       e.stopPropagation();
-      await openCmpModal(Number(cmpBtn.dataset.cmp), cmpBtn.dataset.cmpName || '');
+      await openCmpModal(Number(cmpBtn.dataset.cmp), cmpBtn.dataset.cmpName || '', {
+        version: cmpBtn.dataset.cmpVer || '',
+        author: cmpBtn.dataset.cmpAuthor || '',
+        pictureUrl: cmpBtn.dataset.cmpPic || ''
+      });
       return;
     }
 
