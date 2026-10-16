@@ -28,6 +28,7 @@ const { createDownloadWatcher, parseNexusFileName } = require('./downloadWatcher
 const { createGalleryFetcher } = require('./nexusGallery');
 const { createImageCache } = require('./imageCache');
 const variantCover = require('./variantCover');
+const dataMigrate = require('./dataMigrate');
 const { readJson, writeJson } = require('./store');
 
 let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites;
@@ -926,6 +927,107 @@ function register() {
   handle('app:openPath', (p) => { shell.openPath(p); return true; });
   handle('app:revealPath', (p) => { shell.showItemInFolder(p); return true; });
   handle('app:dataDir', () => paths.DATA);
+
+  /* ---------------- 数据目录（设置页里可改位置） ----------------
+   *
+   * 为什么要能改：C 盘紧张的用户得把 cache / library / backup 挪到别的盘
+   * （这几个目录加起来能到几十 GB）。改法不是「热切换」，而是
+   * 写一个**指针文件**（放在固定的 userData 下，不在数据目录里 ——
+   * 放里面就成了「得先知道数据目录才能找到数据目录」的鸡生蛋），
+   * 下次启动时 `paths.js` 读它决定 DATA。
+   *
+   * 所以整套流程是：选目录 → 看目标里有没有旧数据 → 决定要不要把现有数据搬过去
+   * → 写指针 → 提示重启。**没有哪一步能在本进程里改掉已经加载的路径常量**
+   * （DATA / CACHE / LIBRARY 在模块加载时就被各模块取走了）。
+   */
+
+  /**
+   * 当前数据目录的全貌 —— 设置页显示「默认 / 自定义」标记与回落原因。
+   *
+   * ⚠️ `current` 与 `next` 会不一样：本进程的 `paths.DATA` 是**加载时定死**的，
+   *    用户在设置页改完指针文件后当前进程还在用旧目录，只有重启才会换成 `next`。
+   *    所以这里**重新读一遍指针文件**，把「重启后会用的位置」也算出来给界面。
+   */
+  handle('data:info', () => {
+    const picked = paths.pickDataDir(paths.readBootstrap(), paths.DEFAULT_DATA);
+    const custom = picked.source === 'custom';
+    const usable = !custom || paths.canUseDir(picked.dir);
+    return {
+      current: paths.DATA,                                   // 本进程正在用
+      next: usable ? picked.dir : paths.DEFAULT_DATA,         // 重启后会用的
+      configured: custom ? picked.dir : '',
+      default: paths.DEFAULT_DATA,
+      source: usable ? picked.source : 'default',
+      reason: usable ? picked.reason : 'unusable',
+      bootstrap: paths.BOOTSTRAP_FILE,
+      userData: paths.userDataDir(),
+      packaged: !!app.isPackaged,
+      exists: (() => { try { return fs.existsSync(paths.DATA); } catch { return false; } })(),
+      active: engine ? engine.stats().active : 0
+    };
+  });
+
+  /** 弹系统目录选择框（不挂主窗口 —— 免得把设置页所在窗口整个冻住） */
+  handle('data:choose', async (opts) => {
+    const o = opts || {};
+    const r = await dialog.showOpenDialog({
+      title: '选择数据目录',
+      defaultPath: o.defaultPath || paths.DATA,
+      buttonLabel: '选这个目录',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (r.canceled || !r.filePaths || !r.filePaths.length) return null;
+    return r.filePaths[0];
+  });
+
+  /** 看一眼某个目录里是不是已经有数据了（决定要不要问「搬运还是留空用」） */
+  handle('data:inspect', (dir) => dataMigrate.inspect(dir));
+
+  /**
+   * 把现有数据搬到新目录，然后把指针指过去。
+   *
+   * `mode`：'move' = 搬完删源；'copy' = 留一份在旧位置（更保守，用户自己决定何时删）。
+   * 下载 / 安装进行中一律拒绝 —— 半截文件与 archivePath 正在被写，搬了必然错位。
+   */
+  handle('data:migrate', async (from, to, opts) => {
+    const o = opts || {};
+    const running = engine ? engine.stats().active : 0;
+    if (running > 0) {
+      throw new Error('还有 ' + running + ' 个下载 / 安装任务在跑，先暂停或等它跑完再搬数据');
+    }
+    const r = await dataMigrate.run(from, to, {
+      mode: o.mode === 'move' ? 'move' : 'copy',
+      overwrite: !!o.overwrite,
+      onProgress: (p) => sendToMain('data:progress', p || {})
+    });
+    // 数据已在新位置 → 指针指过去（重启后生效）
+    // 目标就是默认位置时直接删指针文件更干净（否则 pickDataDir 会走 same-as-default 分支）
+    const isDefault = path.resolve(to).toLowerCase() === path.resolve(paths.DEFAULT_DATA).toLowerCase();
+    const set = isDefault ? paths.setDataDir('') : paths.setDataDir(to);
+    logger.event('data:migrated', { from: r.from, to: r.to, mode: r.mode, files: r.copied, skipped: r.skipped, rewritten: r.rewritten });
+    return { ...r, dir: set.dir, source: set.source, relaunchRequired: true };
+  });
+
+  /** 只写指针文件（目标目录留空 / 用户已自行处理好数据时走这条）。传空 = 恢复默认。 */
+  handle('data:setDir', (dir) => {
+    const running = engine ? engine.stats().active : 0;
+    if (running > 0) {
+      throw new Error('还有 ' + running + ' 个下载 / 安装任务在跑，先处理完再改数据位置');
+    }
+    // 传的就是默认位置时按「恢复默认」处理
+    const isDefault = !!dir && path.resolve(dir).toLowerCase() === path.resolve(paths.DEFAULT_DATA).toLowerCase();
+    const r = paths.setDataDir(isDefault ? '' : (dir || ''));
+    const same = path.resolve(r.dir).toLowerCase() === path.resolve(paths.DATA).toLowerCase();
+    return { dir: r.dir, source: r.source, current: paths.DATA, changed: !same, relaunchRequired: !same };
+  });
+
+  /** 立即以同样的参数重启 —— 新数据目录只有重启后才生效 */
+  handle('data:relaunch', () => {
+    logger.event('data:relaunch', { from: paths.DATA });
+    app.relaunch();
+    app.exit(0);
+    return true;
+  });
 
   /* 运行日志 —— 界面上「查看日志」用。
      用户报「点了没反应 / 报错」时，日志是唯一能回溯的东西（应用没有终端）。 */

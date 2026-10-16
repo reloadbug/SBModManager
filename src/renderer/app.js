@@ -3930,7 +3930,14 @@ function renderSettings() {
       <div class="f">
         <label>数据目录</label>
         <input type="text" id="setDataDir" value="${esc(state.dataDir || '')}" readonly>
+        <i class="tag gray" id="ddTag">默认位置</i>
         <button class="btn sm" id="btnOpenData">打开</button>
+        <button class="btn sm" id="btnChangeData">更改位置…</button>
+        <button class="btn sm" id="btnRestoreData" hidden>恢复默认</button>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint" id="ddHint">数据目录可以改到别的盘（下载缓存与安装包会占用较多空间）。改完需要重启程序才生效。</div>
       </div>
       <div class="f">
         <label>接口缓存</label>
@@ -3967,11 +3974,221 @@ function renderSettings() {
   refreshInstallTools();
   refreshLogLine();
   refreshWatchLine();
+  refreshDataDirLine();
 
   window.api.translate.stats().then(r => {
     const el = $('#transStats');
     if (el && r.ok) el.textContent = `已缓存 ${r.data.entries} 条译文`;
   });
+}
+
+/* ---------------- 数据目录（可换位置 + 一键搬运） ----------------
+ *
+ * 用户诉求：「数据位置可以在设置中设置，如果已有数据提供一键搬运到新位置」。
+ *
+ * 为什么要能改：`cache/` + `library/` + `backup/` 加起来能到几十 GB，
+ * C 盘紧张的人必须能挪走。
+ *
+ * 实现上**不是热切换** —— `paths.js` 的 DATA / CACHE / LIBRARY 是模块加载时算好的，
+ * store / logger / imageCache 等模块各自也取过一次，热切换等于重建整条链路。
+ * 所以流程是：选目录 → 看目标里有没有旧数据 → 决定旧数据怎么处理 → 搬运 + 改写路径
+ * → 写「指针文件」→ **提示重启**。
+ */
+
+/** 待确认的搬运上下文（`{ from, to }`），由模态框按钮消费 */
+let ddPending = null;
+
+/** 路径比较：Windows 下大小写不敏感，末尾斜杠与分隔符混用都算同一个 */
+function samePath(a, b) {
+  const n = (s) => String(s || '').replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase();
+  return !!a && !!b && n(a) === n(b);
+}
+
+/** 设置页「数据目录」那行的标记与提示（由主进程的 `data:info` 驱动） */
+async function refreshDataDirLine() {
+  const inp = $('#setDataDir');
+  if (!inp) return;
+  let info;
+  try { info = await call(window.api.data.info(), { silent: true }); }
+  catch { return; }
+  state.dataInfo = info;
+  state.dataDir = info.current;
+  inp.value = info.current || '';
+
+  const tag = $('#ddTag');
+  const hint = $('#ddHint');
+  const restore = $('#btnRestoreData');
+  const custom = info.source === 'custom';
+  if (tag) {
+    tag.textContent = custom ? '自定义位置' : '默认位置';
+    tag.className = 'tag ' + (custom ? 'other' : 'gray');
+  }
+  if (restore) restore.hidden = !custom;
+  if (!hint) return;
+
+  // 顺序有讲究：先报「配置的目录用不了」，再报「改了还没重启」，最后才是常规说明
+  if (info.reason === 'unusable') {
+    hint.innerHTML =
+      '<span style="color:var(--accent)">设置的数据目录现在用不了（磁盘未连接或没有权限），' +
+      '已暂时回落到默认位置。恢复可用后重启程序即可切回。</span><br>' +
+      '目标：<code data-i18n-skip>' + esc(info.configured || '') + '</code>';
+  } else if (!samePath(info.current, info.next)) {
+    hint.innerHTML =
+      '新位置已设置好，重启程序后生效。<br>' +
+      '新位置：<code data-i18n-skip>' + esc(info.next || '') + '</code>';
+    if (tag) { tag.textContent = '待重启生效'; tag.className = 'tag other'; }
+  } else {
+    hint.textContent = '数据目录可以改到别的盘（下载缓存与安装包会占用较多空间）。改完需要重启程序才生效。';
+  }
+}
+
+/**
+ * 「更改位置…」向导：选目录 → 探目标 → 问旧数据怎么办 → 搬运 → 重启。
+ */
+async function changeDataDir() {
+  let info = state.dataInfo;
+  if (!info) {
+    try { info = await call(window.api.data.info(), { silent: true }); } catch { return; }
+  }
+  let dir;
+  try { dir = await call(window.api.data.choose({ defaultPath: info.current }), { silent: true }); }
+  catch { return; }
+  if (!dir) return;                                   // 用户取消
+  if (samePath(dir, info.current)) { toast('这个目录就是当前的数据目录'); return; }
+
+  let target;
+  try { target = await call(window.api.data.inspect(dir), { silent: true }); }
+  catch { return; }
+
+  ddPending = { from: info.current, to: dir, restore: false };
+
+  // 目标里已经有数据 → 先把「同名文件怎么办」问清楚，别默默混在一起
+  if (target && target.hasData) {
+    openModal('目标目录里已经有数据', `
+      <div class="hint" style="margin-bottom:6px">这个目录里已经有一份数据了：</div>
+      <div style="margin:4px 0"><code data-i18n-skip>${esc(dir)}</code></div>
+      <div class="hint">这个目录里已经有 ${target.files} 个文件了</div>
+      <div class="hint"><span>约</span> <span data-i18n-skip>${fmtSize(target.bytes)}</span></div>`, [
+      { id: 'ddOver', label: '覆盖目标里的同名文件', primary: true },
+      { id: 'ddKeep', label: '同名文件保留目标那份' },
+      { id: 'ddUse', label: '不搬，直接用那个位置的数据' },
+      { id: 'ddCancel', label: '取消' }
+    ]);
+    return;
+  }
+
+  // 目标空的 → 问要不要把现有数据搬过去；两边都没数据就直接切
+  let src;
+  try { src = await call(window.api.data.inspect(info.current), { silent: true }); }
+  catch { src = null; }
+  if (!src || !src.hasData) {
+    await applyDataDir(dir);
+    return;
+  }
+  openModal('把现有数据搬到新目录吗？', `
+    <div class="hint">当前数据有 ${src.files} 个文件，要搬到新位置吗？</div>
+    <div class="hint"><span>约</span> <span data-i18n-skip>${fmtSize(src.bytes)}</span></div>
+    <div style="margin:4px 0"><code data-i18n-skip>${esc(dir)}</code></div>`, [
+    { id: 'ddMove', label: '移动（推荐，搬完删掉旧目录）', primary: true },
+    { id: 'ddCopy', label: '复制（旧目录保留一份）' },
+    { id: 'ddUse', label: '不搬，直接用那个位置的数据' },
+    { id: 'ddCancel', label: '取消' }
+  ]);
+}
+
+/** 「恢复默认」：默认位置就是 `paths.DEFAULT_DATA` */
+async function restoreDataDir() {
+  const info = state.dataInfo || {};
+  if (!info.default) return;
+  let src;
+  try { src = await call(window.api.data.inspect(info.current), { silent: true }); }
+  catch { src = null; }
+  if (!src || !src.hasData) { await applyDataDir(''); return; }
+  ddPending = { from: info.current, to: info.default, restore: true };
+  openModal('恢复到默认位置', `
+    <div class="hint">当前数据有 ${src.files} 个文件，要搬回默认位置吗？</div>
+    <div class="hint"><span>约</span> <span data-i18n-skip>${fmtSize(src.bytes)}</span></div>
+    <div style="margin:4px 0">默认位置：<code data-i18n-skip>${esc(info.default)}</code></div>`, [
+    { id: 'ddMove', label: '移动（推荐，搬完删掉旧目录）', primary: true },
+    { id: 'ddCopy', label: '复制（旧目录保留一份）' },
+    { id: 'ddUse', label: '不搬，直接用那个位置的数据' },
+    { id: 'ddCancel', label: '取消' }
+  ]);
+}
+
+/** 只写指针文件、立刻提示重启（没有数据要搬时走这条） */
+async function applyDataDir(dir) {
+  ddPending = null;
+  let r;
+  try { r = await window.api.data.setDir(dir || ''); }
+  catch { return; }
+  if (!r || r.ok === false) { toast((r && r.error) || '设置失败', 'err'); return; }
+  if (!r.data.changed) {
+    toast('数据目录没有变化');
+    await refreshDataDirLine();
+    return;
+  }
+  askDataRelaunch(r.data.dir || '');
+}
+
+/** 搬运 + 进度框 + 完成后提示重启 */
+async function runDataMigrate(mode, overwrite) {
+  const p = ddPending;
+  ddPending = null;
+  if (!p) { closeModal(); return; }
+
+  let off = null;
+  try {
+    off = window.api.data.onProgress((x) => {
+      const bar = $('#ddProgBar');
+      const txt = $('#ddProg');
+      const nm = $('#ddProgName');
+      if (!bar || !txt) return;
+      const total = x.total || 0;
+      bar.style.width = (total ? Math.round((x.done / total) * 100) : 5) + '%';
+      txt.textContent = x.phase === 'rewrite' ? '正在改写路径引用…'
+        : x.phase === 'done' ? '收尾…' : '正在搬运…';
+      if (nm) nm.textContent = x.name || '';
+    });
+  } catch { off = null; }
+
+  openModal('正在搬运数据…', `
+    <div class="hint" id="ddProg">正在准备…</div>
+    <div style="margin:4px 0"><code data-i18n-skip id="ddProgName"></code></div>
+    <div style="height:6px;background:var(--panel3);border-radius:3px;overflow:hidden;margin-top:8px">
+      <div id="ddProgBar" style="height:100%;width:0;background:var(--accent);transition:width .2s"></div>
+    </div>
+    <div class="hint" style="margin-top:8px">搬运期间请不要关闭程序。</div>`, []);
+
+  let r;
+  try { r = await window.api.data.migrate(p.from, p.to, { mode, overwrite }); }
+  catch (e) { r = { ok: false, error: e && e.message }; }
+  if (off) off();
+
+  if (!r || r.ok === false) {
+    closeModal();
+    toast((r && r.error) || '搬运失败', 'err');
+    return;
+  }
+  const d = r.data;
+  openModal('需要重启', `
+    <div class="hint" style="margin-bottom:8px">数据已经搬到新位置，重启程序后生效。</div>
+    <div style="margin:6px 0">新位置：<code data-i18n-skip>${esc(d.dir || '')}</code></div>
+    <div class="hint">搬运了 ${d.copied || 0} 个文件，跳过 ${d.skipped || 0} 个已存在的</div>
+    ${d.rewritten ? `<div class="hint">改写了 ${d.rewritten} 处路径引用</div>` : ''}`, [
+    { id: 'ddRelaunch', label: '立即重启', primary: true },
+    { id: 'ddLater', label: '稍后自己重启' }
+  ]);
+}
+
+/** 弹「需要重启」，并让用户选什么时候重启 */
+function askDataRelaunch(dir) {
+  openModal('需要重启', `
+    <div class="hint" style="margin-bottom:8px">数据目录已经改好，重启程序后生效。</div>
+    <div style="margin:6px 0">新位置：<code data-i18n-skip>${esc(dir || '')}</code></div>`, [
+    { id: 'ddRelaunch', label: '立即重启', primary: true },
+    { id: 'ddLater', label: '稍后自己重启' }
+  ]);
 }
 
 /* ---------------- 下载目录监听 ---------------- */
@@ -5192,6 +5409,23 @@ function bindEvents() {
         if (taskId && dirs.length) await installWithPick(taskId, dirs);
       }
       else if (id === 'impGo') await parseAndInstall($('#impUrl') && $('#impUrl').value);
+
+      // ---- 数据目录搬运向导 ----
+      else if (id === 'ddCancel') { ddPending = null; closeModal(); }
+      else if (id === 'ddMove') await runDataMigrate('move', false);
+      else if (id === 'ddCopy') await runDataMigrate('copy', false);
+      else if (id === 'ddOver') await runDataMigrate('move', true);
+      else if (id === 'ddKeep') await runDataMigrate('copy', false);
+      else if (id === 'ddUse') {
+        // ⚠️ 「不搬」在两个向导里含义不同：
+        //    更改位置 = 换成用户刚选的那个目录；恢复默认 = 回到默认目录（指针文件删掉）。
+        const p = ddPending || {};
+        ddPending = null;
+        closeModal();
+        await applyDataDir(p.restore ? '' : p.to);
+      }
+      else if (id === 'ddRelaunch') { closeModal(); window.api.data.relaunch(); }
+      else if (id === 'ddLater') { closeModal(); await refreshDataDirLine(); }
       else if (id === 'impPick') await pickLocalArchive();
       else if (id === 'vReveal') { if (state.modalTask) await dlReveal(state.modalTask); closeModal(); }
       return;
@@ -5321,6 +5555,10 @@ function bindEvents() {
       toast(t && t.available ? '解压工具可用：' + t.label : '没找到可用的解压工具，请安装 7-Zip', t && t.available ? 'ok' : 'err');
     } else if (e.target.id === 'btnOpenData') {
       window.api.openPath(state.dataDir);
+    } else if (e.target.id === 'btnChangeData') {
+      await changeDataDir();
+    } else if (e.target.id === 'btnRestoreData') {
+      await restoreDataDir();
     } else if (e.target.id === 'btnViewLog') {
       await openLogViewer();
     } else if (e.target.id === 'btnOpenLogDir') {

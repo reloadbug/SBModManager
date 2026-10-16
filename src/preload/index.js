@@ -14,6 +14,31 @@ contextBridge.exposeInMainWorld('api', {
   revealPath: (p) => invoke('app:revealPath', p),
   dataDir: () => invoke('app:dataDir'),
 
+  /**
+   * 数据目录（设置页里可改位置）。
+   *
+   * `choose` 弹系统选目录框（取消返回 null）；`inspect` 看目标里有没有已有数据；
+   * `migrate` 把现有数据搬过去然后把指针指过去；
+   * `setDir` 只写指针（传空字符串 = 恢复默认）。
+   * ⚠️ 这三条都不会当场换目录 —— `paths.js` 的路径常量在模块加载时就定死了，
+   *    必须 `relaunch()` 重启才生效。
+   */
+  data: {
+    info: () => invoke('data:info'),
+    choose: (opts) => invoke('data:choose', opts),
+    inspect: (dir) => invoke('data:inspect', dir),
+    migrate: (from, to, opts) => invoke('data:migrate', from, to, opts),
+    setDir: (dir) => invoke('data:setDir', dir),
+    /** 立刻以同样参数重启（数据目录切换、改端口这类「必须重启」的事收尾用） */
+    relaunch: () => invoke('data:relaunch'),
+    /** 搬运进度（phase / name / done / total），返回取消订阅函数 */
+    onProgress: (cb) => {
+      const h = (_e, p) => cb(p);
+      ipcRenderer.on('data:progress', h);
+      return () => ipcRenderer.removeListener('data:progress', h);
+    }
+  },
+
   config: {
     get: () => invoke('config:get'),
     set: (patch) => invoke('config:set', patch),

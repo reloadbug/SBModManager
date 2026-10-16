@@ -35,6 +35,13 @@ _probe/_locales-backup*/
 _probe/_new-keys.json
 _probe/_todo.json
 _probe/i18n-keys.json.bak
+_probe/*.bak
+_probe/*.json.bak
+# 全量测试汇总产物（每次跑都会重写，不进仓库）
+_probe/_run-all-result.json
+
+# ============ 纯 Node 环境下的 userData 回落目录 ============
+.userdata/
 
 # 说明：.workbuddy-ai/ 与 .workbuddy/ 是 AI 助手的项目级记忆与 skill，含本机绝对路径与工作日志，
 # 不随仓库发布（想公开其中的经验总结，请先人工删掉机器相关路径再放开这两行）
