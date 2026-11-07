@@ -1158,5 +1158,15 @@
     '游戏里找不到这些文件了 —— 可能被手动删掉，或换过游戏目录（安装包还在，可以直接重装）': 'These files are no longer in the game folder — they may have been deleted by hand, or the game folder changed (the archive is still here, so you can reinstall)',
     '游戏目录里找不到这些文件，本地也没留安装包（可以重新下载）': 'These files are not in the game folder and no local archive is left (you can download again)',
     '游戏里找不到这些文件了，安装包也没留': 'These files are gone from the game and no archive is left',
+    '装进游戏': 'Install',
+    '把这份安装包装进当前游戏目录': 'Install this package into the current game folder',
+    '已加入安装队列': 'Added to the install queue',
+    '可本地装 %s': 'Installable %s',
+    '全部装进去（%s）': 'Install all (%s)',
+    '还有 %s 个没列出来（装完上面这些再看）': '%s more not listed (install the ones above first)',
+    '正在安装中，稍等…': 'Installing now, please wait…',
+    '已开始安装 %s 个包': 'Started installing %s packages',
+    '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）': 'Started installing %s packages; %s could not start (see reasons on the download page)',
+    '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。': '%s install packages are still in the manager folder and not in the current game folder (they stay in the manager folder and do not move with the game).',
   });
 })();

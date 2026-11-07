@@ -1158,5 +1158,15 @@
     '游戏里找不到这些文件了 —— 可能被手动删掉，或换过游戏目录（安装包还在，可以直接重装）': 'Estos archivos ya no están en la carpeta del juego: puede que los borraras a mano o que cambiara la carpeta (el archivo sigue aquí, puedes reinstalar)',
     '游戏目录里找不到这些文件，本地也没留安装包（可以重新下载）': 'Estos archivos no están en la carpeta del juego y no queda archivo local (puedes descargarlo de nuevo)',
     '游戏里找不到这些文件了，安装包也没留': 'Estos archivos ya no están en el juego y no queda archivo',
+    '装进游戏': 'Instalar',
+    '把这份安装包装进当前游戏目录': 'Instalar este paquete en la carpeta actual del juego',
+    '已加入安装队列': 'Añadido a la cola de instalación',
+    '可本地装 %s': 'Instalables %s',
+    '全部装进去（%s）': 'Instalar todo (%s)',
+    '还有 %s 个没列出来（装完上面这些再看）': '%s más sin listar (instala primero los de arriba)',
+    '正在安装中，稍等…': 'Instalando, espera…',
+    '已开始安装 %s 个包': 'Instalación de %s paquetes iniciada',
+    '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）': 'Instalación de %s paquetes iniciada; %s no pudieron empezar (mira el motivo en Descargas)',
+    '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。': 'Hay %s paquetes en la carpeta del gestor que no están instalados en la carpeta actual del juego (no se mueven con el juego).',
   });
 })();

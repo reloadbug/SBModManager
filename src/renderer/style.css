@@ -521,3 +521,23 @@ body.sel .cover .tag{left:38px}
   border-radius:8px;background:var(--panel2)}
 .lhit:hover{border-color:var(--border2)}
 .lhit .btn.sm{flex:none}
+
+/* ---- 管理器自带安装包（data/library）----
+   队列清空 / 换游戏目录之后，「下好了没装」就只剩这张清单。放在下载页底部，
+   视觉上比任务列表弱一级，但要点得到。 */
+.lib-box{margin-top:14px;border:1px solid var(--border);border-radius:10px;
+  background:var(--panel2);overflow:hidden}
+.lib-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  font-size:11.5px;color:var(--dim);line-height:1.6}
+.lib-head b{color:var(--accent);font-weight:600}
+.lib-head .btn{margin-left:auto;flex:none}
+.lib-list{max-height:320px;overflow-y:auto;overflow-x:hidden}
+.lib-item{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  border-bottom:1px solid var(--border2);font-size:12px}
+.lib-item:last-child{border-bottom:none}
+.lib-item:hover{background:rgba(255,255,255,.02)}
+.lib-n{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.lib-m{flex:none;font-size:11px;color:var(--dim2);white-space:nowrap}
+.lib-item .btn{flex:none}
+.lib-more{padding:8px 12px;font-size:11px;color:var(--dim2)}

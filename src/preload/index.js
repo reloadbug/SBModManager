@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
 
 /**
@@ -215,6 +215,13 @@ contextBridge.exposeInMainWorld('api', {
     refreshPlans: () => invoke('download:refreshPlans'),
     remove: (id, opts) => invoke('download:remove', id, opts),
     reveal: (id) => invoke('download:reveal', id),
+    /**
+     * 管理器自带安装包（data/library）的盘点：哪些包现在能装进当前游戏目录。
+     * 队列被清理过、或者换过游戏目录之后，「下好了没装」还能在这里看到。
+     */
+    library: () => invoke('library:list'),
+    /** 把 library 里的某个包装进当前游戏目录 */
+    installFromLibrary: (archivePath, meta, opts) => invoke('library:install', archivePath, meta, opts),
     /** 队列变化（新增 / 状态变更 / 进度写库），返回取消订阅函数 */
     onChanged: (cb) => {
       const h = (_e, info) => cb(info);

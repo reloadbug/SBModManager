@@ -1,0 +1,212 @@
+﻿'use strict';
+/**
+ * 「管理器自带安装包」盘点断言套件（0.3.7）。
+ *
+ * 用户 2026-11-07 反馈：「下好了没装的那套功能没看到」。
+ * 查下来是：他点过「清理已完成记录」，下载队列变成 0 项，
+ * 而下载页在「队列空」时直接早退画空态 —— 把「待安装」整块吞掉了。
+ * 包其实一直躺在 `data/library` 里（0.3.4 起这个目录不跟着游戏走）。
+ *
+ * 所以新加了 `src/main/localLibrary.js`：直接看磁盘，把「现在能装进当前游戏目录」
+ * 的包列出来。它是纯函数（只读、不写盘），这里能全离线断言。
+ *
+ * 覆盖五块：
+ *   A. `parseArchiveName()` —— 文件名 → modId / 名字 / 版本（认不出就返回 null，不猜）
+ *   B. `entryLivesIn()` —— 注册记录算不算「装在当前游戏目录里」
+ *   C. `scan()` —— 真目录：过滤已装 / 已在队列 / 认不出的，同 modId 只留最新
+ *   D. 接线断言 —— ipc / preload / app.js / style.css / i18n
+ *   E. 「队列空时也要列出安装包」这条回归（渲染层那处早退）
+ *
+ * 用法：node _probe/library-test.js
+ */
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const lib = require('../src/main/localLibrary');
+
+let pass = 0, fail = 0;
+const fails = [];
+function t(label, fn) {
+  try {
+    const r = fn();
+    if (r === true || r === undefined) { pass++; console.log('  ✓ ' + label); return; }
+    fail++; fails.push(label + ' → ' + r);
+    console.log('  ✗ ' + label + '  → ' + r);
+  } catch (e) {
+    fail++; fails.push(label + ' → ' + e.message);
+    console.log('  ✗ ' + label + '  → ' + e.message);
+  }
+}
+function eq(a, b, label) {
+  t(label, () => (a === b ? true : `期望 ${JSON.stringify(b)}，实际 ${JSON.stringify(a)}`));
+}
+function ok(v, label) { t(label, () => (v ? true : '假值')); }
+function notOk(v, label) { t(label, () => (!v ? true : '应该是假值')); }
+
+const ROOT = path.resolve(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+
+/* ============================ A. 文件名解析 ============================ */
+console.log('\n=== A) parseArchiveName：只认下载器自己的命名，认不出就跳过 ===');
+
+const a1 = lib.parseArchiveName('2038_Ultimate_Luna_CNS_1.0.2.zip');
+eq(a1 && a1.modId, 2038, '拆出 modId');
+eq(a1 && a1.name, 'Ultimate_Luna_CNS', '名字保留（下划线不切）');
+eq(a1 && a1.version, '1.0.2', '版本取最后一段数字');
+
+const a2 = lib.parseArchiveName('4471_HD-ATOOL_P_v2.1.zip');
+eq(a2 && a2.version, 'v2.1', 'v 前缀版本也认');
+
+const a3 = lib.parseArchiveName('1591_Eve_Pink_Bodysuit.zip');
+eq(a3 && a3.version, '', '没有版本段时版本为空');
+eq(a3 && a3.name, 'Eve_Pink_Bodysuit', '没版本段时整段都是名字');
+
+const a4 = lib.parseArchiveName('3047_DOAXVV_Nocturne_Rapport_CNS_1.0.1b.7z');
+eq(a4 && a4.modId, 3047, '7z 也认');
+eq(a4 && a4.version, '1.0.1b', '带字母后缀的版本');
+
+ok(lib.parseArchiveName('3008_ProjRabbit.rar'), 'rar 也认');
+notOk(lib.parseArchiveName('readme.txt'), '非压缩包 → null');
+notOk(lib.parseArchiveName('no-id-prefix.zip'), '没有 modId 前缀 → null');
+notOk(lib.parseArchiveName('0_zero.zip'), 'modId 为 0 → null');
+notOk(lib.parseArchiveName(''), '空串 → null');
+notOk(lib.parseArchiveName(null), 'null → null');
+
+/* ============================ B. 「装在当前目录里吗」 ============================ */
+console.log('\n=== B) entryLivesIn：换过游戏目录的记录不算已装 ===');
+
+const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-lib-test-'));
+const gameA = path.join(tmpRoot, 'gameA', 'Star Blade');
+const gameB = path.join(tmpRoot, 'gameB', 'Star Blade');
+const modsA = path.join(gameA, 'SB', 'Content', 'Paks', '~Mods');
+fs.mkdirSync(modsA, { recursive: true });
+const fileA = path.join(modsA, 'Eve_P [nx1591].pak');
+fs.writeFileSync(fileA, 'x');
+
+const entryA = { id: 'nexus:1591:1', source: { modId: 1591 }, manifest: [{ path: fileA, rel: 'Eve_P [nx1591].pak', size: 1 }] };
+ok(lib.entryLivesIn(entryA, gameA), '文件在、且在当前游戏目录里 → 算已装');
+notOk(lib.entryLivesIn(entryA, gameB), '同一份文件但换了游戏目录 → 不算已装（要重装到新目录）');
+notOk(lib.entryLivesIn(entryA, ''), '没有游戏目录 → 不算');
+notOk(lib.entryLivesIn({ manifest: [] }, gameA), '空清单 → 不算');
+notOk(lib.entryLivesIn({ manifest: [{ path: path.join(modsA, 'gone.pak') }] }, gameA), '文件不在磁盘上 → 不算');
+notOk(lib.entryLivesIn(entryA, gameA + '2'), '同名前缀的另一个目录（gameA2）不算 —— 前缀匹配不能是裸 startsWith');
+
+/* ============================ C. scan：真目录 ============================ */
+console.log('\n=== C) scan：过滤 + 同 modId 只留最新 ===');
+
+const libDir = path.join(tmpRoot, 'library');
+fs.mkdirSync(libDir, { recursive: true });
+// 已装（1591）—— 应被跳过
+fs.writeFileSync(path.join(libDir, '1591_Eve_Pink_1.0.zip'), 'x');
+// 已在队列（3008）—— 应被跳过
+fs.writeFileSync(path.join(libDir, '3008_ProjRabbit_1.0.zip'), 'x');
+// 可装（2038），两份，新的那份应胜出
+const oldOne = path.join(libDir, '2038_Luna_1.0.zip');
+const newOne = path.join(libDir, '2038_Luna_1.1.zip');
+fs.writeFileSync(oldOne, 'x');
+fs.writeFileSync(newOne, 'x');
+const now = Date.now() / 1000;
+fs.utimesSync(oldOne, now - 5000, now - 5000);
+fs.utimesSync(newOne, now - 100, now - 100);
+// 可装（4104）
+fs.writeFileSync(path.join(libDir, '4104_Bayonetta_04_1.0.zip'), 'x');
+// 认不出的文件
+fs.writeFileSync(path.join(libDir, 'notes.txt'), 'x');
+
+const res = lib.scan({
+  dir: libDir,
+  root: gameA,
+  entries: [entryA],
+  tasks: [{ id: 't1', status: 'downloaded', meta: { modId: 3008 } }]
+});
+eq(res.exists, true, '目录存在');
+eq(res.total, 5, '只数压缩包（notes.txt 不算；2038 的两份都算）');
+eq(res.skipped.installed, 1, '已装的包被跳过');
+eq(res.skipped.inQueue, 1, '已在队列的包被跳过（页面上已经露过脸）');
+eq(res.skipped.unparsed, 0, 'notes.txt 在 total 之外，不污染 unparsed');
+eq(res.installable, 2, '剩下 2 个可装（2038 / 4104）');
+eq(res.items.length, 2, 'items 也是 2');
+eq(res.items.map(x => x.modId).sort().join(','), '2038,4104', '可装的就是这两个');
+const luna = res.items.find(x => x.modId === 2038);
+eq(luna && luna.filename, '2038_Luna_1.1.zip', '同一个 modId 只留最新的那份');
+eq(luna && luna.version, '1.1', '带上版本号给界面显示');
+ok(res.items.every(x => fs.existsSync(x.archivePath)), 'archivePath 都是真实路径');
+
+// 队列里那条是 failed 的 → 不算「已露过脸」，包还要露出来
+const res2 = lib.scan({
+  dir: libDir, root: gameA, entries: [entryA],
+  tasks: [{ id: 't1', status: 'failed', meta: { modId: 3008 } }]
+});
+eq(res2.installable, 3, 'failed 的任务不挡住包（用户还要看到它）');
+eq(res2.skipped.inQueue, 0, 'failed 不计入 inQueue');
+
+// 换了游戏目录：已装的那些会自动冒出来当「可装」
+const res3 = lib.scan({ dir: libDir, root: gameB, entries: [entryA], tasks: [] });
+eq(res3.installable, 4, '换到空游戏目录 → 原来已装的也变得可装（1591/3008/2038/4104，这就是「换目录后能重装」）');
+ok(res3.items.some(x => x.modId === 1591), '1591 重新出现在可装列表里');
+
+// 目录不存在 / 传空
+const res4 = lib.scan({ dir: path.join(tmpRoot, 'nope'), root: gameA, entries: [], tasks: [] });
+eq(res4.exists, false, '目录不存在 → exists:false');
+eq(res4.installable, 0, '目录不存在 → 没有可装的');
+const res5 = lib.scan({ dir: libDir, root: gameA, entries: [], tasks: [], limit: 1 });
+eq(res5.items.length, 1, 'limit 生效');
+
+/* ============================ D. 接线断言 ============================ */
+console.log('\n=== D) 接线：ipc / preload / app.js / CSS / i18n ===');
+
+const ipc = read('src/main/ipc.js');
+ok(ipc.includes("require('./localLibrary')"), 'ipc 引入 localLibrary');
+ok(ipc.includes("handle('library:list'"), 'ipc 有 library:list');
+ok(ipc.includes("handle('library:install'"), 'ipc 有 library:install');
+ok(/library:list'[\s\S]{0,220}dir: paths\.LIBRARY/.test(ipc), 'library:list 读的是 paths.LIBRARY');
+ok(/library:list'[\s\S]{0,220}root: currentRoot\(\)/.test(ipc), 'library:list 用当前游戏根判定「装没装」');
+ok(/library:list'[\s\S]{0,260}tasks: engine\.list\(\)/.test(ipc), 'library:list 带上队列，避免同一件事显示两遍');
+
+const pre = read('src/preload/index.js');
+ok(pre.includes("library: () => invoke('library:list')"), 'preload 暴露 download.library()');
+ok(pre.includes("installFromLibrary: (archivePath, meta, opts) => invoke('library:install'"),
+  'preload 暴露 download.installFromLibrary()');
+
+const appSrc = read('src/renderer/app.js');
+ok(appSrc.includes('async function refreshLibrary()'), 'app.js 有 refreshLibrary()');
+ok(appSrc.includes('function libraryBoxHtml()'), 'app.js 有 libraryBoxHtml()');
+ok(appSrc.includes("data-lib-installall=\"1\""), '列表头有「全部装进去」按钮');
+ok(appSrc.includes('data-lib-install="${it.modId}"'), '每行有「装进游戏」按钮');
+ok(appSrc.includes("t.closest('[data-lib-installall]')"), '全部装的点击分支');
+ok(appSrc.includes("t.closest('[data-lib-install]')"), '单个装的点击分支');
+ok(appSrc.includes('await refreshLibrary();'), 'refreshAll / refreshDownloads 里会重新盘点');
+ok(appSrc.includes('state.library = await call(window.api.download.library()'), '走的是 download.library() 通道');
+
+// 回归：队列空时那一支也必须把安装包列出来（这次 bug 的正身）
+const emptyBranch = appSrc.slice(appSrc.indexOf('if (!tasks.length) {'), appSrc.indexOf('const sorted = [...tasks]'));
+ok(emptyBranch.includes('libraryBoxHtml()'), '队列空时的空态里也拼上了 libraryBoxHtml()（这次 bug 的回归断言）');
+ok(emptyBranch.includes('$(\'#sub\').textContent'), '队列空时也更新副标题（不再是空着不写）');
+
+const css = read('src/renderer/style.css');
+ok(css.includes('.lib-box'), 'style.css 有 .lib-box');
+ok(css.includes('.lib-item'), 'style.css 有 .lib-item');
+
+const keys = JSON.parse(read('_probe/i18n-keys.json'));
+const keyList = Array.isArray(keys) ? keys : Object.keys(keys);
+for (const k of ['装进游戏', '把这份安装包装进当前游戏目录', '已加入安装队列', '可本地装 %s',
+  '全部装进去（%s）', '还有 %s 个没列出来（装完上面这些再看）', '正在安装中，稍等…',
+  '已开始安装 %s 个包', '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）',
+  '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。']) {
+  ok(keyList.includes(k), 'i18n 有键：' + k.slice(0, 22));
+}
+
+/* ============================ 收尾 ============================ */
+try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* 忽略 */ }
+
+console.log('\n' + '='.repeat(56));
+if (fail) {
+  console.log(`❌ library: ${pass} 通过 / ${fail} 失败`);
+  console.log('失败项：');
+  for (const f of fails) console.log('  - ' + f);
+  process.exitCode = 1;
+} else {
+  console.log(`✅ library: ${pass} 通过 / 0 失败`);
+}
+console.log('='.repeat(56));

@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const { ipcMain, shell, app, BrowserWindow, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -19,6 +19,7 @@ const { createDownloadEngine } = require('./downloadEngine');
 const localState = require('./localState');
 const linker = require('./linker');
 const reconcile = require('./reconcile');
+const localLibrary = require('./localLibrary');
 const relocate = require('./relocate');
 const fsError = require('./fsError');
 const { createBlacklist } = require('./blacklist');
@@ -1669,6 +1670,25 @@ function register() {
   });
   handle('mods:setEnabled', (id, enabled) => setEnabled(id, enabled));
   handle('mods:uninstall', (id, opts) => uninstall(id, opts));
+  /**
+   * 管理器自带安装包的盘点：`data/library` 里那些包，哪些现在能装进当前游戏目录。
+   *
+   * 下载队列只是「任务账本」，用户点了「清理已完成记录」之后就什么都不剩了，
+   * 可安装包一直在 library 里（0.3.4 起这个目录不跟着游戏走）。这一条通道直接看磁盘，
+   * 让「下好了没装」在清空队列、换游戏目录、甚至换机器之后都还看得见。
+   */
+  handle('library:list', () => localLibrary.scan({
+    dir: paths.LIBRARY,
+    root: currentRoot(),
+    entries: registry.all(),
+    tasks: engine.list()
+  }));
+  /** 把 library 里的某个包装进当前游戏目录（复用「本地压缩包进队列」那条路） */
+  handle('library:install', (archivePath, meta, opts) => {
+    const r = engine.enqueueLocal(archivePath, meta || {}, { auto: true, from: 'library', ...(opts || {}) });
+    broadcastDownloads(r.task);
+    return r;
+  });
   handle('mods:reveal', (id) => {
     const mods = listMods().installed;
     const m = mods.find(x => x.id === id);

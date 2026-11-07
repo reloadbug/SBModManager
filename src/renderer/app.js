@@ -44,6 +44,9 @@ const state = {
   install: { open: false, archivePath: null, meta: null, plan: null, running: false, manualTarget: null, pickDir: '', pickDirs: null, result: null },
   downloads: [],
   downloadStats: {},
+  // 管理器自带安装包（data/library）的盘点结果 —— 队列被清理过之后，
+  // 「下好了没装」只能靠它才看得见（主进程 `library:list`）。
+  library: null,
   nxmStatus: null,
   installTools: null,
   // 下载目录监听状态（bootstrap 带回）
@@ -3468,7 +3471,11 @@ function renderDownload() {
       <span style="color:var(--dim2)">说明：免费 Nexus 账号需要你在网页上点一次「Mod Manager Download」完成授权，
       之后的一切（下载 / 排队 / 安装 / 封面缓存）都自动完成。</span></p>
       <button class="btn p" onclick="switchPage('p-browse')">去浏览 Mod</button>
-    </div>`;
+    </div>`
+      // 队列空着也要把「管理器里的安装包」列出来 —— 用户清过已完成记录 / 换过游戏目录之后，
+      // 「下好了没装」的包就只剩 library 这一个来源了，不能跟着空态一起被吞掉。
+      + libraryBoxHtml();
+    $('#sub').textContent = '共 0 项';
     return;
   }
 
@@ -3517,6 +3524,7 @@ function renderDownload() {
       ${pausedCount ? `<span class="stat">已暂停 <b>${pausedCount}</b></span>` : ''}
       ${needYouCount ? `<span class="stat" style="color:var(--accent)">待处理 <b style="color:var(--accent)">${needYouCount}</b></span>` : ''}
       ${downloadedCount ? `<span class="stat" style="color:var(--accent)">待安装 <b style="color:var(--accent)">${downloadedCount}</b></span>` : ''}
+      ${libraryCount() ? `<span class="stat" style="color:var(--accent)">可本地装 <b style="color:var(--accent)">${fmtNum(libraryCount())}</b></span>` : ''}
       <span class="stat">已安装 <b>${s.installed || 0}</b></span>
       ${s.failed ? `<span class="stat" style="color:var(--red)">失败 <b style="color:var(--red)">${s.failed}</b></span>` : ''}
       <div class="spacer"></div>
@@ -3531,7 +3539,8 @@ function renderDownload() {
     ${downloadedCount && noRoot
       ? `<div class="callout" style="margin:0 0 10px"><span>有 ${fmtNum(downloadedCount)} 个 Mod 已经下载好了（安装包存在管理器目录里），但还没设置游戏目录 —— 设置好之后回到这一页就能直接装进去。</span><button class="btn sm" data-goto-page="p-settings">去设置游戏目录</button></div>`
       : ''}
-    <div class="dl-list">${sorted.map(dlItem).join('')}</div>`;
+    <div class="dl-list">${sorted.map(dlItem).join('')}</div>
+    ${libraryBoxHtml()}`;
   $('#sub').textContent = runningCount
     ? `${runningCount} 项进行中` + (needYouCount ? ` · ${needYouCount} 项待处理` : '')
     : (needYouCount ? `${needYouCount} 项待处理` : `共 ${tasks.length} 项`);
@@ -3557,6 +3566,8 @@ async function refreshDownloads() {
     state.downloads = (d && d.tasks) || [];
     state.downloadStats = (d && d.stats) || {};
   } catch { /* 忽略 */ }
+  // 装完 / 卸载完之后「哪些包还能装」会变，顺手重新盘点一次
+  await refreshLibrary();
   renderDownload();
   renderSidebar();
   const inst = $('#p-installed');
@@ -3798,6 +3809,109 @@ async function dlInstallAll() {
     installAllRunning = false;
     await refreshDownloads();
     setBtn('⬇ 全部安装', false);
+  }
+}
+
+/* ---------------- 管理器自带的安装包（data/library） ----------------
+ *
+ * 「下好了没装」有两份来源，以前只做了第一份：
+ *   1. 下载队列里 `status === 'downloaded'` 的任务；
+ *   2. 包本身 —— 安装包一直在管理器目录的 `data/library` 里（0.3.4 起这个目录
+ *      **不跟着游戏走**），队列被「清理已完成记录」清空、或者换了游戏目录之后，
+ *      第 1 份就空了，可包还在。
+ *
+ * 用户 2026-11-07 反馈「这套功能没看到」，真实原因就是这个：他清过队列（0 项），
+ * 而 `renderDownload()` 在「队列空」时直接早退去画空态，把「待安装」整块吞掉了。
+ * 现在改成：主进程 `library:list` 直接看磁盘（谁的文件不在当前游戏目录就算可装），
+ * 页面无论队列空不空都把这份清单列出来。
+ */
+
+let libInstallRunning = false;
+
+async function refreshLibrary() {
+  try {
+    state.library = await call(window.api.download.library(), { silent: true });
+  } catch {
+    state.library = null;
+  }
+  return state.library;
+}
+
+function libraryCount() {
+  return (state.library && state.library.installable) || 0;
+}
+
+function libRowHtml(it) {
+  const meta = [`#${it.modId}`, it.version ? 'v' + esc(it.version) : '', fmtSize(it.size)]
+    .filter(Boolean).join(' · ');
+  return `<div class="lib-item">
+    <span class="lib-n" data-i18n-skip title="${esc(it.filename)}">${esc(it.name)}</span>
+    <span class="lib-m" data-i18n-skip>${meta}</span>
+    <button class="btn sm p" data-lib-install="${it.modId}" title="把这份安装包装进当前游戏目录">装进游戏</button>
+  </div>`;
+}
+
+function libraryBoxHtml() {
+  const n = libraryCount();
+  if (!n) return '';
+  const items = (state.library.items || []).slice(0, 60);
+  const more = n - items.length;
+  return `<div class="lib-box">
+    <div class="lib-head">
+      <span>管理器里还有 <b>${fmtNum(n)}</b> 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。</span>
+      <button class="btn p sm" data-lib-installall="1">全部装进去（${fmtNum(n)}）</button>
+    </div>
+    <div class="lib-list">${items.map(libRowHtml).join('')}</div>
+    ${more > 0 ? `<div class="lib-more">还有 ${fmtNum(more)} 个没列出来（装完上面这些再看）</div>` : ''}
+  </div>`;
+}
+
+async function libInstallOne(it) {
+  await call(window.api.download.installFromLibrary(it.archivePath, {
+    modId: it.modId, name: it.name, version: it.version
+  }), { silent: true });
+}
+
+/** 装单个：把 library 里的这个包重新装进当前游戏目录 */
+async function libInstall(modId) {
+  const it = ((state.library && state.library.items) || []).find(x => String(x.modId) === String(modId));
+  if (!it) { await refreshLibrary(); renderDownload(); return; }
+  try {
+    await libInstallOne(it);
+    toast('已加入安装队列');
+    await refreshDownloads();
+    await refreshLibrary();
+    renderDownload();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+/** 全部装：串行一个个来（同时装会抢同一个游戏目录） */
+async function libInstallAll() {
+  if (libInstallRunning) { toast('正在安装中，稍等…'); return; }
+  libInstallRunning = true;
+  const setBtn = (txt, disabled) => {
+    const b = document.querySelector('[data-lib-installall]');
+    if (b) { b.textContent = txt; b.disabled = !!disabled; }
+  };
+  setBtn('安装中…', true);
+  try {
+    const items = (state.library && state.library.items) || [];
+    if (!items.length) { toast('没有待安装的任务'); return; }
+    let ok = 0, failed = 0;
+    for (let i = 0; i < items.length; i++) {
+      setBtn(`安装中 ${i + 1}/${items.length}…`, true);
+      try { await libInstallOne(items[i]); ok++; } catch { failed++; }
+    }
+    await refreshDownloads();
+    await refreshLibrary();
+    renderDownload();
+    toast(failed
+      ? `已开始安装 ${fmtNum(ok)} 个包，${fmtNum(failed)} 个没能开始（在下载页看原因）`
+      : `已开始安装 ${fmtNum(ok)} 个包`, failed ? 'err' : 'ok');
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    libInstallRunning = false;
   }
 }
 
@@ -6250,6 +6364,10 @@ function bindEvents() {
     if (t.closest('[data-dl-confirmall]')) { await dlConfirmAll(); return; }
     // 2026-11-07：已下载但没装（换过游戏目录 / 用户删过文件后重新出现的那批）
     if (t.closest('[data-dl-installall]')) { await dlInstallAll(); return; }
+  // 管理器自带安装包（data/library）—— 队列空着也能装
+  if (t.closest('[data-lib-installall]')) { await libInstallAll(); return; }
+  const libOne = t.closest('[data-lib-install]');
+  if (libOne) { await libInstall(libOne.dataset.libInstall); return; }
     const dlAuth = t.closest('[data-dl-auth]');
     if (dlAuth) { await dlAuthorize(dlAuth.dataset.dlAuth); return; }
     const dlStartBtn = t.closest('[data-dl-start]');
@@ -6909,6 +7027,8 @@ async function refreshAll(showToast) {
       if (before !== JSON.stringify(browseFilterSnapshot())) loadBrowse(true);
     }
     await refreshPrereqs();
+    // 「管理器里还有哪些包装得进去」要在画下载页之前取到手（队列空着时那一页就靠它）
+    await refreshLibrary();
     renderSidebar();
     renderInstalled();
     renderDownload();

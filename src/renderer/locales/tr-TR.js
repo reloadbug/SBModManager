@@ -1158,5 +1158,15 @@
     '游戏里找不到这些文件了 —— 可能被手动删掉，或换过游戏目录（安装包还在，可以直接重装）': 'Bu dosyalar artık oyun klasöründe yok — elle silinmiş veya oyun klasörü değişmiş olabilir (arşiv duruyor, yeniden kurabilirsiniz)',
     '游戏目录里找不到这些文件，本地也没留安装包（可以重新下载）': 'Bu dosyalar oyun klasöründe yok ve yerel arşiv de kalmamış (yeniden indirebilirsiniz)',
     '游戏里找不到这些文件了，安装包也没留': 'Bu dosyalar oyunda yok ve arşiv de kalmamış',
+    '装进游戏': 'Kur',
+    '把这份安装包装进当前游戏目录': 'Bu paketi geçerli oyun klasörüne kur',
+    '已加入安装队列': 'Kurulum kuyruğuna eklendi',
+    '可本地装 %s': 'Yerelden kurulabilir %s',
+    '全部装进去（%s）': 'Tümünü kur (%s)',
+    '还有 %s 个没列出来（装完上面这些再看）': '%s tane daha listelenmedi (önce yukarıdakileri kurun)',
+    '正在安装中，稍等…': 'Kurulum sürüyor, bekleyin…',
+    '已开始安装 %s 个包': '%s paket kurulmaya başlandı',
+    '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）': '%s paket kurulmaya başlandı; %s başlatılamadı (nedenler İndirilenler sayfasında)',
+    '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。': 'Yönetici klasöründe, geçerli oyun klasörüne kurulmamış %s paket var (paketler yöneticide kalır, oyunla taşınmaz).',
   });
 })();
