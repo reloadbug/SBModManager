@@ -29,6 +29,13 @@ const state = {
   // 浏览页多选 / 批量下载：ids 是 modId 字符串集合（跨滚动保留），
   // all = 「已全选当前列表」，之后追加加载的新卡片自动并入选择。
   sel: { on: false, all: false, busy: false, ids: new Set() },
+  // 已安装页的多选 / 筛选（用户 2026-11-07：「已安装的mod也要支持全选多选筛选等功能，与查看在线mod一致」）。
+  // ⚠️ 与浏览页的 `sel` **分开存**：两页的勾选互不相干 —— 浏览页存 modId，这里存**分组键**
+  //    （`mod:<modId>` / `one:<磁盘 id>`），因为已安装页一行卡片就是一个 Mod，可能对应多个文件。
+  gsel: { on: false, busy: false, ids: new Set() },
+  // 已安装页筛选条件：q = 关键词（名字 / Mod ID / 作者），state = 启用状态，kind = 类型
+  instFilters: { q: '', state: '', kind: '' },
+  installedShown: [],   // 本次渲染后**真正显示出来**的分组（筛选之后），全选用它
   modalTask: null,   // 「选择要安装哪些内容」对话框对应的下载任务 id
   pick: new Set(),   // 该对话框里已勾选的候选目录（归档内相对路径）
   pickGroups: null,  // dir → 同组目录数组（同一件东西的不同版本，组内单选）
@@ -570,6 +577,7 @@ function installedCard(g) {
   <div class="card${g.enabled ? '' : ' off'}" data-gid="${esc(g.key)}">
     <div class="cover">
       ${cover}
+      <div class="ck${state.gsel.ids.has(g.key) ? ' on' : ''}" data-gck="${esc(g.key)}">✓</div>
       <span class="${tagCls}"${tagTitle ? ` title="${esc(tagTitle)}"` : ''}>${esc(tagTxt)}</span>
       ${multi}
       ${g.kind === 'prereq' ? '' : `<button class="sw${g.enabled ? '' : ' off'}${g.partial ? ' part' : ''}" data-gtoggle="${esc(g.key)}" title="${esc(swTitle)}"></button>`}
@@ -804,6 +812,250 @@ function gameWriteBanner() {
   </div>`;
 }
 
+/* ---------------- 已安装页：筛选 / 多选 / 批量操作 ---------------- */
+
+/**
+ * 启用状态筛选（单选）。`v` 是写进 `state.instFilters.state` 的值，空串 = 全部。
+ *
+ * 为什么不复用浏览页那套 chip：浏览页筛的是 Nexus 分类，这里筛的是**本地状态**
+ * （装了但关掉的、根本没登记的），语义完全不同，混在一套里两边的“全部”会打架。
+ */
+const INST_STATE_FILTERS = [
+  { v: '', label: '全部' },
+  { v: 'on', label: '已启用' },
+  { v: 'off', label: '已关闭' },
+  { v: 'partial', label: '部分启用' },
+  { v: 'unreg', label: '未登记' },
+  { v: 'linked', label: '已关联' }
+];
+
+/**
+ * 一个分组是否命中当前筛选（纯函数）。
+ * 关键词同时匹配**卡片名 / Mod ID / 作者** —— 用户手上通常只记得其中一个。
+ */
+function installedGroupMatches(g) {
+  const f = state.instFilters || {};
+  if (f.q) {
+    const q = String(f.q).trim().toLowerCase();
+    if (q) {
+      const meta = g.meta || {};
+      const src = meta.source || {};
+      const hay = [
+        g.name || '',
+        g.modId ? String(g.modId) : '',
+        g.modId ? '#' + g.modId : '',
+        meta.author || src.author || ''
+      ].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+  }
+  const s = f.state || '';
+  if (s === 'on' && !(g.enabled && !g.partial)) return false;
+  if (s === 'off' && g.enabled) return false;
+  if (s === 'partial' && !g.partial) return false;
+  // 「未登记」不含内置组件：UE4SS 自带的脚本本来就没有 Nexus 来源，混进来只会碍事
+  if (s === 'unreg' && (g.registered || g.builtin)) return false;
+  if (s === 'linked' && !(g.linked && !g.registered)) return false;
+  if (f.kind && g.kind !== f.kind) return false;
+  return true;
+}
+
+/** 类型下拉的选项：取当前列表里真实出现过的类型，避免列一堆 0 个的条目 */
+function installedKindOptions() {
+  const seen = [];
+  for (const g of state.installedGroups || []) {
+    if (g.kind && !seen.includes(g.kind)) seen.push(g.kind);
+  }
+  return seen.map(k => ({ v: k, label: KIND_LABEL[k] || k }));
+}
+
+function installedFilterRowHtml() {
+  const f = state.instFilters || { q: '', state: '', kind: '' };
+  const chips = INST_STATE_FILTERS.map(s =>
+    `<button data-istate="${esc(s.v)}" class="${(f.state || '') === s.v ? 'on' : ''}">${esc(s.label)}</button>`
+  ).join('');
+  const kinds = [{ v: '', label: '全部类型' }].concat(installedKindOptions()).map(o =>
+    `<option value="${esc(o.v)}"${(f.kind || '') === o.v ? ' selected' : ''}>${esc(o.label)}</option>`
+  ).join('');
+  return `<div class="sortgrp ifilter">
+    <div class="search" id="instSearchBox"><input id="instSearch" type="search" placeholder="搜索已安装的 Mod（名字 / Mod ID / 作者）" value="${esc(f.q || '')}"></div>
+    <div class="tabs" id="instState">${chips}</div>
+    <select id="instKind" title="按类型筛选">${kinds}</select>
+  </div>`;
+}
+
+/** 多选那一排按钮：只在多选模式里出现，按钮上的数字跟着勾选数走 */
+function installedBatchRowHtml() {
+  const on = state.gsel.on;
+  const n = state.gsel.ids.size;
+  const keys = gselVisibleKeys();
+  const allOn = keys.length > 0 && keys.every(k => state.gsel.ids.has(k));
+  const cnt = `（${n}）`;   // 数字恒显示（0 也显示）：形状键只有一种，翻译不必为「无数字」再备一套
+  const dis = n ? '' : ' disabled';
+  return `<div class="sortgrp" id="instBatch">
+    <button class="btn sm${on ? ' on' : ''}" data-gbatch-mode="1">${on ? '完成' : '多选'}</button>
+    ${on ? `<button class="btn sm" data-gbatch-all="1">${allOn ? '取消全选' : '全选'}</button>` : ''}
+    ${on ? `<button class="btn sm" data-gbatch-on="1"${dis}>批量启用${cnt}</button>` : ''}
+    ${on ? `<button class="btn sm" data-gbatch-off="1"${dis}>批量关闭${cnt}</button>` : ''}
+    ${on ? `<button class="btn sm d" data-gbatch-del="1"${dis}>批量删除${cnt}</button>` : ''}
+  </div>`;
+}
+
+/** 当前可见（筛选之后）的分组键 —— 全选 / 「是否已全选」都以它为准 */
+function gselVisibleKeys() {
+  return (state.installedShown || []).map(g => g.key);
+}
+
+function gselSelected() {
+  return (state.installedGroups || []).filter(g => state.gsel.ids.has(g.key));
+}
+
+/** 勾选一个分组（手动勾选不影响「全选」语义 —— 这里没有跨批次追加，不需要 all 标记） */
+function gselToggle(key) {
+  if (state.gsel.ids.has(key)) state.gsel.ids.delete(key); else state.gsel.ids.add(key);
+  gselSyncCard(key);
+  gselUpdateBar();
+}
+
+/** 全选 / 取消全选：只作用于**当前筛选出来的**那些卡片 */
+function gselSelectAll() {
+  const keys = gselVisibleKeys();
+  if (!keys.length) return;
+  const allOn = keys.every(k => state.gsel.ids.has(k));
+  if (allOn) state.gsel.ids.clear();
+  else for (const k of keys) state.gsel.ids.add(k);
+  gselSyncAll();
+  gselUpdateBar();
+}
+
+function gselCardOf(key) {
+  return document.querySelector(`#installedArea .card[data-gid="${cssEsc(key)}"]`);
+}
+
+/** 单张卡片的勾选外观（不重画卡片：重画会让封面重新解码、滚动位置跳） */
+function gselSyncCard(key) {
+  const card = gselCardOf(key);
+  if (!card) return;
+  const on = state.gsel.ids.has(key);
+  card.classList.toggle('sel', on);
+  const ck = card.querySelector('.ck');
+  if (ck) ck.classList.toggle('on', on);
+}
+
+function gselSyncAll() {
+  for (const card of $$('#installedArea .card')) {
+    const key = card.dataset.gid;
+    if (!key) continue;
+    const on = state.gsel.ids.has(key);
+    card.classList.toggle('sel', on);
+    const ck = card.querySelector('.ck');
+    if (ck) ck.classList.toggle('on', on);
+  }
+}
+
+/** 进入 / 退出多选模式（退出时清空勾选）；封面上的复选框由 body.sel 控制显隐 */
+function gselSetMode(on) {
+  state.gsel.on = !!on;
+  if (!state.gsel.on) state.gsel.ids.clear();
+  syncSelBodyClass();
+  gselSyncAll();
+  gselUpdateBar();
+}
+
+/** 两个页面共用 body 上的 `sel` 类 —— 谁进多选模式谁点亮，都退出才熄灭 */
+function syncSelBodyClass() {
+  document.body.classList.toggle('sel', !!(state.sel.on || state.gsel.on));
+}
+
+/** 只重画多选那一排按钮（文案 / 数字 / 显隐都跟着勾选数变） */
+function gselUpdateBar() {
+  const host = document.querySelector('#installedArea #instBatch');
+  if (!host) return;
+  const box = document.createElement('div');
+  box.innerHTML = installedBatchRowHtml();
+  const next = box.firstElementChild;
+  if (next) host.replaceWith(next);
+}
+
+/**
+ * 批量启用 / 关闭选中的 Mod。
+ *
+ * 逐文件调 `mods:setEnabled`（主进程就是这么工作的：pak 改后缀、脚本改 mods.txt），
+ * 已经在目标状态的文件直接跳过 —— 470 个文件全发一遍请求既慢又会让日志刷屏。
+ * 前置组件不吃开关（主进程会抛「前置组件不支持禁用」），这里先剔掉。
+ */
+async function gselBatchToggle(target) {
+  if (state.gsel.busy) return;
+  const groups = gselSelected();
+  if (!groups.length) { toast('先勾选要处理的 Mod'); return; }
+  state.gsel.busy = true;
+  let mods = 0, failed = 0;
+  try {
+    for (const g of groups) {
+      let touched = false;
+      for (const m of (g.items || [])) {
+        if (m.kind === 'prereq') continue;
+        if (!!m.enabled === !!target) continue;
+        try {
+          await call(window.api.mods.setEnabled(m.id, !!target), { silent: true });
+          touched = true;
+        } catch { failed++; }
+      }
+      if (touched) mods++;
+    }
+  } finally {
+    state.gsel.busy = false;
+  }
+  toast(target ? `已启用 ${mods} 个 Mod` : `已关闭 ${mods} 个 Mod`, failed ? 'err' : 'ok');
+  if (failed) toast(`有 ${failed} 个文件没能改过来`, 'err');
+  state.gsel.ids.clear();
+  await refreshAll();
+}
+
+/**
+ * 批量删除选中的 Mod。
+ *
+ * 走的是和单张卡片「卸载」完全一样的通路（`mods:uninstall { purge:false }`）：
+ * 文件被移动到 `data\backup\uninstalled\`，不是真的抹掉，后悔还能捡回来。
+ * 内置组件（UE4SS 自带脚本）跳过 —— 删了没法恢复。
+ */
+async function gselBatchUninstall() {
+  if (state.gsel.busy) return;
+  const groups = gselSelected();
+  if (!groups.length) { toast('先勾选要处理的 Mod'); return; }
+  const usable = groups.filter(g => !g.builtin);
+  const skippedBuiltin = groups.length - usable.length;
+  if (!usable.length) { toast('内置组件不能卸载，请取消勾选后再试'); return; }
+  const items = usable.flatMap(g => (g.items || []).filter(m => m.kind !== 'prereq'));
+  if (!items.length) return;
+  const files = items.flatMap(m => m.files || []);
+  const okDel = confirm(
+    `确定删除这 ${usable.length} 个 Mod 吗？\n\n` +
+    `将移除 ${items.length} 个已装文件（共 ${files.length} 个文件）：\n` +
+    files.slice(0, 8).map(f => '  · ' + f.name).join('\n') +
+    (files.length > 8 ? `\n  … 等共 ${files.length} 个` : '') +
+    (skippedBuiltin ? `\n\n另有 ${skippedBuiltin} 个是内置组件，不会动。` : '') +
+    `\n\n文件不会直接删除，而是移动到：\n  data\\backup\\uninstalled\\\n可以手动找回。`
+  );
+  if (!okDel) return;
+  state.gsel.busy = true;
+  let done = 0, failed = 0;
+  try {
+    for (const m of items) {
+      try {
+        await call(window.api.mods.uninstall(m.id, { purge: false }), { silent: true });
+        done++;
+      } catch { failed++; }   // 单条失败不中断，最后统一报数
+    }
+  } finally {
+    state.gsel.busy = false;
+  }
+  toast(`已删除 ${done} 个 Mod`, failed ? 'err' : 'ok');
+  if (failed) toast(`有 ${failed} 个文件没能删掉`, 'err');
+  state.gsel.ids.clear();
+  await refreshAll();
+}
+
 function renderInstalled() {
   const area = $('#installedArea');
   if (!state.game || !state.game.found) {
@@ -831,7 +1083,11 @@ function renderInstalled() {
   // 先把「同一个 Nexus Mod 的多个文件」并成一张卡，再排序。
   // 用户 2026-10-14：合并显示 + 默认按安装时间倒序 + 可切换排序。
   state.installedGroups = groupInstalled(visible);
-  const sorted = state.installedGroups
+  // 筛选作用在**分组之后**：一行卡片是一个 Mod，不是磁盘上的一个文件，
+  // 所以「未登记 / 已关联 / 已启用」这些判断都按整组算（见 installedGroupMatches）。
+  const shown = state.installedGroups.filter(installedGroupMatches);
+  state.installedShown = shown;
+  const sorted = shown
     .slice()
     .sort((a, b) => compareInstalled(a, b, state.installedSort, state.installedSortDir));
 
@@ -861,16 +1117,39 @@ function renderInstalled() {
       } UE4SS 自带的 ${builtinScripts.length} 个内置脚本模组</button>`
     : '';
 
+  // 筛选把结果清空时给一句人话 + 一键清空（不然只剩白屏，看着像加载失败）
+  if (!sorted.length) {
+    area.innerHTML = liveStrip()
+      + gameWriteBanner()
+      + `<div class="ibar">${installedFilterRowHtml()}${sortBar}${installedBatchRowHtml()}</div>`
+      + `<div class="empty">
+        <h3>没有符合筛选条件的 Mod</h3>
+        <p>换个关键词，或者把筛选清掉看看。</p>
+        <button class="btn sm" data-iclear="1">清空筛选</button>
+      </div>`;
+    gselSyncAll();
+    gselUpdateBar();
+    $('#sub').textContent = `共 0 项 · 筛选自 ${state.installedGroups.length} 项`;
+    syncInstalledNav();
+    return;
+  }
+
   area.innerHTML = liveStrip()
     + gameWriteBanner()
-    + `<div class="ibar">${sortBar}${toggleRow}</div>`
+    + `<div class="ibar">${installedFilterRowHtml()}${sortBar}${installedBatchRowHtml()}${toggleRow}</div>`
     + `<div class="grid">${sorted.map(installedCard).join('')}</div>`;
+
+  // 重画后把勾选外观补上（筛选切换不会清空选择，勾过的卡片回来还是勾着的）
+  gselSyncAll();
+  gselUpdateBar();
 
   // 计数口径：**合并后的卡片数**（= Mod 数），不是磁盘上的条目数。
   // 否则「侧栏 258 / 列表 240 张卡」这种对不上的数字会让人以为是漏显示了。
-  $('#sub').textContent = `共 ${state.installedGroups.length} 项 · ${
-    state.installedGroups.filter(g => g.enabled && !g.partial).length
-  } 个已启用`;
+  // 有筛选时显示「筛选自 N 项」，免得人以为 Mod 丢了。
+  const filtered = shown.length !== state.installedGroups.length;
+  $('#sub').textContent = `共 ${shown.length} 项 · ${
+    shown.filter(g => g.enabled && !g.partial).length
+  } 个已启用${filtered ? `（筛选自 ${state.installedGroups.length} 项）` : ''}`;
   syncInstalledNav();
 }
 
@@ -1720,7 +1999,7 @@ function selClear() {
 /** 进入 / 退出多选模式（只切 body 上的类，卡片不用重画）；退出时清空选择 */
 function selSetMode(on) {
   state.sel.on = !!on;
-  document.body.classList.toggle('sel', state.sel.on);
+  syncSelBodyClass();
   if (!state.sel.on) { state.sel.ids.clear(); state.sel.all = false; selSyncAll(); }
   selUpdateBar();
 }
@@ -5476,9 +5755,35 @@ function bindEvents() {
     }, 450);
   });
 
+  // 已安装页的关键词筛选：输入框是每次重画时现生成的，所以用委托 + 重画后把焦点还回去
+  // （否则敲第二个字就丢焦点，等于只能输一个字符）。
+  let instSearchTimer = null;
+  document.addEventListener('input', e => {
+    if (!e.target || e.target.id !== 'instSearch') return;
+    state.instFilters.q = e.target.value;
+    clearTimeout(instSearchTimer);
+    instSearchTimer = setTimeout(() => {
+      renderInstalled();
+      const el = $('#instSearch');
+      if (el) {
+        el.focus();
+        const n = el.value.length;
+        try { el.setSelectionRange(n, n); } catch { /* 某些 input 类型不支持 */ }
+      }
+    }, 220);
+  });
+
   // 全局委托
   document.addEventListener('click', async (e) => {
     const t = e.target;
+
+    // 已安装页多选模式：点卡片（含封面、开关、标签）一律当「勾选 / 取消勾选」。
+    // ⚠️ 必须排在最前面 —— 后面 `data-gtoggle` 的分支比 `.card` 兜底还早，
+    //    不抢在它前面的话，多选模式里点开关会把 Mod 关掉而不是选中它。
+    if (state.gsel.on) {
+      const card = t.closest('.card[data-gid]');
+      if (card) { gselToggle(card.dataset.gid); return; }
+    }
 
     const setroot = t.closest('[data-setroot]');
     if (setroot) { await doSetRoot(setroot.dataset.setroot); return; }
@@ -5570,6 +5875,39 @@ function bindEvents() {
 
     const arch = t.closest('[data-showarchived]');
     if (arch) { renderFiles(true, state.drawer.mod && state.drawer.mod.modId); return; }
+
+    // ---- 已安装页：多选 / 批量启用·关闭·删除（用户 2026-11-07 要求「与查看在线 mod 一致」）----
+    const gmode = t.closest('[data-gbatch-mode]');
+    if (gmode) { gselSetMode(!state.gsel.on); return; }
+
+    const gall = t.closest('[data-gbatch-all]');
+    if (gall) { gselSelectAll(); return; }
+
+    const gon = t.closest('[data-gbatch-on]');
+    if (gon) { await gselBatchToggle(true); return; }
+
+    const goff = t.closest('[data-gbatch-off]');
+    if (goff) { await gselBatchToggle(false); return; }
+
+    const gdel = t.closest('[data-gbatch-del]');
+    if (gdel) { await gselBatchUninstall(); return; }
+
+    // 启用状态筛选（chip）；再点一次当前项就是取消筛选
+    const istate = t.closest('[data-istate]');
+    if (istate) {
+      const v = istate.dataset.istate || '';
+      state.instFilters.state = (state.instFilters.state || '') === v ? '' : v;
+      renderInstalled();
+      return;
+    }
+
+    // 筛选结果为空时那颗「清空筛选」
+    const iclear = t.closest('[data-iclear]');
+    if (iclear) {
+      state.instFilters = { q: '', state: '', kind: '' };
+      renderInstalled();
+      return;
+    }
 
     const sb = t.closest('[data-showbuiltin]');
     if (sb) {
@@ -6130,6 +6468,13 @@ function bindEvents() {
         }
       }
       linkerPaint();
+      return;
+    }
+
+    // 已安装页的类型筛选（下拉框）—— 值变化就重画，勾选保持不动
+    if (e.target.id === 'instKind') {
+      state.instFilters.kind = e.target.value || '';
+      renderInstalled();
       return;
     }
 

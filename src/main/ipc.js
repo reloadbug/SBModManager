@@ -1140,12 +1140,30 @@ function setEnabled(id, enabled) {
 
   if (mod.kind === 'prereq') throw new Error('前置组件不支持禁用');
 
-  if (mod.kind === 'pak') {
-    for (const f of mod.files) {
-      const from = path.join(L.modsDir, f.name);
-      const to = enabled ? path.join(L.modsDir, f.name.replace(/\.disabled$/i, ''))
-        : path.join(L.modsDir, f.name + (f.name.endsWith('.disabled') ? '' : '.disabled'));
-      if (from !== to && fs.existsSync(from)) fs.renameSync(from, to);
+  // 需要改名的文件：优先用注册表里的绝对路径（manifest 是权威来源，既能覆盖
+  // ~Mods，也能覆盖 LogicMods / 子目录），没有再退回磁盘扫描出来的名字。
+  // ⚠️ 只用 L.modsDir + 名字 推导时，一旦注册项的文件其实不在 ~Mods，重命名会
+  //    静默跳过，而注册表开关已经翻了 —— 界面显示「已关闭」，游戏却照旧加载。
+  /** @type {{from: string, to: string}[]} */
+  const renames = [];
+  let found = 0;
+  const RENAMEABLE = /\.(pak|ucas|utoc)$/i;
+  const manifest = (mod.meta && Array.isArray(mod.meta.manifest)) ? mod.meta.manifest : null;
+  if (mod.kind === 'pak' || mod.kind === 'logicmod' || mod.kind === 'cns') {
+    const sources = manifest && manifest.length
+      ? manifest.map(x => x && x.path).filter(Boolean)
+      : (mod.files || []).map(f => path.join(L.modsDir, f.name));
+    for (const from of sources) {
+      // 只动 pak 三件套：`.dekcns.json` 这类数据文件被 DekCNS 按名引用，
+      // 改扩展名不一定拦得住，反而可能让 CNS 读不到数据。
+      if (!RENAMEABLE.test(from.replace(/\.disabled$/i, ''))) continue;
+      if (!fs.existsSync(from)) continue;
+      found++;
+      const base = path.basename(from);
+      const dir = path.dirname(from);
+      const nextBase = enabled ? base.replace(/\.disabled$/i, '') : (base.endsWith('.disabled') ? base : base + '.disabled');
+      const to = path.join(dir, nextBase);
+      if (to !== from) renames.push({ from, to });
     }
   } else if (mod.kind === 'script') {
     // ⚠️ 用目录名（`mod.dir`），不能用 `mod.name` —— 关联/登记之后 name 是显示名，
@@ -1153,8 +1171,33 @@ function setEnabled(id, enabled) {
     toggleScriptMod(L, mod.dir || mod.name, enabled);
   }
 
-  registry.setEnabled(id, enabled);
-  return { id, enabled };
+  for (const r of renames) fs.renameSync(r.from, r.to);
+
+  // 注册表里的 manifest 也要跟着改名，否则下次卸载会找不到文件。
+  if (renames.length) {
+    const map = new Map(renames.map(r => [r.from.toLowerCase(), r.to]));
+    const nextManifest = (manifest || []).map(x => {
+      const to = map.get(String(x && x.path).toLowerCase());
+      if (!to) return x;
+      const base = path.basename(to);
+      const prevRel = String(x.rel || '');
+      const prevBase = path.basename(String(x.path || ''));
+      const rel = prevBase && prevRel.endsWith(prevBase)
+        ? prevRel.slice(0, prevRel.length - prevBase.length) + base
+        : base;
+      return { ...x, path: to, rel };
+    });
+    registry.patch(id, { enabled, manifest: nextManifest });
+  } else if (found === 0 && ((manifest && manifest.length) || (mod.files && mod.files.length))) {
+    // 一个文件都没在磁盘上找到，就别装作成功 —— 否则注册表说「已关闭」，
+    // 游戏还在照旧加载，用户看到的和实际不一样。
+    throw new Error(enabled
+      ? '找不到这个 Mod 的文件（可能已被移走或改名），没法启用'
+      : '找不到这个 Mod 的文件（可能已被移走或改名），没法关闭');
+  } else {
+    registry.setEnabled(id, enabled);
+  }
+  return { id, enabled, renamed: renames.length };
 }
 
 function toggleScriptMod(L, name, enabled) {

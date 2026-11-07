@@ -181,6 +181,12 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .ibar > .btn{margin-left:auto}
 /* 已安装页排序条：排序按钮组 + 方向翻转按钮 */
 .sortgrp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* 已安装页的筛选条（2026-11-07 加）：搜索框 + 状态 chip + 类型下拉。
+   `flex:1 1 320px` 让它独占一行（标签很多，挤在排序条右边会撑爆工具栏）。 */
+.sortgrp.ifilter{flex:1 1 320px;min-width:0}
+.sortgrp.ifilter .search{width:auto;flex:1 1 210px;min-width:170px}
+.sortgrp.ifilter select{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0 8px;height:29px;color:var(--text);font-size:11.5px;font-family:inherit;outline:none;cursor:pointer;flex:none}
+.sortgrp.ifilter select:focus{border-color:var(--accent)}
 .tabs button .dir{margin-left:5px;font-size:11px}
 .btn .dir{margin-right:3px;font-size:11px}
 

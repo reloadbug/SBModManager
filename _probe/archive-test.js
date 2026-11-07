@@ -150,7 +150,10 @@ console.log('\n[3] verText() / installedCard()：版本号不拼成 vv2.3、卡�
     console,
     coverForMod: () => '',
     KIND_LABEL: { pak: 'Pak 模组', prereq: '前置组件', script: '脚本模组' },
-    fmtDate: () => '—'
+    fmtDate: () => '—',
+    // 2026-11-07：卡片左上角的勾选角标读 `state.gsel.ids`（已安装页多选），
+    // 这里给一份空选择集，等价于「没开多选」，卡片应该和以前长得一样。
+    state: { gsel: { on: false, busy: false, ids: new Set() } }
   };
   vm.createContext(c2);
   // ⚠️ 2026-10-14 起 `installedCard()` 吃的是**组对象**（内部读 `g.items.length`

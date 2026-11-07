@@ -129,6 +129,15 @@ const selCode = (() => {
   return code.slice(i, j);
 })();
 
+// 2026-11-07：`selSetMode()` 改成调 `syncSelBodyClass()`（浏览页与已安装页共用
+// 同一个 body.sel，两页各自 toggle 会互相熄灭）。那个函数定义在 selToggle 之前，
+// 切片段切不到，这里按名字单独捞出来一起喂进沙箱，让断言仍走真实实现。
+const syncSelCode = (() => {
+  const m = code.match(/function syncSelBodyClass\([^)]*\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(m, '应能找到 syncSelBodyClass()');
+  return m[0];
+})();
+
 /** 假卡片：记录 classList 变更，便于断言「选中外观跟着变」 */
 function fakeCard(modid, log) {
   return {
@@ -141,7 +150,8 @@ function fakeCard(modid, log) {
 const bodyCls = { sel: null };   // body.classList.toggle 的记录（注意 toggle 里的 this 指向 classList，不是 body）
 const dom = { cards: [], els: {}, body: { classList: { toggle(cls, on) { bodyCls[cls] = !!on; } } } };
 const ctx = {
-  state: { sel: { on: false, all: false, busy: false, ids: new Set() }, browse: { items: [] } },
+  // 2026-11-07：body.sel 现在由浏览页 + 已安装页共用，两边状态都得给齐
+  state: { sel: { on: false, all: false, busy: false, ids: new Set() }, gsel: { on: false, busy: false, ids: new Set() }, browse: { items: [] } },
   $$: (s) => (s === '#browseArea .card' ? dom.cards : []),
   $: (s) => {
     if (!dom.els[s]) dom.els[s] = { textContent: '', style: {}, disabled: false, classList: { toggle() {} } };
@@ -152,13 +162,14 @@ const ctx = {
 };
 vm.createContext(ctx);
 vm.runInContext(
-  selCode + '\nthis.selToggle=selToggle; this.selSelectAll=selSelectAll; this.selClear=selClear;' +
+  syncSelCode + '\n' + selCode + '\nthis.selToggle=selToggle; this.selSelectAll=selSelectAll; this.selClear=selClear;' +
   'this.selSetMode=selSetMode; this.selUpdateBar=selUpdateBar;',
   ctx
 );
 
 function reset(ids = [], items = []) {
   ctx.state.sel = { on: false, all: false, busy: false, ids: new Set(ids) };
+  ctx.state.gsel = { on: false, busy: false, ids: new Set() };
   ctx.state.browse.items = items;
   dom.cards = [];
   dom.els = {};
