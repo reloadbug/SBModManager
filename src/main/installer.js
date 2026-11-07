@@ -5,6 +5,7 @@ const path = require('path');
 const archive = require('./archive');
 const game = require('./game');
 const paths = require('./paths');
+const modTag = require('./modTag');
 
 /**
  * Mod 安装器：识别压缩包结构 → 算出落点 → 解压复制 → 返回清单。
@@ -820,6 +821,39 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
 
   if (!mapping.length) throw new Error('压缩包里没有可安装的文件');
 
+  // ---- 落在 ~Mods / LogicMods 的 pak 三件套：文件名带上 Nexus 标识 ----
+  //
+  // 用户 2026-11-07：
+  // > 通过本管理器安装的 mod，mod 目录内的文件名要有统一规律，要能与 nexus 系统中的
+  // > 标识匹配上，这样从新加载游戏目录后，已经安装的 mod 就能容易关联上了。
+  //
+  // 只在**知道 modId 的安装**（从 Nexus 下载 / 带来源信息导入）上做；本地压缩包
+  // 没有 modId，无从标识，整段跳过。命名规则与全部取舍见 `src/main/modTag.js`。
+  //
+  // ⚠️ 两条额外刹车：
+  //   ① 只改 pak / ucas / utoc —— 三者必须同名，逐个加同样后缀天然同进同出。
+  //   ② 若同一个包里存在**与 pak 同名的伴随目录**（`HD-ATOOL_P.pak` + `HD-ATOOL_P\`），
+  //      一律不动。LogicMods 下这种「pak + 同名数据目录」是配套关系，改了 pak 名而
+  //      目录名没改，模组自己的脚本按名字去找数据目录就会找不到。
+  const taggedFiles = [];
+  if (meta && meta.modId) {
+    const normPrefix = (p) => path.resolve(p).toLowerCase() + path.sep;
+    const allowed = [normPrefix(L.modsDir), normPrefix(L.logicModsDir)];
+    const relDirs = new Set(mapping.map(m => String(m.rel).split('/')[0].toLowerCase()));
+    for (const m of mapping) {
+      const abs = String(m.to).toLowerCase();
+      if (!allowed.some(p => abs.startsWith(p))) continue;
+      const base = path.basename(m.rel);
+      if (!modTag.needsTag(base, meta)) continue;
+      const stem = base.replace(modTag.TAGGABLE, '').toLowerCase();
+      if (relDirs.has(stem)) continue;                       // 有同名伴随目录 → 不动
+      const next = modTag.applyTag(base, meta);
+      m.rel = m.rel.slice(0, m.rel.length - base.length) + next;
+      m.to = path.join(path.dirname(m.to), next);
+      taggedFiles.push(next);
+    }
+  }
+
   // ---- 依赖识别：这个包是不是 CNS 服装 Mod ----
   //
   // 判据（任一命中即算）：
@@ -932,6 +966,10 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
     // 命中的「自己上次装进去的文件」数（重装/升级时 > 0）—— 只用于日志与提示
     selfOverwriteCount: mapping.filter(m => ownedSet.has(String(m.to).toLowerCase())).length,
     strippedPrefix: totalStrip || null,
+    // 这次装进去的文件里，有多少个被写上了 Nexus 标识（`[nx<modId>]`）。
+    // 界面/日志据此告诉用户「装完能靠文件名认出这是哪个 mod」。
+    nameTag: taggedFiles.length ? modTag.tagOf(meta).trim() : null,
+    taggedFiles,
     skipped,
     warnings
   };

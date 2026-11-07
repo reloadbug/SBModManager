@@ -16,6 +16,8 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const installer = require('../src/main/installer');
+// 落盘文件名现在带 Nexus 标识（[nx<modId>]），期望值直接问 modTag 算，别在这里抄死。
+const modTag = require('../src/main/modTag');
 
 const SEVEN_ZIP = 'C:\\Program Files\\7-Zip\\7z.exe';
 const BASE = path.join(os.tmpdir(), 'sb-pickdir-test');
@@ -180,7 +182,7 @@ const META = { name: 'Test Variant Mod', modId: 9999, fileId: 1 };
 
   t('只装选中的 3 个文件（不含另一套）', () => {
     const rels = (a1.mapping || []).map(m => m.rel).sort();
-    const want = ['ID111-A_P.pak', 'ID111-A_P.ucas', 'ID111-A_P.utoc'];
+    const want = ['ID111-A_P.pak', 'ID111-A_P.ucas', 'ID111-A_P.utoc'].map(n => modTag.applyTag(n, META)).sort();
     return JSON.stringify(rels) === JSON.stringify(want) ? true : JSON.stringify(rels);
   });
 
@@ -203,7 +205,7 @@ const META = { name: 'Test Variant Mod', modId: 9999, fileId: 1 };
   const a2 = await installer.analyze(ROOT, VARIANT_PKG, META, { pickDir: 'Suit (2 variants)/Suit_B' });
   t('换选 B 套 → 装的是 B 的文件', () => {
     const rels = (a2.mapping || []).map(m => m.rel).sort();
-    const want = ['ID111-B_P.pak', 'ID111-B_P.ucas', 'ID111-B_P.utoc'];
+    const want = ['ID111-B_P.pak', 'ID111-B_P.ucas', 'ID111-B_P.utoc'].map(n => modTag.applyTag(n, META)).sort();
     return JSON.stringify(rels) === JSON.stringify(want) ? true : JSON.stringify(rels);
   });
 
@@ -318,7 +320,7 @@ const META = { name: 'Test Variant Mod', modId: 9999, fileId: 1 };
   t('选 3 套 → 三套的 pak 都在（各取一个代表）', () => {
     if (!f1.ok) return 'ok=false';
     const rels = f1.mapping.map(m => m.rel);
-    return ['nvpu_P.pak', 'Ahuang_Skin2161_P.pak', 'Kaiti_CH3155_P.pak'].every(n => rels.includes(n))
+    return ['nvpu_P.pak', 'Ahuang_Skin2161_P.pak', 'Kaiti_CH3155_P.pak'].map(n => modTag.applyTag(n, META)).every(n => rels.includes(n))
       ? true : JSON.stringify(rels);
   });
   t('选 3 套 → 剔掉了子目录里的说明文件（Re me.txt）', () => {

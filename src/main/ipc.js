@@ -17,6 +17,9 @@ const installer = require('./installer');
 const installFlow = require('./installFlow');
 const { createDownloadEngine } = require('./downloadEngine');
 const localState = require('./localState');
+const linker = require('./linker');
+const relocate = require('./relocate');
+const fsError = require('./fsError');
 const { createBlacklist } = require('./blacklist');
 const { createFavorites } = require('./favorites');
 const archive = require('./archive');
@@ -28,6 +31,7 @@ const { createDownloadWatcher, parseNexusFileName } = require('./downloadWatcher
 const { createGalleryFetcher } = require('./nexusGallery');
 const { createImageCache } = require('./imageCache');
 const variantCover = require('./variantCover');
+const dataMigrate = require('./dataMigrate');
 const { readJson, writeJson } = require('./store');
 
 let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites;
@@ -685,7 +689,7 @@ function localIndex(force = false) {
   const root = currentRoot();
   let scanned = [];
   if (root) {
-    try { scanned = scanner.scan(root, registry); } catch (e) {
+    try { scanned = scanner.scan(root, registry, linkReaderSafe()); } catch (e) {
       console.error('[浏览] 扫描本地 Mod 失败：' + e.message);
     }
   }
@@ -701,6 +705,358 @@ function localIndex(force = false) {
 /** 安装 / 卸载 / 下载状态变化后主动失效，别让界面显示上一个状态 */
 function invalidateLocalIndex() { localIdxCache = { at: 0, index: null }; }
 
+/* ---------------- 游戏目录搬移：账本跟着游戏走 ----------------
+ *
+ * 场景（用户实测 2026-11-07）：整个游戏文件夹从 `D:\games\Star Blade` 挪到
+ * `c:\Star Blade`，注册表里 324 条记录的绝对路径全部失效 → 扫描时按落点反查
+ * 全部落空 → 已安装页 429 项退化成「未登记」，来源/版本/封面全丢。
+ *
+ * 应对分两层：
+ *   ① 路径能精确重建（target 尾巴 + manifest.rel 都是相对路径），对得上就静默改回来；
+ *   ② 账本额外存一份到 `<游戏根>\.sbmod\ledger.json`，跟着游戏文件夹一起被搬走，
+ *      换机器/重装管理器都能从它恢复。
+ */
+
+/** 把账本同步一份到游戏目录。失败不抛 —— 附加保险不能拖累安装主流程 */
+function syncLedger(root) {
+  const r = root || currentRoot();
+  if (!r) return null;
+  try {
+    const led = relocate.toLedger(registry.all(), r, { app: app.getVersion() });
+    const file = relocate.writeLedger(r, led);
+    return { file, count: led.mods.length, writtenAt: led.writtenAt };
+  } catch (e) {
+    console.error('[搬移] 写游戏目录账本失败：' + e.message);
+    logger.event('game:ledgerFailed', { error: e.message });
+    return null;
+  }
+}
+
+/** 试算：注册表整体对齐到当前游戏目录（只算，不动文件也不动注册表） */
+function relocationPlan(root) {
+  const plan = relocate.planMigration(registry.all(), root);
+  return {
+    oldRoot: plan.oldRoot,
+    newRoot: plan.newRoot,
+    total: plan.total,
+    fixable: plan.fixable,
+    missing: plan.missing,
+    unchanged: plan.unchanged,
+    files: plan.files,
+    entries: plan.entries.filter(e => e.state !== 'same'),
+    patches: plan.patches
+  };
+}
+
+/** 落实试算结果，并把账本重写到游戏目录 */
+function applyRelocation(root) {
+  const plan = relocationPlan(root);
+  if (!plan.patches.length) { syncLedger(root); return { ...plan, applied: 0 }; }
+  const applied = registry.patchMany(plan.patches);
+  invalidateLocalIndex();
+  logger.event('game:relocated', { from: plan.oldRoot, to: plan.newRoot, applied, files: plan.files });
+  syncLedger(root);
+  return { ...plan, applied };
+}
+
+/**
+ * 启动时自动对齐 —— 用户要的「游戏怎么搬都不影响已安装识别」。
+ *
+ * 顺序讲究：
+ *   1) 注册表空、游戏目录里有账本 → 先把账本导进来（换机器 / 重装管理器）；
+ *   2) 还有可对齐的条目 → 静默改路径（**只改新位置文件确实存在的那些**）；
+ *   3) 最后把账本重写一份，让两份保持一致。
+ */
+function autoRelocate(root) {
+  const out = { imported: 0, applied: 0, fixable: 0, missing: 0, oldRoot: '', ledger: null };
+  if (!root) return out;
+  try {
+    if (!registry.all().length) {
+      const led = relocate.readLedger(root);
+      if (led) {
+        const merged = relocate.mergeLedger(registry.all(), led, root);
+        out.imported = registry.addMany(merged.add);
+        if (out.imported) logger.event('game:ledgerImported', { count: out.imported, file: led.file });
+      }
+    }
+    const plan = applyRelocation(root);
+    out.applied = plan.applied;
+    out.fixable = plan.fixable;
+    out.missing = plan.missing;
+    out.oldRoot = plan.oldRoot || '';
+    out.ledger = syncLedger(root);
+  } catch (e) {
+    console.error('[搬移] 自动对齐失败：' + e.message);
+    logger.event('game:relocateFailed', { error: e.message });
+  }
+  return out;
+}
+
+
+/* ---------------- 批量解析：本地 Mod ↔ Nexus 关联 ---------------- */
+
+/**
+ * 读一份关联记录（只读视图）。
+ *
+ * 每次扫描都重新读文件：一份记录只有几百字节/条，换来「改完立刻生效」，
+ * 比在内存里维护副本、再想办法保证两处一致要省心得多。
+ * 读不出来（文件损坏 / 权限）就当没有关联，绝不让整个扫描挂掉。
+ */
+function linkReaderSafe() {
+  try {
+    return linker.linkReader(paths.modLinksFile);
+  } catch (e) {
+    console.error('[批量解析] 读取关联记录失败：' + e.message);
+    return null;
+  }
+}
+
+/** 目录缓存的倒排索引（3164 条建一次要几十毫秒，不能每条 mod 重建一次） */
+let catalogIdxCache = { key: '', index: null };
+function catalogIndex(mods) {
+  const key = mods.length + ':' + ((mods[0] && mods[0].modId) || 0);
+  if (catalogIdxCache.index && catalogIdxCache.key === key) return catalogIdxCache.index;
+  const index = linker.buildIndex(mods);
+  catalogIdxCache = { key, index };
+  return index;
+}
+
+/** 关联状态：目录缓存有没有、什么时候抓的、已经关联了多少条 */
+function linkState() {
+  let catalog = null;
+  try {
+    const c = linker.readCatalog(paths.nexusCatalog);
+    if (c) catalog = { count: c.mods.length, fetchedAt: c.fetchedAt, stale: !!c.stale };
+  } catch (e) {
+    console.error('[批量解析] 读取 Nexus 目录缓存失败：' + e.message);
+  }
+  const reader = linkReaderSafe();
+  const links = reader ? reader.all() : [];
+  return { catalog, links, count: links.length };
+}
+
+/** 同时只允许跑一个解析任务（抓 3164 条目录要几十秒，点了两次会很惨） */
+let linkingJob = null;
+
+/**
+ * 挑出「值得解析」的条目：
+ * 磁盘上发现的（`registered === false`）、不是前置组件、还没关联过的。
+ * 内置 UE4SS / CNS 这类框架条目跳过 —— 它们不在 Nexus 上，问了也是浪费。
+ */
+function linkTargets(list) {
+  return list.filter(m => {
+    if (m.registered || m.linked || m.builtin) return false;
+    if (m.kind === 'prereq' || String(m.id).startsWith('builtin:')) return false;
+    return true;
+  });
+}
+
+/**
+ * 解析主体：抓目录 → 逐条打分 → 返回复核列表（**不落盘**）。
+ *
+ * 之所以不直接写关联：330 条里必然有错的，用户必须能先看一遍再决定。
+ * 落盘是 `linker:apply` 的事，前端只把用户确认过的条目交回来。
+ */
+async function resolveLinks(event, opts = {}) {
+  const root = currentRoot();
+  if (!root) throw new Error('尚未配置有效的游戏目录');
+  if (linkingJob) throw new Error('已经有一个解析任务在跑，等它结束再来');
+
+  const send = (p) => {
+    if (event && event.sender && !event.sender.isDestroyed()) event.sender.send('linker:progress', p);
+  };
+
+  linkingJob = { cancelled: false };
+  const job = linkingJob;
+  const startedAt = Date.now();
+
+  try {
+    // 1) Nexus 目录：7 天内复用缓存，过期才重新抓（40 页 ≈ 50 秒）
+    send({ phase: 'catalog', loaded: 0, total: 0, page: 0 });
+    let cat;
+    try {
+      cat = await linker.loadCatalog({
+        file: paths.nexusCatalog,
+        nexus,
+        force: !!opts.force,
+        shouldStop: () => job.cancelled,
+        onProgress: (p) => send({ phase: 'catalog', ...p })
+      });
+    } catch (e) {
+      throw new Error('获取 Nexus Mod 目录失败：' + e.message);
+    }
+    if (job.cancelled) return { cancelled: true, results: [], total: 0 };
+
+    const mods = (cat && cat.mods) || [];
+    if (!mods.length) throw new Error('Nexus 目录是空的，检查网络或 API Key');
+
+    // 2) 本地待解析条目
+    const list = scanner.scan(root, registry, linkReaderSafe());
+    const targets = linkTargets(list);
+    const index = catalogIndex(mods);
+
+    // 3) 逐条打分（纯本地计算，不花请求）
+    const results = [];
+    for (let i = 0; i < targets.length; i++) {
+      if (job.cancelled) break;
+      const m = targets[i];
+      // `tag` 是文件名里管理器写下的 `[nx<modId>]`（见 modTag.js）：
+      // 有它就走直配，不再猜名字 —— 这是唯一 100% 准的信号。
+      const r = linker.suggestFor({ id: m.id, name: m.name, kind: m.kind, tag: m.tag }, index);
+      results.push({
+        localId: m.id,
+        localName: m.name,
+        kind: m.kind,
+        location: m.location,
+        size: m.size,
+        fileCount: m.fileCount,
+        normalized: r.normalized,
+        best: r.best || null,
+        candidates: r.candidates || [],
+        ambiguous: !!r.ambiguous,
+        thin: !!r.thin,
+        tagged: !!r.tagged
+      });
+      if (i % 10 === 0 || i === targets.length - 1) {
+        send({ phase: 'match', done: i + 1, total: targets.length });
+      }
+    }
+
+    // 4) 分级统计（前端要拿这个决定「一键接受」能接受几条）
+    const stats = { high: 0, medium: 0, low: 0, none: 0 };
+    for (const r of results) {
+      if (!r.best) stats.none++;
+      else if (stats[r.best.confidence] !== undefined) stats[r.best.confidence]++;
+      else stats.low++;
+    }
+
+    logger.event('linker:resolve', {
+      targets: targets.length, ...stats, ms: Date.now() - startedAt
+    });
+
+    return {
+      cancelled: !!job.cancelled,
+      total: targets.length,
+      results,
+      stats,
+      catalog: { count: mods.length, fetchedAt: cat.fetchedAt, fromCache: !!cat.fromCache },
+      ms: Date.now() - startedAt
+    };
+  } finally {
+    linkingJob = null;
+  }
+}
+
+/** 把用户确认过的条目写成关联（顺带把封面抓到本地，卡片马上就有图） */
+async function applyLinks(entries) {
+  const list = Array.isArray(entries) ? entries : [];
+  if (!list.length) return { applied: 0, links: [] };
+
+  const file = paths.modLinksFile;
+  let cat = null;
+  try { cat = linker.readCatalog(paths.nexusCatalog); } catch { cat = null; }
+  const byId = new Map(((cat && cat.mods) || []).map(m => [Number(m.modId), m]));
+
+  const applied = [];
+  for (const e of list) {
+    const localId = String((e && e.localId) || '').trim();
+    const modId = Number(e && e.modId);
+    if (!localId || !Number.isFinite(modId) || modId <= 0) continue;
+
+    // 详情优先用本地目录（离线、不耗配额）；目录里没有才去问 API
+    let info = byId.get(modId) || null;
+    if (!info) {
+      try { info = await nexus.getMod(modId); } catch { info = null; }
+    }
+    if (!info) continue;
+
+    const pictureUrl = String(e.pictureUrl || info.pictureUrl || info.image || '').trim();
+
+    // 封面存一份到本地图片缓存：失败不影响关联本身
+    let image = '';
+    if (pictureUrl) {
+      try {
+        const cached = await imageCache().cacheModImages(modId, [pictureUrl], { limit: 1 });
+        const hit = (cached || []).find(x => x && x.localUrl);
+        if (hit) image = hit.localUrl;
+      } catch { /* 图挂了就挂着，卡片会回落到 https 直连 */ }
+    }
+
+    const link = {
+      modId,
+      name: String(e.name || info.name || '').trim(),
+      author: info.author || '',
+      version: info.version || '',
+      summary: info.summary || '',
+      pictureUrl,
+      image,
+      url: info.url || ('https://www.nexusmods.com/stellarblade/mods/' + modId),
+      updatedAt: info.updatedAt || null,
+      confidence: (e.confidence || 'manual'),
+      score: Number.isFinite(Number(e.score)) ? Number(e.score) : null,
+      matchedBy: e.matchedBy || 'manual',
+      at: Date.now(),
+      localId
+    };
+    linker.putLink(file, localId, link);
+    applied.push(link);
+  }
+
+  invalidateLocalIndex();
+  logger.event('linker:apply', { count: applied.length });
+  return { applied: applied.length, links: applied };
+}
+
+/** 解除一条关联（本地文件一个都不动，只是忘掉「它是哪个 Nexus mod」） */
+function unlinkLocal(localId) {
+  const id = String(localId || '').trim();
+  if (!id) throw new Error('缺少要解除关联的条目');
+  const removed = linker.removeLink(paths.modLinksFile, id);
+  invalidateLocalIndex();
+  return { removed: removed ? 1 : 0, localId: id };
+}
+
+/**
+ * 手动搜索候选。
+ *
+ * 先用本地目录（免费、即时）；目录还没抓过就退回官方搜索接口
+ * （代价是一次请求，但只有用户主动搜的时候才发生）。
+ */
+async function searchCatalog(query, limit = 20) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const max = Math.max(1, Math.min(50, Number(limit) || 20));
+
+  let mods = [];
+  try {
+    const c = linker.readCatalog(paths.nexusCatalog);
+    if (c) mods = c.mods || [];
+  } catch { mods = []; }
+
+  const shape = (m) => ({
+    modId: m.modId, name: m.name, author: m.author, version: m.version || '',
+    image: m.image, pictureUrl: m.pictureUrl, summary: m.summary, url: m.url,
+    downloads: m.downloads, endorsements: m.endorsements, adult: !!m.adult
+  });
+
+  if (!mods.length) {
+    const page = await nexus.listMods({ search: q, count: Math.min(80, max), adultMode: 'all' });
+    return (page.items || []).slice(0, max).map(shape);
+  }
+
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = [];
+  for (const m of mods) {
+    const hay = String(m.name || '').toLowerCase();
+    if (!terms.every(t => hay.includes(t))) continue;
+    hits.push({ m, pos: hay.indexOf(terms[0]), len: hay.length });
+  }
+  // 名字开头就命中的排前面，其次名字短的（更「精确」），最后按下载量兜底
+  hits.sort((a, b) => (a.pos - b.pos) || (a.len - b.len) ||
+    ((b.m.downloads || 0) - (a.m.downloads || 0)));
+  return hits.slice(0, max).map(h => shape(h.m));
+}
+
 function inspectGame() {
   const root = currentRoot();
   if (!root) {
@@ -709,7 +1065,19 @@ function inspectGame() {
   }
   const info = game.inspect(root);
   delete info.layout; // 路径细节通过 layoutOf 单独给
-  return { found: true, ...info, layout: game.layout(root) };
+  const layout = game.layout(root);
+  // 装文件之前先探一下「这个目录到底能不能写」。
+  // 本机踩过：程序目录带 Low 完整性标签 → 进程被降权 → 往游戏目录写全 EPERM，
+  // 用户装到一半才失败还只看到裸错误码。这里提前探测，设置页/已安装页就能先说清楚。
+  let writable;
+  try {
+    const probeDir = fs.existsSync(layout.modsDir) ? layout.modsDir : root;
+    const r = fsError.probeWritable(probeDir);
+    writable = { dir: probeDir, ok: r.ok, code: r.code || null, message: r.ok ? '' : '游戏目录不可写：' + (r.message || '') };
+  } catch (e) {
+    writable = { dir: root, ok: false, code: fsError.codeOf(e) || null, message: '游戏目录不可写：' + fsError.describe(e, { target: root }) };
+  }
+  return { found: true, ...info, layout, writable };
 }
 
 /* ---------------- 已安装 Mod ---------------- */
@@ -717,7 +1085,7 @@ function inspectGame() {
 function listMods() {
   const root = currentRoot();
   if (!root) return { installed: [], root: null };
-  const list = scanner.scan(root, registry);
+  const list = scanner.scan(root, registry, linkReaderSafe());
   return { installed: list, root };
 }
 
@@ -726,7 +1094,7 @@ function setEnabled(id, enabled) {
   const root = currentRoot();
   if (!root) throw new Error('尚未配置有效的游戏目录');
   const L = game.layout(root);
-  const list = scanner.scan(root, registry);
+  const list = scanner.scan(root, registry, linkReaderSafe());
   const mod = list.find(m => m.id === id);
   if (!mod) throw new Error('未找到该 Mod');
 
@@ -740,7 +1108,9 @@ function setEnabled(id, enabled) {
       if (from !== to && fs.existsSync(from)) fs.renameSync(from, to);
     }
   } else if (mod.kind === 'script') {
-    toggleScriptMod(L, mod.name, enabled);
+    // ⚠️ 用目录名（`mod.dir`），不能用 `mod.name` —— 关联/登记之后 name 是显示名，
+    //    写进 mods.txt 的是一个 UE4SS 根本不认识的键，开关就静默失效了。
+    toggleScriptMod(L, mod.dir || mod.name, enabled);
   }
 
   registry.setEnabled(id, enabled);
@@ -768,7 +1138,7 @@ function uninstall(id, { purge = false } = {}) {
   const root = currentRoot();
   if (!root) throw new Error('尚未配置有效的游戏目录');
   const L = game.layout(root);
-  const list = scanner.scan(root, registry);
+  const list = scanner.scan(root, registry, linkReaderSafe());
   const mod = list.find(m => m.id === id);
   if (!mod) throw new Error('未找到该 Mod');
 
@@ -797,10 +1167,11 @@ function uninstall(id, { purge = false } = {}) {
       else { fs.renameSync(from, path.join(dest, f.name)); moved.push({ file: f.name, to: dest }); }
     }
   } else if (mod.kind === 'script') {
-    const from = path.join(L.ue4ssModsDir, mod.name);
+    // 同 setEnabled：路径必须用目录名，`name` 关联后是显示名
+    const from = path.join(L.ue4ssModsDir, mod.dir || mod.name);
     if (fs.existsSync(from)) {
-      if (purge) { fs.rmSync(from, { recursive: true, force: true }); moved.push({ file: mod.name, deleted: true }); }
-      else { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.renameSync(from, dest); moved.push({ file: mod.name, to: dest }); }
+      if (purge) { fs.rmSync(from, { recursive: true, force: true }); moved.push({ file: mod.dir || mod.name, deleted: true }); }
+      else { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.renameSync(from, dest); moved.push({ file: mod.dir || mod.name, to: dest }); }
     }
   } else {
     // 落到 SB\ 等非标准位置的 mod（框架包）：没有磁盘特征，只能按 manifest 精确回滚。
@@ -856,7 +1227,11 @@ function uninstall(id, { purge = false } = {}) {
   }
 
   registry.remove(id);
+  // 关联记录跟着条目一起清掉：文件都没了，再留一条「它曾经是 12345 号 mod」
+  // 只会在下次同名 pak 出现时张冠李戴。
+  try { linker.removeLink(paths.modLinksFile, id); } catch { /* 记录清不掉不影响卸载 */ }
   invalidateLocalIndex();
+  syncLedger();
   logger.event('mods:uninstall', {
     id, kind: mod.kind, moved: moved.length,
     restored: restored.length, pruned: pruned.length, purge: !!purge
@@ -891,6 +1266,8 @@ function register() {
 
   /* 应用级 */
   handle('app:bootstrap', async () => {
+    // 先把账本与当前游戏目录对齐（搬移过就静默改回来；注册表空则从游戏目录里的账本恢复）
+    const relocation = autoRelocate(currentRoot());
     const g = inspectGame();
     const mods = listMods();
     const auth = await nexusAuth.getStatus();
@@ -908,6 +1285,7 @@ function register() {
       config: config.all(),
       game: g,
       installed: mods.installed,
+      relocation,
       translateStats: translator.stats(),
       auth: auth,
       dataDir: paths.DATA,
@@ -926,6 +1304,107 @@ function register() {
   handle('app:openPath', (p) => { shell.openPath(p); return true; });
   handle('app:revealPath', (p) => { shell.showItemInFolder(p); return true; });
   handle('app:dataDir', () => paths.DATA);
+
+  /* ---------------- 数据目录（设置页里可改位置） ----------------
+   *
+   * 为什么要能改：C 盘紧张的用户得把 cache / library / backup 挪到别的盘
+   * （这几个目录加起来能到几十 GB）。改法不是「热切换」，而是
+   * 写一个**指针文件**（放在固定的 userData 下，不在数据目录里 ——
+   * 放里面就成了「得先知道数据目录才能找到数据目录」的鸡生蛋），
+   * 下次启动时 `paths.js` 读它决定 DATA。
+   *
+   * 所以整套流程是：选目录 → 看目标里有没有旧数据 → 决定要不要把现有数据搬过去
+   * → 写指针 → 提示重启。**没有哪一步能在本进程里改掉已经加载的路径常量**
+   * （DATA / CACHE / LIBRARY 在模块加载时就被各模块取走了）。
+   */
+
+  /**
+   * 当前数据目录的全貌 —— 设置页显示「默认 / 自定义」标记与回落原因。
+   *
+   * ⚠️ `current` 与 `next` 会不一样：本进程的 `paths.DATA` 是**加载时定死**的，
+   *    用户在设置页改完指针文件后当前进程还在用旧目录，只有重启才会换成 `next`。
+   *    所以这里**重新读一遍指针文件**，把「重启后会用的位置」也算出来给界面。
+   */
+  handle('data:info', () => {
+    const picked = paths.pickDataDir(paths.readBootstrap(), paths.DEFAULT_DATA);
+    const custom = picked.source === 'custom';
+    const usable = !custom || paths.canUseDir(picked.dir);
+    return {
+      current: paths.DATA,                                   // 本进程正在用
+      next: usable ? picked.dir : paths.DEFAULT_DATA,         // 重启后会用的
+      configured: custom ? picked.dir : '',
+      default: paths.DEFAULT_DATA,
+      source: usable ? picked.source : 'default',
+      reason: usable ? picked.reason : 'unusable',
+      bootstrap: paths.BOOTSTRAP_FILE,
+      userData: paths.userDataDir(),
+      packaged: !!app.isPackaged,
+      exists: (() => { try { return fs.existsSync(paths.DATA); } catch { return false; } })(),
+      active: engine ? engine.stats().active : 0
+    };
+  });
+
+  /** 弹系统目录选择框（不挂主窗口 —— 免得把设置页所在窗口整个冻住） */
+  handle('data:choose', async (opts) => {
+    const o = opts || {};
+    const r = await dialog.showOpenDialog({
+      title: '选择数据目录',
+      defaultPath: o.defaultPath || paths.DATA,
+      buttonLabel: '选这个目录',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (r.canceled || !r.filePaths || !r.filePaths.length) return null;
+    return r.filePaths[0];
+  });
+
+  /** 看一眼某个目录里是不是已经有数据了（决定要不要问「搬运还是留空用」） */
+  handle('data:inspect', (dir) => dataMigrate.inspect(dir));
+
+  /**
+   * 把现有数据搬到新目录，然后把指针指过去。
+   *
+   * `mode`：'move' = 搬完删源；'copy' = 留一份在旧位置（更保守，用户自己决定何时删）。
+   * 下载 / 安装进行中一律拒绝 —— 半截文件与 archivePath 正在被写，搬了必然错位。
+   */
+  handle('data:migrate', async (from, to, opts) => {
+    const o = opts || {};
+    const running = engine ? engine.stats().active : 0;
+    if (running > 0) {
+      throw new Error('还有 ' + running + ' 个下载 / 安装任务在跑，先暂停或等它跑完再搬数据');
+    }
+    const r = await dataMigrate.run(from, to, {
+      mode: o.mode === 'move' ? 'move' : 'copy',
+      overwrite: !!o.overwrite,
+      onProgress: (p) => sendToMain('data:progress', p || {})
+    });
+    // 数据已在新位置 → 指针指过去（重启后生效）
+    // 目标就是默认位置时直接删指针文件更干净（否则 pickDataDir 会走 same-as-default 分支）
+    const isDefault = path.resolve(to).toLowerCase() === path.resolve(paths.DEFAULT_DATA).toLowerCase();
+    const set = isDefault ? paths.setDataDir('') : paths.setDataDir(to);
+    logger.event('data:migrated', { from: r.from, to: r.to, mode: r.mode, files: r.copied, skipped: r.skipped, rewritten: r.rewritten });
+    return { ...r, dir: set.dir, source: set.source, relaunchRequired: true };
+  });
+
+  /** 只写指针文件（目标目录留空 / 用户已自行处理好数据时走这条）。传空 = 恢复默认。 */
+  handle('data:setDir', (dir) => {
+    const running = engine ? engine.stats().active : 0;
+    if (running > 0) {
+      throw new Error('还有 ' + running + ' 个下载 / 安装任务在跑，先处理完再改数据位置');
+    }
+    // 传的就是默认位置时按「恢复默认」处理
+    const isDefault = !!dir && path.resolve(dir).toLowerCase() === path.resolve(paths.DEFAULT_DATA).toLowerCase();
+    const r = paths.setDataDir(isDefault ? '' : (dir || ''));
+    const same = path.resolve(r.dir).toLowerCase() === path.resolve(paths.DATA).toLowerCase();
+    return { dir: r.dir, source: r.source, current: paths.DATA, changed: !same, relaunchRequired: !same };
+  });
+
+  /** 立即以同样的参数重启 —— 新数据目录只有重启后才生效 */
+  handle('data:relaunch', () => {
+    logger.event('data:relaunch', { from: paths.DATA });
+    app.relaunch();
+    app.exit(0);
+    return true;
+  });
 
   /* 运行日志 —— 界面上「查看日志」用。
      用户报「点了没反应 / 报错」时，日志是唯一能回溯的东西（应用没有终端）。 */
@@ -956,7 +1435,9 @@ function register() {
   handle('game:setRoot', (root) => {
     if (!game.isGameRoot(root)) throw new Error('该目录不是有效的剑星根目录（未找到 SB\\Binaries\\Win64\\SB-Win64-Shipping.exe）');
     config.set({ gameRoot: root });
-    return inspectGame();
+    // 换目录往往就是「搬移」——顺手把账本对齐，别让用户自己点
+    const relocation = autoRelocate(root);
+    return { ...inspectGame(), relocation };
   });
   handle('game:ensureModsDir', () => {
     const root = currentRoot();
@@ -968,6 +1449,50 @@ function register() {
     const root = currentRoot();
     if (!root) throw new Error('尚未配置有效的游戏目录');
     return game.ensureLogicModsDir(root);
+  });
+
+  /* 游戏目录搬移（账本跟着游戏走） */
+  handle('game:relocate', () => {
+    const root = currentRoot();
+    if (!root) throw new Error('尚未配置有效的游戏目录');
+    return relocationPlan(root);
+  });
+  handle('game:relocateApply', () => {
+    const root = currentRoot();
+    if (!root) throw new Error('尚未配置有效的游戏目录');
+    return applyRelocation(root);
+  });
+  /** 账本状态：管理器里多少条、游戏目录里那份是否存在 */
+  handle('game:ledger', () => {
+    const root = currentRoot();
+    const led = root ? relocate.readLedger(root) : null;
+    return {
+      root,
+      file: root ? relocate.ledgerPath(root) : '',
+      registryCount: registry.all().length,
+      exists: !!led,
+      count: led ? led.mods.length : 0,
+      writtenAt: led ? led.writtenAt : null,
+      gameRootInLedger: led ? led.gameRoot : '',
+      sameRoot: !!(led && root && led.gameRoot && led.gameRoot.toLowerCase() === root.toLowerCase())
+    };
+  });
+  handle('game:ledgerExport', () => {
+    const root = currentRoot();
+    if (!root) throw new Error('尚未配置有效的游戏目录');
+    const out = syncLedger(root);
+    if (!out) throw new Error('写入失败，请检查游戏目录是否可写');
+    return out;
+  });
+  handle('game:ledgerImport', () => {
+    const root = currentRoot();
+    if (!root) throw new Error('尚未配置有效的游戏目录');
+    const led = relocate.readLedger(root);
+    if (!led) throw new Error('游戏目录里没有账本文件（' + relocate.ledgerPath(root) + '）');
+    const merged = relocate.mergeLedger(registry.all(), led, root);
+    const added = registry.addMany(merged.add);
+    if (added) { invalidateLocalIndex(); logger.event('game:ledgerImported', { count: added, manual: true }); }
+    return { added, skipped: merged.skipped.length, ledgerCount: led.mods.length };
   });
 
   /* 已安装 Mod */
@@ -1486,6 +2011,8 @@ function register() {
       backed: r.backedCount, backupFailed: r.backupFailed || 0
     });
     invalidateLocalIndex();
+    // 装完立刻把账本同步到游戏目录（搬移/换机器时靠它恢复）
+    syncLedger(root);
 
     const { plan, ...rest } = r;
     return rest;
@@ -1759,6 +2286,18 @@ function register() {
   handle('nexus:files', (modId) => nexus.getModFiles(modId));
   handle('nexus:parseUrl', (url) => parseNexusUrl(url));
   handle('nexus:clearCache', () => { nexus.clearCache(); return true; });
+
+  /* 批量解析：把手工丢进来的本地 Mod 与 Nexus 上的条目对上号
+     —— 只补「基本信息」（名字/作者/版本/封面/简介/链接），不动文件、不碰注册表 */
+  handle('linker:state', () => linkState());
+  handleWithEvent('linker:resolve', (event, opts) => resolveLinks(event, opts || {}));
+  handle('linker:cancel', () => {
+    if (linkingJob) linkingJob.cancelled = true;
+    return { cancelled: !!(linkingJob && linkingJob.cancelled) };
+  });
+  handle('linker:apply', (entries) => applyLinks(entries));
+  handle('linker:unlink', (localId) => unlinkLocal(localId));
+  handle('linker:search', (query, limit) => searchCatalog(query, limit));
 
   /* 翻译 */
   handleWithEvent('translate:text', (event, text, lang) =>

@@ -6,6 +6,7 @@ const { createDownloadQueue } = require('./downloadQueue');
 const { createImageCache } = require('./imageCache');
 const { runInstall, ownedPathsFor, explainConflicts } = require('./installFlow');
 const { sniffExtension, buildArchiveName, buildLegacyArchiveName, extOf } = require('./archiveName');
+const fsError = require('./fsError');
 const fsPromises = require('fs').promises;
 
 /**
@@ -712,8 +713,18 @@ function createDownloadEngine(opts = {}) {
       });
       logEvent('download:installed', { id, modId: meta.modId, registryId: r.id, kind: r.kind, written: r.written });
     } catch (e) {
-      patch(id, { status: 'failed', error: '安装失败：' + e.message });
-      logEvent('download:failed', { id, stage: 'install', error: e.message });
+      // 失败原因给人看的那份走 `fsError.describe()` —— 裸 EPERM 谁都读不懂；
+      // 日志里仍然留原始 `e.message` + code，方便排查（页面只显示前者）。
+      patch(id, {
+        status: 'failed',
+        error: '安装失败：' + fsError.describe(e, { target: plan && plan.target, action: '把文件复制到游戏目录' })
+      });
+      logEvent('download:failed', {
+        id, stage: 'install',
+        code: fsError.codeOf(e) || null,
+        target: (plan && plan.target) || null,
+        error: e.message
+      });
     }
   }
 

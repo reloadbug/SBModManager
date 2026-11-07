@@ -14,6 +14,31 @@ contextBridge.exposeInMainWorld('api', {
   revealPath: (p) => invoke('app:revealPath', p),
   dataDir: () => invoke('app:dataDir'),
 
+  /**
+   * 数据目录（设置页里可改位置）。
+   *
+   * `choose` 弹系统选目录框（取消返回 null）；`inspect` 看目标里有没有已有数据；
+   * `migrate` 把现有数据搬过去然后把指针指过去；
+   * `setDir` 只写指针（传空字符串 = 恢复默认）。
+   * ⚠️ 这三条都不会当场换目录 —— `paths.js` 的路径常量在模块加载时就定死了，
+   *    必须 `relaunch()` 重启才生效。
+   */
+  data: {
+    info: () => invoke('data:info'),
+    choose: (opts) => invoke('data:choose', opts),
+    inspect: (dir) => invoke('data:inspect', dir),
+    migrate: (from, to, opts) => invoke('data:migrate', from, to, opts),
+    setDir: (dir) => invoke('data:setDir', dir),
+    /** 立刻以同样参数重启（数据目录切换、改端口这类「必须重启」的事收尾用） */
+    relaunch: () => invoke('data:relaunch'),
+    /** 搬运进度（phase / name / done / total），返回取消订阅函数 */
+    onProgress: (cb) => {
+      const h = (_e, p) => cb(p);
+      ipcRenderer.on('data:progress', h);
+      return () => ipcRenderer.removeListener('data:progress', h);
+    }
+  },
+
   config: {
     get: () => invoke('config:get'),
     set: (patch) => invoke('config:set', patch),
@@ -25,7 +50,13 @@ contextBridge.exposeInMainWorld('api', {
     detect: () => invoke('game:detect'),
     setRoot: (root) => invoke('game:setRoot', root),
     ensureModsDir: () => invoke('game:ensureModsDir'),
-    ensureLogicModsDir: () => invoke('game:ensureLogicModsDir')
+    ensureLogicModsDir: () => invoke('game:ensureLogicModsDir'),
+    /** 游戏目录搬移：试算 / 落实 / 账本状态 / 导出 / 从账本恢复 */
+    relocate: () => invoke('game:relocate'),
+    relocateApply: () => invoke('game:relocateApply'),
+    ledger: () => invoke('game:ledger'),
+    ledgerExport: () => invoke('game:ledgerExport'),
+    ledgerImport: () => invoke('game:ledgerImport')
   },
 
   mods: {
@@ -35,6 +66,29 @@ contextBridge.exposeInMainWorld('api', {
     reveal: (id) => invoke('mods:reveal', id),
     /** 某个 Nexus modId 已装着的文件清单（覆盖对比用） */
     filesForModId: (modId) => invoke('mods:filesForModId', modId)
+  },
+
+  /**
+   * 批量解析：把手动放进 Mods 目录、程序没记录过来源的 Mod，
+   * 与 Nexus 上的条目对上号（只补名字/作者/版本/封面/简介/链接，不动文件）。
+   */
+  linker: {
+    /** 目录缓存状态 + 已关联条目 */
+    state: () => invoke('linker:state'),
+    /** 跑一次解析（抓目录 + 本地打分），进度通过 onProgress 推回来 */
+    resolve: (opts) => invoke('linker:resolve', opts),
+    cancel: () => invoke('linker:cancel'),
+    /** 落盘：传用户在复核界面确认过的条目 */
+    apply: (entries) => invoke('linker:apply', entries),
+    unlink: (localId) => invoke('linker:unlink', localId),
+    /** 手动搜候选（本地目录优先，没有目录才走官方接口） */
+    search: (query, limit) => invoke('linker:search', query, limit),
+    /** 订阅解析进度，返回取消订阅函数 */
+    onProgress: (cb) => {
+      const h = (_e, p) => cb(p);
+      ipcRenderer.on('linker:progress', h);
+      return () => ipcRenderer.removeListener('linker:progress', h);
+    }
   },
 
   nexus: {

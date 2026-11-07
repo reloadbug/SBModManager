@@ -25,6 +25,8 @@ const path = require('path');
 const installer = require('../src/main/installer');
 const installFlow = require('../src/main/installFlow');
 const { createRegistry } = require('../src/main/registry');
+// 落盘文件名现在带 Nexus 标识（[nx<modId>]），断言里别抄死文件名。
+const modTag = require('../src/main/modTag');
 
 let pass = 0, fail = 0;
 const fails = [];
@@ -170,7 +172,7 @@ async function main() {
     });
     eq(r.written, 3, '只写入选中的那一套（3 个文件）');
     t('pak 落在 ~Mods 根级（游戏只读根级）', () =>
-      fs.existsSync(path.join(MODS_DIR, 'SameAsset_P.pak')) || '不在根级');
+      fs.existsSync(path.join(MODS_DIR, modTag.applyTag('SameAsset_P.pak', { modId: 1378 }))) || '不在根级');
     const leftovers = fs.readdirSync(MODS_DIR).filter(n => /^With|^No/i.test(n));
     t('变体目录没有被一起埋进 ~Mods', () => leftovers.length === 0 || '埋进来了：' + leftovers.join(','));
     t('注册表登记了这一条', () => registry.get(r.id) !== null || '没登记');

@@ -42,6 +42,13 @@ const rest = process.argv.slice(2);
 const appEntry = rest.length && /\.js$/i.test(rest[0]) ? path.resolve(ROOT, rest[0]) : ROOT;
 const args = [appEntry, ...(appEntry === ROOT ? rest : rest.slice(1))];
 
+// `--compat` 是程序自己的开关，只让主进程去 appendSwitch —— 这在沙箱建不出来的
+// 机器上救不了命（浏览器进程沙箱在 main.js 之前就建好了，见 index.js 的 COMPAT_FLAGS）。
+// 所以探针里带 --compat 时，把 Chromium 的开关也补到命令行上。
+if (args.includes('--compat') && !args.includes('--no-sandbox')) {
+  args.push('--no-sandbox', '--disable-gpu', '--disable-gpu-compositing', '--disable-software-rasterizer');
+}
+
 const MAX_BUFFER = 64 * 1024 * 1024;
 
 /** 兜底：同步 spawn（只在异步路径「根本起不来」时用） */

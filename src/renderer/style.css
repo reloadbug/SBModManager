@@ -462,3 +462,56 @@ body.sel .cover .tag{left:38px}
   cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 .lnk:hover{color:var(--text)}
 #mFoot .btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- 批量解析（本地 Mod ↔ Nexus 关联）---------- */
+/* 说明区：一段话讲清「只补来源信息、不动文件」 */
+.lintro p{font-size:12px;line-height:1.7;color:var(--text);margin-bottom:6px}
+.lintro code{font-family:Consolas,monospace;font-size:11.5px;background:var(--panel3);
+  padding:1px 5px;border-radius:4px;color:var(--accent)}
+
+/* 进度条 */
+.lprog{margin:6px 0 10px}
+.lbar{height:6px;border-radius:4px;background:var(--panel3);overflow:hidden}
+.lbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-d));
+  transition:width .2s ease}
+.ltxt{font-size:11px;color:var(--dim);margin-top:6px}
+
+/* 汇总 + 分档标签页 */
+.lsummary{margin-bottom:10px}
+.lsummary .txt{font-size:11.5px;color:var(--dim);line-height:1.7}
+.ltabs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.ltab{background:var(--panel2);border:1px solid var(--border);border-radius:7px;
+  color:var(--dim);font-size:11.5px;padding:4px 10px;cursor:pointer;font-family:inherit}
+.ltab:hover{border-color:var(--border2);color:var(--text)}
+.ltab.on{background:rgba(232,163,61,.14);border-color:rgba(232,163,61,.5);color:var(--accent);font-weight:600}
+
+/* 结果列表：一行 = 一个本地条目 */
+.llist{display:flex;flex-direction:column;gap:6px;max-height:52vh;
+  overflow-y:auto;overflow-x:hidden;padding-right:4px}
+.lrow{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--border);
+  border-radius:8px;background:var(--panel2);overflow:hidden;flex:none}
+.lrow:hover{border-color:var(--border2)}
+.lrow input[type=checkbox]{flex:none;accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+.lname{min-width:0;flex:1}
+.ln1{font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ln2{font-size:10.5px;color:var(--dim2);margin-top:2px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+/* 右侧选择区：不写死宽度，随弹窗收缩，超出部分在 select 内部截断而不是把行撑破 */
+.lsel{display:flex;align-items:center;gap:7px;flex:0 1 52%;min-width:0}
+.lsel select{width:100%;max-width:100%;min-width:0;background:var(--panel3);color:var(--text);
+  border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:11.5px;
+  font-family:inherit;cursor:pointer;text-overflow:ellipsis}
+.lconf{flex:none;font-size:9.5px;font-weight:600;border-radius:4px;padding:1px 6px;
+  border:1px solid transparent}
+.lconf.high{color:var(--ok);border-color:rgba(63,185,80,.42);background:rgba(63,185,80,.10)}
+.lconf.medium{color:var(--accent);border-color:rgba(232,163,61,.42);background:rgba(232,163,61,.10)}
+.lconf.low{color:var(--dim);border-color:var(--border2);background:var(--panel3)}
+.lconf.none{color:var(--dim2);border-color:var(--border);background:transparent}
+
+/* 手动搜索子视图 */
+.lsearch .txt{font-size:12px;margin-bottom:8px;line-height:1.7}
+.lresults{margin:9px 0;display:flex;flex-direction:column;gap:5px;max-height:46vh;overflow:auto}
+.lhit{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--border);
+  border-radius:8px;background:var(--panel2)}
+.lhit:hover{border-color:var(--border2)}
+.lhit .btn.sm{flex:none}

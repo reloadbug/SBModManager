@@ -50,6 +50,37 @@ function createRegistry(file) {
       save();
       return m;
     },
+    /**
+     * 批量改（一次 save）。
+     *
+     * 为什么需要：游戏目录搬移时可能要改几百条记录的落点与文件清单，
+     * 逐条 `patch()` 会把整个 mods.json 写几百遍 —— 既慢又在中间态留下
+     * 「改了一半」的文件，中途崩了账本就残了。
+     */
+    patchMany(pairs) {
+      let n = 0;
+      for (const pair of pairs || []) {
+        if (!pair || !pair.id) continue;
+        const m = db.mods.find(x => x.id === pair.id);
+        if (!m) continue;
+        Object.assign(m, pair.patch || {});
+        n += 1;
+      }
+      if (n) save();
+      return n;
+    },
+    /** 批量新增（从游戏目录里的便携账本恢复时用；已存在的 id 跳过，不覆盖） */
+    addMany(entries) {
+      let n = 0;
+      for (const e of entries || []) {
+        if (!e || !e.id) continue;
+        if (db.mods.some(m => m.id === e.id)) continue;
+        db.mods.push(e);
+        n += 1;
+      }
+      if (n) save();
+      return n;
+    },
     setEnabled(id, enabled) {
       const m = db.mods.find(x => x.id === id);
       if (!m) return null;

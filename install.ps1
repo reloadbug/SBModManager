@@ -13,13 +13,15 @@
     · 或者自己下好 exe，用 -LocalFile 指定本地文件，完全不联网
 
 .PARAMETER Version
-  指定版本号，例如 0.2.10 或 v0.2.10。默认取最新 Release。
+  指定版本号，例如 0.2.11 或 v0.2.11。默认取最新 Release。
 
 .PARAMETER Portable
   下载便携版（-portable.exe）而不是安装版。便携版不写注册表、不建快捷方式。
 
 .PARAMETER InstallDir
   安装目录。安装版会透传给安装程序（NSIS /D=）；便携版则作为落地目录。
+  不指定时会**在交互式终端里问一次**（回车 = 用默认位置）；
+  传了值就不再问。想完全跳过询问（自动化 / 无人值守）加 -NoPrompt。
 
 .PARAMETER LocalFile
   使用本地已有的 exe，不联网下载。
@@ -30,17 +32,20 @@
 .PARAMETER NoLaunch
   装完不自动启动程序。
 
+.PARAMETER NoPrompt
+  不询问安装目录，一律用默认位置（批处理 / CI 用）。
+
 .PARAMETER DryRun
-  只显示将要做什么，不下载、不安装。
+  只显示将要做什么，不下载、不安装（也不会询问，避免卡住自动化）。
 
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
 
 .EXAMPLE
-  powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Version 0.2.10 -InstallDir "D:\Tools\SBModManager"
+  powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Version 0.2.11 -InstallDir "D:\Tools\SBModManager"
 
 .EXAMPLE
-  powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\下载\SBModManager-0.2.10-setup.exe"
+  powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\下载\SBModManager-0.2.11-setup.exe"
 #>
 
 [CmdletBinding()]
@@ -51,6 +56,7 @@ param(
   [string] $LocalFile  = '',
   [string] $Mirror     = '',
   [switch] $NoLaunch,
+  [switch] $NoPrompt,
   [switch] $DryRun
 )
 
@@ -136,6 +142,58 @@ function Get-File {
   if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Force -ErrorAction SilentlyContinue }
   Move-Item -LiteralPath $part -Destination $Dest -Force
   Ok ('已下载：' + $Dest + '  (' + (SizeText $real) + ')')
+}
+
+# ------------------------------------------------------------------ 安装目录（可交互指定）
+# 默认目录：安装版走 NSIS 的默认（perMachine=false → %LOCALAPPDATA%\Programs\<productName>），
+# 便携版落在 %LOCALAPPDATA%\Programs\SBModManager。
+
+function Get-DefaultInstallDir {
+  if ($Portable) { return (Join-Path $env:LOCALAPPDATA 'Programs\SBModManager') }
+  return (Join-Path $env:LOCALAPPDATA 'Programs\剑星 Mod 管理器')
+}
+
+function Test-CanPrompt {
+  if ($NoPrompt) { return $false }
+  if ($DryRun)   { return $false }     # DryRun 不许卡住自动化
+  try { if (-not [Environment]::UserInteractive) { return $false } } catch { }
+  try { $null = $Host.UI.RawUI.WindowSize; return $true } catch { return $false }
+}
+
+# 去掉引号、展开 %VAR%、相对路径补全、去掉尾部反斜杠
+function Resolve-Dir {
+  param([string]$d)
+  $s = [string]$d
+  $s = $s.Trim().Trim('"').Trim("'").Trim()
+  $s = [Environment]::ExpandEnvironmentVariables($s)
+  if (-not [IO.Path]::IsPathRooted($s)) { $s = Join-Path (Get-Location).Path $s }
+  try { $s = [IO.Path]::GetFullPath($s) } catch { }
+  if ($s.Length -gt 3) { $s = $s.TrimEnd('\') }
+  return $s
+}
+
+# 让用户选；返回 '' 表示「用默认」
+function Ask-InstallDir {
+  $def = Get-DefaultInstallDir
+  Head '选择安装位置'
+  Say ('默认：' + $def)
+  Note '直接回车用默认；也可以输入别的目录，例如 D:\Games\剑星 Mod 管理器'
+  for ($i = 1; $i -le 3; $i++) {
+    $ans = Read-Host '  安装目录（回车用默认）'
+    if ($null -eq $ans) { return '' }
+    if (-not $ans.Trim()) { return '' }
+    $dir = Resolve-Dir $ans
+    $root = ''
+    try { $root = [IO.Path]::GetPathRoot($dir) } catch { }
+    if (-not $root) { Warn '这个路径看不懂，请重新输入。'; continue }
+    if (-not (Test-Path -LiteralPath $root)) {
+      Warn ('盘符 ' + $root + ' 不存在（是不是没插上？），请重新输入。')
+      continue
+    }
+    return $dir
+  }
+  Warn '输入次数过多，改用默认位置。'
+  return ''
 }
 
 # ------------------------------------------------------------------ 从注册表反查安装位置
@@ -253,13 +311,25 @@ if ($DryRun) {
   if ($url) { Say ('下载地址：' + $url) } else { Say ('使用本地文件：' + $exePath) }
   if ($url) { Say ('保存到：'  + $dest) }
   Say ('安装方式：' + $kindName)
-  if ($InstallDir) { Say ('安装目录：' + $InstallDir) }
-  elseif ($Portable) { Say '安装目录：默认（%LOCALAPPDATA%\Programs\SBModManager）' }
-  else { Say '安装目录：默认（安装版为 %LOCALAPPDATA%\Programs\剑星 Mod 管理器）' }
+  if ($InstallDir) { Say ('安装目录：' + (Resolve-Dir $InstallDir)) }
+  elseif (Test-CanPrompt) { Say ('安装目录：运行时询问（回车 = ' + (Get-DefaultInstallDir) + '）') }
+  else { Say ('安装目录：默认（' + (Get-DefaultInstallDir) + '）') }
   Say '去掉 -DryRun 即真正执行。'
   Write-Host ''
   exit 0
 }
+
+# ------------------------------------------------------------------ 问一次安装目录
+# 没给 -InstallDir 且在交互式终端里 → 问一次；回车 = 用默认。
+# ⚠️ 必须在下载**之前**问：装到哪是用户最先要决定的事，
+#    也免得下完 100+ MB 才发现位置不对。
+if (-not $InstallDir) {
+  if (Test-CanPrompt) {
+    $picked = Ask-InstallDir
+    if ($picked) { $InstallDir = $picked }
+  }
+}
+if ($InstallDir) { $InstallDir = Resolve-Dir $InstallDir }
 
 # ------------------------------------------------------------------ 下载
 $pkg = $exePath
@@ -281,9 +351,9 @@ if (-not $pkg) {
 $loc = ''
 
 if ($Portable) {
+  # $InstallDir 已经在上面规范化过（绝对路径、无尾斜杠）；空 = 用默认
   $dir = $InstallDir
-  if (-not $dir) { $dir = Join-Path $env:LOCALAPPDATA 'Programs\SBModManager' }
-  if (-not [IO.Path]::IsPathRooted($dir)) { $dir = Join-Path (Get-Location).Path $dir }
+  if (-not $dir) { $dir = Get-DefaultInstallDir }
 
   Head ('放置便携版到 ' + $dir)
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -296,10 +366,12 @@ else {
              Where-Object { $_.ProcessName -like '*剑星*' -or $_.ProcessName -like '*SBModManager*' }
   if ($running) { Warn '检测到程序正在运行，安装程序会自动关掉它。' }
 
+  # ⚠️ /D= 必须是**最后一个参数**、且值**不能加引号**（NSIS 的约定）。
+  #    所以 $flags 是拼成**一个字符串**整体传给 -ArgumentList 的，
+  #    传数组的话 PowerShell 会给带空格的路径自动加引号，/D 就失效了。
   $flags = '/S'
   if ($InstallDir) {
     $loc = $InstallDir
-    if (-not [IO.Path]::IsPathRooted($loc)) { $loc = Join-Path (Get-Location).Path $loc }
     $flags = $flags + ' /D=' + $loc
     Say ('安装目录：' + $loc)
   }
@@ -313,7 +385,7 @@ else {
 
   if (-not $loc) {
     $loc = Find-InstallDir
-    if (-not $loc) { $loc = Join-Path $env:LOCALAPPDATA 'Programs\剑星 Mod 管理器' }
+    if (-not $loc) { $loc = Get-DefaultInstallDir }
   }
 }
 

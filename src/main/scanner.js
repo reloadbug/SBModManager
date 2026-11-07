@@ -4,6 +4,8 @@ const path = require('path');
 const game = require('./game');
 const prereqs = require('./prereqs');
 const paths = require('./paths');
+const linker = require('./linker');
+const modTag = require('./modTag');
 
 /** UE4SS 自带的脚本 mod（不算用户安装的） */
 const UE4SS_BUILTIN = new Set([
@@ -71,6 +73,9 @@ function scanPaks(L, registry) {
       mtime: g.mtime,
       location: L.modsDir,
       registered: !!reg,
+      // 文件名里带的 Nexus 标识（`名字 [nx123].pak`）—— 管理器装的东西自己带着身份，
+      // 注册表丢了也能认出来。见 src/main/modTag.js。
+      tag: modTag.parse(g.files[0].name),
       meta: reg || null
     };
   });
@@ -124,6 +129,7 @@ function scanScriptMods(L, registry) {
       location: L.ue4ssModsDir,
       registered: !!reg,
       builtin,
+      tag: modTag.parse(e.name),
       meta: reg || null
     };
   }).filter(m => m.name !== 'shared');
@@ -190,8 +196,15 @@ function archiveInfo(archivePath) {
   };
 }
 
-/** 汇总：磁盘扫描 + 注册表元数据 */
-function scan(root, registry) {
+/**
+ * 汇总：磁盘扫描 + 注册表元数据
+ *
+ * @param {string} root 游戏根目录
+ * @param {object} registry 注册表实例
+ * @param {object|null} [links] 「批量解析」得到的本地↔Nexus 关联（`linker.linkReader()`）。
+ *        传 null / 不传 = 完全不改变现有行为（测试与老调用点不受影响）。
+ */
+function scan(root, registry, links = null) {
   const L = game.layout(root);
   const out = [];
 
@@ -341,7 +354,15 @@ function scan(root, registry) {
     if (ap) m.archive = archiveInfo(ap);
   }
 
+  // 7) 合并「批量解析」的结果（本地 pak/脚本目录 ↔ Nexus mod 的关联）
+  //
+  //    放在最后：它只往**没有注册表记录**的条目上补来源信息（`meta.source.modId`
+  //    等），`registered` 保持 false —— 这些 mod 依然是「磁盘上发现的、不是本程序装的」，
+  //    卸载/开关行为一点不变，只是界面上多了名字、封面、版本和 Nexus 链接。
+  if (links) linker.applyToScanned(out, links);
+
   return out;
 }
 
-module.exports = { scan, parseModsTxt, claimedScriptDirs, UE4SS_BUILTIN, archiveInfo };
+// scanPaks / scanScriptMods 只给测试用：想单测「条目带不带 tag」时不该非得有整个游戏目录
+module.exports = { scan, parseModsTxt, claimedScriptDirs, UE4SS_BUILTIN, archiveInfo, scanPaks, scanScriptMods };

@@ -4,7 +4,7 @@
 
 - 项目主页：<https://github.com/reloadbug/SBModManager>
 - **下载安装包**：<https://github.com/reloadbug/SBModManager/releases/latest>
-  （`SBModManager-0.2.10-setup.exe` 安装版 / `SBModManager-0.2.10-portable.exe` 免安装版，需 Windows 10/11 x64）
+  （`SBModManager-0.2.11-setup.exe` 安装版 / `SBModManager-0.2.11-portable.exe` 免安装版，需 Windows 10/11 x64）
 - **一键安装**：双击仓库里的 **`安装.bat`**（或命令行跑 `install.ps1`）—— 自动下载最新版并静默安装，详见 [安装](#安装)
 - 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 - 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
@@ -29,10 +29,12 @@
 语言包位于 `src/renderer/locales/*.js`，以 `<script>` 形式加载（受 CSP `script-src 'self'` 约束，
 `file://` 下无法用 `fetch` 读本地 JSON）。术语与键表以 `_probe/i18n-keys.json` 为唯一真源。
 
-## 现在能做什么（v0.2.10）
+## 现在能做什么（v0.2.11）
 
 | 功能 | 状态 |
 |---|---|
+| **数据目录可以改到别的盘**：设置 → 存储 →「更改位置…」，已有数据支持**一键搬运**（移动 / 复制，带进度条，中途失败不删源） | ✅ |
+| **安装位置自己选**：一键安装脚本在交互式终端会**先问一次**装到哪里（`-NoPrompt` 可跳过、`-InstallDir` 直接给定） | ✅ |
 | 游戏目录自动探测与校验 | ✅ |
 | UE4SS（Mod 加载器）状态检测 | ✅ |
 | CNS（服装框架）按**特征文件**确定性检测（不再是猜测） | ✅ |
@@ -118,6 +120,7 @@
 仓库里有 `install.ps1`（配一个双击入口 **`安装.bat`**）：自动去 GitHub 取最新版安装包 → 校验大小 → 静默安装 → 装完直接启动。
 
 **双击 `安装.bat` 就行**（会弹一个控制台窗口，装完之前别关它）。
+运行后会**先问一次安装目录** —— 直接回车用默认位置，也可以输入别的目录（例如 `D:\Games\剑星 Mod 管理器`）。
 
 想在命令行里用或加参数：
 
@@ -129,24 +132,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Portable
 
 # 指定版本 + 指定安装目录
-powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Version 0.2.10 -InstallDir "D:\Tools\SBModManager"
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Version 0.2.11 -InstallDir "D:\Tools\SBModManager"
 
 # 只看它会干什么，不下载、不安装
 powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -DryRun
 
 # 用本地已经下好的 exe（完全不联网）
-powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\下载\SBModManager-0.2.10-setup.exe"
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\下载\SBModManager-0.2.11-setup.exe"
 ```
 
 | 参数 | 作用 |
 |---|---|
-| `-Version <版本>` | 指定版本（`0.2.10` 或 `v0.2.10`），默认取最新 |
+| `-Version <版本>` | 指定版本（`0.2.11` 或 `v0.2.11`），默认取最新 |
 | `-Portable` | 下载便携版而不是安装版 |
-| `-InstallDir <目录>` | 安装目录（安装版透传给安装程序，便携版作为落地目录） |
+| `-InstallDir <目录>` | 安装目录。不指定会**问一次**（回车 = 默认）；装了就到这个位置，不再问 |
 | `-LocalFile <文件>` | 用本地已有的 exe，不联网 |
 | `-Mirror <前缀>` | 下载加速前缀，例如 `-Mirror https://ghfast.top/` |
 | `-NoLaunch` | 装完不自动启动 |
-| `-DryRun` | 只显示计划，不做任何改动 |
+| `-NoPrompt` | 不询问安装目录，一律用默认（批处理 / 无人值守） |
+| `-DryRun` | 只显示计划，不做任何改动（也不会询问） |
+
+> 默认安装位置：安装版在 `%LOCALAPPDATA%\Programs\剑星 Mod 管理器`，
+> 便携版在 `%LOCALAPPDATA%\Programs\SBModManager`。
+> `-InstallDir` 支持相对路径、`%LOCALAPPDATA%` 这类环境变量，以及带空格 / 中文的路径。
 
 > **中国大陆网络**：直连 `github.com` 下 release 往往很慢甚至超时，三种办法 ——
 > ① 加 `-Mirror <加速前缀>`（这类加速服务的地址常变，用前先确认它能打开）；
@@ -222,8 +230,9 @@ npm start
 
 ```bash
 npm test              # 主进程模块自检（游戏探测 / 扫描 / Nexus / 翻译）
-npm run test:all      # 全部探针套件（38 套 / 2589 断言，见下）
+npm run test:all      # 全部探针套件（39 套 / 3099 断言，见下）
 npm run test:atool    # ATOOL（LogicMod 框架）自检（落点规则 / 特征判定 / **装好后进「已安装」列表** / 同 Mod 多版本去重）
+npm run test:datadir  # 数据目录可配置（pickDataDir 各分支 / 路径改写边界 / 搬运的复制·移动·跳过不删源 / 设置页与向导接线 / 安装脚本参数）
 npm run test:engine   # 下载引擎自检（状态机 / 自动安装 / 授权不落盘 / 取消 / 复用记录）
 npm run test:autoauth # 免点击自动授权（弹层端点解析 / 失败分类 / 刚上传未就绪判定 / 串行流水线 / 挑战页冷却续跑）
 npm run test:conflicts # 覆盖明细（归属三态 / 多主路径 / 大小对比 / 排序 / limit / 对比入口去重 / 抽屉内容顺序）
@@ -312,6 +321,23 @@ tests/           自检脚本
 
 打包版之所以换地方，是因为 `__dirname` 在 `app.asar` 里是只读归档，写不进去。
 放到 `%APPDATA%` 还有个好处：**卸载程序不会删你的数据**（`deleteAppDataOnUninstall: false`）。
+
+**位置可以在设置里改**（设置 → 存储，v0.2.11 起）：
+
+- 「**更改位置…**」选一个新目录 → 已有数据可以**一键搬过去**：先统计文件数，再选**移动**
+  （搬完删掉旧目录，推荐）或**复制**（旧目录留一份）。搬运带进度条，**中途失败不会删源目录**。
+- 目标目录里已经有数据时，向导给三条路：**覆盖**（用当前数据盖掉那份，会先备份）/
+  **保留那些文件**（只搬过来不冲突的部分）/ **直接用那个位置的数据**（什么都不搬）。
+- 搬完会**改写数据文件里的绝对路径**（下载归档、覆盖备份指针等），换盘之后包照样找得到；
+  改写比到路径**分隔符边界**，`sbmm-data-old` 这类同前缀的别的目录不会被误改。
+- 同一个盘内搬运是**直接改目录名**（瞬时完成），跨盘才逐文件复制。
+- 「**恢复默认**」＝ 清掉自定义位置，回到上表里的默认目录。
+- **改完需要重启程序才生效**（数据目录在启动时就确定了），完成后会问「立即重启 / 稍后自己重启」。
+- 自定义位置**不可写**（外接盘拔了、权限不足）时会自动回落到默认位置并在设置页提示原因，
+  **不会因此启动失败**。
+- 位置指针是 `%APPDATA%\剑星 Mod 管理器\data-location.json`（**固定位置**，不放在数据目录里，
+  否则改到哪就找不回来了）；删掉它就等于恢复默认。
+- 搬运前会检查**有没有下载 / 安装任务在跑**，在跑就先拒绝（正在写的文件搬完必坏）。
 
 > ⚠️ 两边是**两套独立的注册表**。如果你一直在用源码版、现在想切到打包版，
 > 跑一次搬迁脚本即可（会一并重写注册表里的绝对备份路径）：

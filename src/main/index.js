@@ -5,10 +5,35 @@ const { spawn } = require('child_process');
 
 const paths = require('./paths');
 const logger = require('./logger');
+const userData = require('./userData');
 const { readJson, writeJson } = require('./store');
 const nxm = require('./nxm');
 
 paths.ensure();
+
+/* ------------------------------------------------------------
+ * userData 目录可写性兜底（必须在 app ready 与单实例锁之前）
+ *
+ * `%APPDATA%\<应用名>` 写不进去时，Chromium 只打两行 ERROR
+ * （`Lock file can not be created: 拒绝访问 (0x5)`），
+ * `requestSingleInstanceLock()` 于是返回 false，我们按「已有实例在跑」退出 0 ——
+ * 用户看到的就是「双击没反应」。这里先探一次写入，不行就换到
+ * <数据目录>/userdata 继续跑，并把原因写进日志。
+ * ------------------------------------------------------------ */
+const USER_DATA = userData.resolve(app.getPath('userData'), path.join(paths.DATA, 'userdata'));
+if (USER_DATA.changed) {
+  try {
+    app.setPath('userData', USER_DATA.dir);
+    try { app.setPath('sessionData', USER_DATA.dir); } catch { /* 老版本没有这个 path */ }
+    console.error('[启动] 默认用户数据目录不可写（' + USER_DATA.reason + '），'
+      + '已改用：' + USER_DATA.dir);
+  } catch (e) {
+    console.error('[启动] 切换用户数据目录失败：' + e.message);
+  }
+} else if (USER_DATA.failed) {
+  console.error('[启动] 用户数据目录和备选目录都不可写（' + USER_DATA.reason + '），'
+    + '接下来可能会出现「单实例锁被占用」并直接退出 —— 请检查安全软件是否拦了写盘。');
+}
 
 // 日志要**尽早**装上：后面的 GPU 崩溃重启、协议注册、ipc 注册都会往它里面写。
 // 装在 paths.ensure() 之后、其它模块 require 之前，保证从第一条启动信息起就有记录。
@@ -46,12 +71,31 @@ function writeFlag(key, value) {
 
 const USE_COMPAT = FORCE_COMPAT || (readFlag('renderCompat') && !FORCE_GPU);
 
+/**
+ * 兼容模式要用的开关。
+ *
+ * ⚠️ 这些开关**必须**也在命令行上（启动器 / 重启时传），只靠
+ *    `app.commandLine.appendSwitch()` 是救不回来的：
+ *    浏览器进程的沙箱在 main JS 跑起来**之前**就建好了，arg 加太晚，
+ *    只对之后拉起的 GPU / 渲染子进程有效。沙箱建不出来的环境里，
+ *    进程会直接 `__debugbreak()` 退出（退出码 -2147483645 / 0x80000003），
+ *    连一行日志都来不及写 —— 表现为「窗口闪都不闪，双击没反应」。
+ *    实测：同名参数放到命令行上，同一个 exe 就能正常起来。
+ */
+const COMPAT_FLAGS = [
+  '--no-sandbox',
+  '--disable-gpu',
+  '--disable-gpu-compositing',
+  '--disable-software-rasterizer'
+];
+
 if (USE_COMPAT) {
   app.disableHardwareAcceleration();
-  app.commandLine.appendSwitch('no-sandbox');
-  app.commandLine.appendSwitch('disable-gpu');
-  app.commandLine.appendSwitch('disable-gpu-compositing');
-  app.commandLine.appendSwitch('disable-software-rasterizer');
+  for (const f of COMPAT_FLAGS) app.commandLine.appendSwitch(f.slice(2));
+  if (!ARGV.some(a => a === '--no-sandbox')) {
+    console.error('[启动] 兼容模式是由程序内判定的，但命令行上缺 --no-sandbox。'
+      + '如果这台机器连窗口都没出现就退出（退出码 -2147483645），请用「启动-兼容模式.bat」。');
+  }
 }
 
 const START_AT = Date.now();
@@ -75,11 +119,14 @@ app.on('child-process-gone', (_event, details) => {
   //   · 打包态：`process.execPath` 就是本程序 exe，**再传 app.asar 路径反而多此一举**
   //     （打包后 Electron 只认自己 resources 里的 app，多传的参数只会原样进 argv）
   //   `app.relaunch()` 两种情况下都对，所以打包态优先用它。
+  // 重启时**必须**把兼容开关带在命令行上（原因见 COMPAT_FLAGS 的注释）：
+  // 只传 `--compat` 的话，那些 appendSwitch 又变成"加太晚"，沙箱建不出来的机器上
+  // 重启后会直接 0x80000003 静默退出 —— 看起来就是"自动重启之后彻底没反应了"。
   try {
     if (app.isPackaged) {
-      app.relaunch({ args: ['--compat'] });
+      app.relaunch({ args: COMPAT_FLAGS.concat(['--compat']) });
     } else {
-      spawn(process.execPath, [app.getAppPath(), '--compat'], {
+      spawn(process.execPath, [app.getAppPath(), '--compat'].concat(COMPAT_FLAGS), {
         detached: true,
         stdio: 'ignore'
       }).unref();
@@ -216,7 +263,13 @@ if (!gotLock) {
   //
   // ⚠️ 这条分支退出码是 **0**。自动化截图（--shot）静默失效的头号原因就是
   //    残留实例占着锁 —— 表现为「脚本说成功了，但 png 没生成、日志空、退出码 0」。
-  console.error('[启动] 单实例锁被占用，本次启动直接退出（如果你在跑自动化截图，先清掉残留 electron 进程）');
+  //
+  // ⚠️ 第二种原因和「残留实例」毫无关系：userData 目录写不进去时，Chromium
+  //    建不出锁文件（native 层报 `Lock file can not be created: 拒绝访问 (0x5)`），
+  //    这里同样会拿到 false。区分办法看上面有没有「默认用户数据目录不可写」，
+  //    真正的锁被占用则会在日志里看到上一实例的启动块。
+  console.error('[启动] 单实例锁被占用，本次启动直接退出（如果你在跑自动化截图，先清掉残留 electron 进程）'
+    + ' · userData=' + app.getPath('userData'));
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {

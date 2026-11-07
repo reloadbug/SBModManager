@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 const installer = require('./installer');
+const modTag = require('./modTag');
+const logger = require('./logger');
 
 /**
  * 「压缩包 → 游戏目录」的安装流程。
@@ -298,6 +300,37 @@ async function runInstall({
 
   const id = registryIdFor(layout, plan, r.manifest, meta);
 
+  // ---- 改名残留：上一次装的是「无标识」的名字，这一次带上了 `[nx<modId>]` ----
+  //
+  // 用户装过旧版本时，`~Mods\HD-ATOOL_P.pak` 会留在原地，而这一次装进去的是
+  // `HD-ATOOL_P [nx4471].pak` —— 两份同内容的 pak **都会**被游戏挂上，谁赢取决于
+  // 文件名排序，等于给自己埋了个随机 bug。所以装完立刻把「去掉标识后同名」的旧文件
+  // 删掉（只删上一次清单里我们自己写的，且这一次不再需要的），再顺手清掉空目录。
+  const staleRemoved = [];
+  if (prev && Array.isArray(prev.manifest) && prev.manifest.length) {
+    const keep = new Set((r.manifest || []).map(f => String(f.path).toLowerCase()));
+    const keepStems = new Set();
+    for (const f of (r.manifest || [])) {
+      const base = path.basename(String(f.path || ''));
+      keepStems.add((path.dirname(String(f.path || '')) + '|' + modTag.stripTag(base)).toLowerCase());
+    }
+    for (const old of prev.manifest) {
+      const p = old && old.path ? String(old.path) : '';
+      if (!p || keep.has(p.toLowerCase())) continue;
+      const same = (path.dirname(p) + '|' + modTag.stripTag(path.basename(p))).toLowerCase();
+      if (!keepStems.has(same)) continue;                 // 不是「同一个文件换了名字」，别乱删
+      try {
+        if (fs.existsSync(p)) { fs.unlinkSync(p); staleRemoved.push(p); }
+      } catch (e) {
+        logger.warn('[安装] 清理改名残留失败：' + p + ' — ' + e.message);
+      }
+    }
+    if (staleRemoved.length) {
+      const dirs = new Set(staleRemoved.map(p => path.dirname(p)));
+      for (const d of dirs) { try { installer.pruneEmptyDirs(d); } catch { /* 忽略 */ } }
+    }
+  }
+
   // 备份清单做**并集**：上一次留下的「游戏原文件」备份不能丢（卸载时还要用），
   // 这一次新备份的补进来。因为已经跳过重复路径，直接拼接不会有重复项。
   const mergedOverwritten = [...(prev && prev.overwritten ? prev.overwritten : []), ...(r.backed || [])];
@@ -354,6 +387,10 @@ async function runInstall({
     requiresAtoolReason: plan.requiresAtoolReason || null,
     prereqKey: plan.prereqKey || null,
     reinstalled: !!prev,
+    // 这次写进文件名的 Nexus 标识（`[nx<modId>]`），没有就 null
+    nameTag: plan.nameTag || null,
+    // 改名后被清掉的旧文件（升级前装的无标识版本）
+    staleRemoved,
     plan
   };
 }

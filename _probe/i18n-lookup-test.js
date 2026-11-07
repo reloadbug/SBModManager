@@ -89,7 +89,47 @@ const CASES = [
   // 残留中文被拒 —— 非中文界面会整句留中文。下面三条就是拦这个的。
   ['⇄ 对比', { 'en-US': '⇄ Compare', 'ja-JP': '⇄ 比較', 'ru-RU': '⇄ Сравнить', 'zh-TW': '⇄ 對比' }],
   ['（3 个文件）', { 'en-US': '（3 files）', 'ja-JP': '（3 個のファイル）' }],
-  ['（10 个文件）', { 'en-US': '（10 files）' }]
+  ['（10 个文件）', { 'en-US': '（10 files）' }],
+
+  // —— 数据目录可改位置 + 一键搬运（第三十八轮）——
+  // 设置页「存储」区块与搬运向导（选目录 → 探目标 → 问旧数据怎么办 → 搬运 → 重启）。
+  ['默认位置', { 'en-US': 'Default location', 'ja-JP': '既定の場所', 'zh-TW': '預設位置' }],
+  ['自定义位置', { 'en-US': 'Custom location', 'zh-TW': '自訂位置' }],
+  ['待重启生效', { 'en-US': 'Pending restart' }],
+  ['更改位置…', { 'en-US': 'Change location…' }],
+  ['恢复默认', { 'en-US': 'Restore default', 'zh-TW': '恢復預設' }],
+  // ⚠️ 「约」只有**一个字**：进不了片段表（i18n.js 的 MIN_FRAGMENT = 3），
+  //    只能靠 `lookup()` 的**第 ① 级整串命中**来翻。这条用例就是拦「被 MIN_FRAGMENT 挡掉」
+  //    的 —— 一旦有人在 lookup 里给整串分支也加上长度门槛，英文界面就会冒出个中文「约」。
+  ['约', { 'en-US': 'approx.', 'de-DE': 'ca.', 'ru-RU': 'ок.' }],
+  ['目标目录里已经有数据', { 'en-US': 'The target folder already has data' }],
+  ['这个目录里已经有一份数据了：', { 'en-US': 'This folder already contains a copy of the data:' }],
+  ['把现有数据搬到新目录吗？', { 'en-US': 'Move the existing data to the new folder?' }],
+  ['恢复到默认位置', { 'en-US': 'Restore to the default location' }],
+  ['不搬，直接用那个位置的数据', { 'en-US': 'Don’t copy — just use the data in that location' }],
+  ['移动（推荐，搬完删掉旧目录）', { 'en-US': 'Move (recommended — deletes the old folder)' }],
+  ['复制（旧目录保留一份）', { 'en-US': 'Copy (keeps a copy in the old folder)' }],
+  ['需要重启', { 'en-US': 'Restart required' }],
+  ['立即重启', { 'en-US': 'Restart now' }],
+  ['稍后自己重启', { 'en-US': 'I’ll restart later' }],
+  ['搬运失败', { 'en-US': 'Move failed' }],
+  ['正在改写路径引用…', { 'en-US': 'Updating path references…' }],
+  ['目标：', { 'en-US': 'Target:' }],
+  ['新位置：', { 'en-US': 'New location:' }],
+  // —— 形状键：数字夹在词中间，片段替换救不了 ——
+  ['这个目录里已经有 1234 个文件了', { 'en-US': 'This folder already has 1234 files' }],
+  ['当前数据有 1234 个文件，要搬到新位置吗？',
+    { 'en-US': 'The current data has 1234 files. Move them to the new location?' }],
+  ['当前数据有 1234 个文件，要搬回默认位置吗？',
+    { 'en-US': 'The current data has 1234 files. Move them back to the default location?' }],
+  // 两个数字位
+  ['搬运了 1234 个文件，跳过 4 个已存在的', { 'en-US': 'Moved 1234 files, skipped 4 that already existed' }],
+  ['改写了 12 处路径引用', { 'en-US': 'Rewrote 12 path references' }],
+  // 主进程拒绝搬运时报的错（数字在句首，且句中有 `/`）
+  ['还有 3 个下载 / 安装任务在跑，先暂停或等它跑完再搬数据',
+    { 'en-US': '3 download / install tasks are still running — pause them or wait until they finish before moving the data' }],
+  ['还有 3 个下载 / 安装任务在跑，先处理完再改数据位置',
+    { 'en-US': '3 download / install tasks are still running — finish them before changing the data location' }]
 ];
 
 const CODES = ['zh-TW', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU', 'de-DE',

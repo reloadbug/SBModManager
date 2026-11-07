@@ -285,6 +285,8 @@ function switchPage(id) {
   $('#sub').textContent = s;
   $('#searchBox').style.display = id === 'p-browse' ? 'flex' : 'none';
   $('#btnImport').style.display = (id === 'p-installed' || id === 'p-download') ? '' : 'none';
+  const btnLk = $('#btnLinker');
+  if (btnLk) btnLk.style.display = (id === 'p-installed') ? '' : 'none';
   $('#btnRefresh').style.display = id === 'p-prereq' ? 'none' : '';
   // 第一次进某页才置顶；来过的恢复到离开时的位置（display:none → block 后要等一帧才设得进）
   const back = pageScroll.get(id);
@@ -516,6 +518,10 @@ function groupInstalled(list) {
       kind: items[0].kind,
       builtin: items.some(m => m.builtin),
       registered: items.some(m => m.registered),
+      // 「批量解析」对上的：注册表没记录，但知道了它是 Nexus 上的哪个 Mod。
+      // 单独标出来 —— 它和 registered 是两件不同的事（后者代表「本程序装的、可回滚」）。
+      linked: items.some(m => m.linked),
+      link: (items.find(m => m.link) || {}).link || null,
       enabled: enabledN > 0,
       partial: enabledN > 0 && enabledN < items.length,   // 部分启用
       size: items.reduce((n, m) => n + (m.size || 0), 0),
@@ -547,7 +553,12 @@ function installedCard(g) {
     ? `<img src="${esc(img)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'图片加载失败'}))">`
     : `<div class="ph">${g.kind === 'prereq' ? '前置组件' : '本地文件<br>无封面图'}</div>`;
   const tagCls = g.kind === 'prereq' ? 'tag pre' : (g.kind === 'script' ? 'tag script' : 'tag');
-  const tagTxt = g.builtin ? '内置' : (g.registered ? KIND_LABEL[g.kind] : '未登记');
+  const tagTxt = g.builtin ? '内置'
+    : (g.registered ? KIND_LABEL[g.kind] : (g.linked ? '已关联' : '未登记'));
+  const tagTitle = g.builtin ? ''
+    : (g.registered ? '本程序安装的，卸载可完整回滚'
+      : (g.linked ? '批量解析对上的 Nexus Mod：文件是自己放的，来源信息来自 Nexus'
+        : '磁盘上发现的 Mod，不知道对应 Nexus 的哪个条目'));
   // 一个 Mod 装了多个文件时，卡片上直接标出来（点开能逐个看）
   const n = g.items.length;
   const multi = n > 1
@@ -559,7 +570,7 @@ function installedCard(g) {
   <div class="card${g.enabled ? '' : ' off'}" data-gid="${esc(g.key)}">
     <div class="cover">
       ${cover}
-      <span class="${tagCls}">${esc(tagTxt)}</span>
+      <span class="${tagCls}"${tagTitle ? ` title="${esc(tagTitle)}"` : ''}>${esc(tagTxt)}</span>
       ${multi}
       ${g.kind === 'prereq' ? '' : `<button class="sw${g.enabled ? '' : ' off'}${g.partial ? ' part' : ''}" data-gtoggle="${esc(g.key)}" title="${esc(swTitle)}"></button>`}
     </div>
@@ -779,6 +790,20 @@ function liveStrip() {
   </div>`;
 }
 
+/**
+ * 游戏目录写不进去时的顶部告警条。
+ *
+ * 数据来自 `game:inspect` 的 `writable`（主进程真的去写了一个临时文件试探）。
+ * 与其让用户在「下载 → 安装」这一步看到一句裸 EPERM，不如一进页面就说清楚。
+ */
+function gameWriteBanner() {
+  const w = state.game && state.game.writable;
+  if (!w || w.ok) return '';
+  return `<div class="callout" style="border-color:rgba(248,81,73,.45);background:rgba(248,81,73,.07)">
+    <div class="hint" style="color:var(--red);line-height:1.75">⚠️ ${esc(w.message || '')}</div>
+  </div>`;
+}
+
 function renderInstalled() {
   const area = $('#installedArea');
   if (!state.game || !state.game.found) {
@@ -788,7 +813,7 @@ function renderInstalled() {
   }
   if (!state.installed.length) {
     state.installedGroups = [];
-    area.innerHTML = liveStrip() + `
+    area.innerHTML = liveStrip() + gameWriteBanner() + `
       <div class="empty">
         <h3>还没有检测到任何 Mod</h3>
         <p>已安装的 Pak 模组会出现在 <code>SB\\Content\\Paks\\~Mods\\</code>，脚本模组会出现在
@@ -837,6 +862,7 @@ function renderInstalled() {
     : '';
 
   area.innerHTML = liveStrip()
+    + gameWriteBanner()
     + `<div class="ibar">${sortBar}${toggleRow}</div>`
     + `<div class="grid">${sorted.map(installedCard).join('')}</div>`;
 
@@ -1031,7 +1057,9 @@ function openInstalledDrawer(g) {
   $('#dSub').textContent = [meta.nameZh, verText(meta.version), meta.author].filter(Boolean).join(' · ')
     || KIND_LABEL[m.kind] || '';
 
-  const desc = meta.description || meta.summary || '';
+  // 关联出来的条目没有 meta.summary（那栏是管理器安装时才写的），
+  // 但「批量解析」把 Nexus 的简介存在 meta.source.summary 里，这里一并取用。
+  const desc = meta.description || meta.summary || src.summary || '';
   const zhText = meta.descriptionZh || meta.summaryZh || '';
 
   $('#dBody').innerHTML = `
@@ -1045,11 +1073,16 @@ function openInstalledDrawer(g) {
         <button class="${state.drawer.lang === 'en' ? 'on' : ''}" data-lang="en" title="Nexus 上的原文（无论英文中文）">English</button>
       </div>
       <div class="txt" id="descBox">${renderDesc(m, desc, zhText)}</div>`
-      : `<div class="txt" style="color:var(--dim2)">该 Mod 没有登记说明文字。${m.registered ? '' : '（这是磁盘上扫描到的模组，尚未通过管理器安装，因此没有来源信息）'}</div>`}
+      : `<div class="txt" style="color:var(--dim2)">该 Mod 没有登记说明文字。${m.registered || m.linked ? '' : '（这是磁盘上扫描到的模组，尚未通过管理器安装，因此没有来源信息）'}</div>`}
 
     <div class="lbl">来源</div>
     ${meta.url
-      ? `<div class="urlbox"><span style="flex:1">${esc(meta.url)}</span><button class="btn sm" data-openurl="${esc(meta.url)}">打开</button></div>`
+      ? `<div class="urlbox"><span style="flex:1">${esc(meta.url)}</span><button class="btn sm" data-openurl="${esc(meta.url)}">打开</button></div>
+         ${m.linked
+           ? (m.link && m.link.matchedBy === 'tag'
+             ? '<div class="txt" style="color:var(--dim2)">上面这个来源来自文件名里的标识 —— 安装时就写在名字上了，不是按名字猜的。</div>'
+             : '<div class="txt" style="color:var(--dim2)">上面这个来源是「批量解析」按名字比对出来的，文件本身不是通过管理器安装的 —— 如果对错了，点下面的「解除关联」即可。</div>')
+           : ''}`
       : `<div class="txt" style="color:var(--dim2)">未知来源（非管理器安装）</div>`}
 
     <div class="lbl">信息</div>
@@ -1063,7 +1096,9 @@ function openInstalledDrawer(g) {
     <div class="kv"><span>文件数</span><span>${m.fileCount}</span></div>
     <div class="kv"><span>占用</span><span>${fmtSize(m.size)}</span></div>
     <div class="kv"><span>修改时间</span><span>${fmtDate(m.mtime)}</span></div>
-    <div class="kv"><span>登记状态</span><span>${m.registered ? '已登记（含来源信息）' : '未登记（磁盘扫描发现）'}</span></div>
+    <div class="kv"><span>登记状态</span><span>${m.registered
+      ? '已登记（含来源信息）'
+      : (m.linked ? '未登记 · 已关联 Nexus 来源' : '未登记（磁盘扫描发现）')}</span></div>
 
     ${archiveBlockHtml(m)}
 
@@ -1079,6 +1114,9 @@ function openInstalledDrawer(g) {
     <button class="btn" data-reveal="${esc(m.id)}">打开所在文件夹</button>
     ${m.archive && m.archive.exists
       ? `<button class="btn" data-reveal-path="${esc(m.archive.path)}" title="在资源管理器中定位原压缩包：${esc(m.archive.path)}">📦 定位原压缩包</button>`
+      : ''}
+    ${m.linked
+      ? `<button class="btn" data-gunlink="${esc(g.key)}" title="只忘掉「它是 Nexus 上的哪个 Mod」，磁盘文件一个都不动">解除关联</button>`
       : ''}
     ${m.kind !== 'prereq' ? `
       <button class="btn" data-gtoggle="${esc(g.key)}" title="${multi
@@ -1193,6 +1231,370 @@ function voteHtml(n) {
       blocked ? `data-undislike="${n.modId}"` : `data-dislike="${n.modId}"`
     } title="${blocked ? '移出黑名单，之后会重新显示' : '不喜欢 —— 加入黑名单，之后不再显示，也不会出现在下载队列里'}">${ICON_THUMB_DOWN}</button>
   </div>`;
+}
+
+/* ---------------- 批量解析：本地 Mod ↔ Nexus 关联 ---------------- */
+
+/**
+ * 复核界面用到的临时状态（只活在内存里，关掉弹窗即丢弃）。
+ *
+ * 为什么要有「复核」这一步：330 条未登记 Mod 里必然有猜错的，直接写进关联
+ * 会让用户看到错误的封面/作者而毫不知情。所以流程是
+ * 解析（只算不写） → 用户过一眼、改几条 → 应用（才落盘）。
+ */
+const linkerUI = {
+  rows: [],
+  stats: null,
+  catalog: null,
+  phase: '',                 // '' | 'catalog' | 'match' | 'done'
+  progress: { done: 0, total: 0, loaded: 0, catTotal: 0, fromCache: false },
+  filter: 'all',
+  search: null,              // { localId, query, results, busy }
+  offProgress: null,
+  running: false
+};
+
+/** 置信度 → 中文标签（也给 CSS 类名用，取值固定 high/medium/low/none） */
+const LINK_CONF_LABEL = { high: '高置信', medium: '中置信', low: '低置信', none: '未匹配' };
+
+function linkConfOf(r) {
+  return (r.best && r.best.confidence) || 'none';
+}
+
+/** 进度条：解析过程中显示在弹窗顶部 */
+function linkerProgressHtml() {
+  const p = linkerUI.progress;
+  if (linkerUI.phase === 'catalog') {
+    const pct = p.catTotal ? Math.round((p.loaded / p.catTotal) * 100) : 0;
+    return `<div class="lprog">
+      <div class="lbar"><i style="width:${pct}%"></i></div>
+      <div class="ltxt">正在获取 Nexus Mod 目录 ${fmtNum(p.loaded)} / ${p.catTotal ? fmtNum(p.catTotal) : '…'}（首次约 1 分钟，之后 7 天内复用缓存）</div>
+    </div>`;
+  }
+  if (linkerUI.phase === 'match') {
+    const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
+    return `<div class="lprog">
+      <div class="lbar"><i style="width:${pct}%"></i></div>
+      <div class="ltxt">正在比对本地 Mod ${fmtNum(p.done)} / ${fmtNum(p.total)}</div>
+    </div>`;
+  }
+  return '';
+}
+
+/** 结果汇总一行 */
+function linkerSummaryHtml() {
+  const s = linkerUI.stats || { high: 0, medium: 0, low: 0, none: 0 };
+  const total = linkerUI.rows.length;
+  if (!total) {
+    return '<div class="txt" style="color:var(--dim2)">没有需要解析的 Mod —— 扫描到的每一条都已经有来源信息了。</div>';
+  }
+  const tabs = [
+    ['all', '全部', total],
+    ['high', '高置信', s.high],
+    ['medium', '中置信', s.medium],
+    ['low', '低置信', s.low],
+    ['none', '未匹配', s.none]
+  ];
+  return `<div class="lsummary">
+    <div class="txt">共 ${total} 条待解析 · <b style="color:var(--ok)">高置信 ${s.high}</b> · 中置信 ${s.medium} · 低置信 ${s.low} · 未匹配 ${s.none}</div>
+    <div class="ltabs">${tabs.map(([k, label, n]) =>
+      `<button class="ltab${linkerUI.filter === k ? ' on' : ''}" data-lfilter="${k}">${label} ${n}</button>`).join('')}</div>
+    <div class="txt" style="color:var(--dim2)">默认只勾选「高置信」。逐条看过再应用 —— 名字里带代号的往往没有可靠信号，宁可留空。</div>
+  </div>`;
+}
+
+/** 单行：本地名字 + 候选下拉框 */
+function linkerRowHtml(r) {
+  const sel = r.sel || null;              // 当前选中（复核过程中改过的）
+  const chosen = sel && sel.modId ? String(sel.modId) : '';
+  const opts = [];
+  if (sel && sel.modId && !(r.candidates || []).some(c => Number(c.modId) === Number(sel.modId))) {
+    opts.push(`<option value="${esc(String(sel.modId))}" selected>#${esc(String(sel.modId))} ${esc(sel.name || '')}</option>`);
+  }
+  for (const c of r.candidates || []) {
+    const on = String(c.modId) === chosen ? ' selected' : '';
+    // 置信度和分数已经由左侧徽标给出，下拉里只留识别信息，避免同一行重复且撑宽菜单
+    opts.push(`<option value="${esc(String(c.modId))}"${on}>#${esc(String(c.modId))} ${esc(c.name || '')}${
+      c.author ? ' · ' + esc(c.author) : ''}</option>`);
+  }
+  opts.push(`<option value=""${chosen ? '' : ' selected'}>不关联（保持未登记）</option>`);
+  opts.push('<option value="__search">搜索其他 Mod…</option>');
+
+  const conf = linkConfOf(r);
+  const on = (r.on === undefined ? conf === 'high' : r.on) && !!chosen;
+
+  return `<div class="lrow" data-lid="${esc(r.localId)}">
+    <input type="checkbox" data-lchk="${esc(r.localId)}"${on ? ' checked' : ''}>
+    <div class="lname" data-i18n-skip title="${esc(r.localName)}">
+      <div class="ln1">${esc(r.localName)}</div>
+      <div class="ln2">${esc(r.kind || '')} · ${fmtSize(r.size || 0)} · ${r.fileCount || 0} 个文件${
+        r.tagged ? ' · 文件名带标识' : ''}${r.thin ? ' · 名字太短' : ''}${r.ambiguous ? ' · 多个相近候选' : ''}</div>
+    </div>
+    <div class="lsel">
+      <span class="lconf ${esc(conf)}">${esc(LINK_CONF_LABEL[conf] || conf)}</span>
+      <select data-lsel="${esc(r.localId)}">${opts.join('')}</select>
+    </div>
+  </div>`;
+}
+
+function linkerListHtml() {
+  const f = linkerUI.filter;
+  const shown = (linkerUI.rows || []).filter(r => (f === 'all' ? true : linkConfOf(r) === f));
+  if (!shown.length) return '<div class="txt" style="color:var(--dim2)">这个分组下没有条目。</div>';
+  return `<div class="llist">${shown.map(linkerRowHtml).join('')}</div>`;
+}
+
+/** 手动搜索视图（给某一行的「搜索其他 Mod…」用） */
+function linkerSearchHtml() {
+  const s = linkerUI.search;
+  if (!s) return '';
+  const row = linkerUI.rows.find(r => r.localId === s.localId);
+  const res = (s.results || []).map(c => `
+    <div class="lhit">
+      <div class="lname" data-i18n-skip>
+        <div class="ln1">${esc(c.name)}</div>
+        <div class="ln2">#${esc(String(c.modId))}${c.author ? ' · ' + esc(c.author) : ''}${
+          c.version ? ' · ' + esc(c.version) : ''} · ${fmtNum(c.downloads || 0)} 下载</div>
+      </div>
+      <button class="btn sm p" data-lpick="${esc(s.localId)}|${esc(String(c.modId))}">选它</button>
+    </div>`).join('');
+  return `<div class="lsearch">
+    <div class="txt">手动挑一个 Nexus Mod：</div>
+    <div class="txt" data-i18n-skip style="color:var(--dim2)">${esc((row && row.localName) || '')}</div>
+    <div class="urlbox">
+      <input id="linkerQuery" value="${esc(s.query || '')}" placeholder="输入 Mod 名称里的几个词，回车搜索">
+      <button class="btn" data-lgo="1">${s.busy ? '搜索中…' : '搜索'}</button>
+    </div>
+    <div class="lresults">${s.busy ? '<div class="txt" style="color:var(--dim2)">搜索中…</div>'
+      : (s.results && s.results.length ? res
+        : (s.searched ? '<div class="txt" style="color:var(--dim2)">没有搜到，换个词试试。</div>' : ''))}</div>
+    <button class="btn sm" data-lback="1">返回列表</button>
+  </div>`;
+}
+
+/** 弹窗正文：进度 → 结果 */
+function linkerBodyHtml() {
+  if (linkerUI.search) return linkerSearchHtml();
+  if (linkerUI.phase === 'catalog' || linkerUI.phase === 'match') {
+    return linkerProgressHtml() + '<div class="txt" style="color:var(--dim2)">解析过程只读不写：先取一份 Nexus 目录，再在本地逐条比对。中途可以取消。</div>';
+  }
+  return linkerSummaryHtml() + linkerListHtml();
+}
+
+function linkerFootHtml() {
+  if (linkerUI.phase === 'catalog' || linkerUI.phase === 'match') {
+    return '<button class="btn d" data-mbtn="lCancel">取消</button>';
+  }
+  if (!linkerUI.rows.length) {
+    return '<button class="btn" data-mbtn="lRestart">重新解析</button><button class="btn p" data-mbtn="lClose">关闭</button>';
+  }
+  const n = linkerCheckedCount();
+  return `<button class="btn" data-mbtn="lRestart">重新解析</button>
+    <button class="btn p" data-mbtn="lApply"${n ? '' : ' disabled'}>应用选中 ${n} 条</button>
+    <button class="btn" data-mbtn="lClose">关闭</button>`;
+}
+
+function linkerPaint() {
+  const body = $('#mBody');
+  if (body) body.innerHTML = linkerBodyHtml();
+  const foot = $('#mFoot');
+  if (foot) foot.innerHTML = linkerFootHtml();
+}
+
+function linkerCheckedCount() {
+  return (linkerUI.rows || []).filter(r => r.on && r.sel && r.sel.modId).length;
+}
+
+/** 把 DOM 上的勾选 / 下拉选择同步回 rows（切换筛选、重绘之前必须先做） */
+function linkerSyncFromDom() {
+  for (const r of linkerUI.rows) {
+    const cb = document.querySelector(`[data-lchk="${cssEsc(r.localId)}"]`);
+    if (cb) r.on = !!cb.checked;
+    const sel = document.querySelector(`[data-lsel="${cssEsc(r.localId)}"]`);
+    if (sel) {
+      const v = sel.value;
+      if (v && v !== '__search') {
+        const modId = Number(v);
+        const hit = (r.candidates || []).find(c => Number(c.modId) === modId)
+          || (r.sel && Number(r.sel.modId) === modId ? r.sel : null);
+        if (hit) r.sel = { ...hit, modId };
+      } else if (!v) {
+        r.sel = null;
+      }
+    }
+  }
+}
+
+/** CSS.escape 的兜底（老 Chromium 里没有，但 id 里可能有冒号） */
+function cssEsc(s) {
+  if (window.CSS && CSS.escape) return CSS.escape(String(s));
+  return String(s).replace(/["\\]/g, '\\$&');
+}
+
+function closeLinkerModal() {
+  if (linkerUI.offProgress) { try { linkerUI.offProgress(); } catch { /* ignore */ } }
+  linkerUI.offProgress = null;
+  linkerUI.running = false;
+  linkerUI.search = null;
+  closeModal();
+}
+
+/** 入口：顶栏「批量解析」 */
+async function openLinkerModal() {
+  linkerUI.rows = [];
+  linkerUI.stats = null;
+  linkerUI.phase = '';
+  linkerUI.filter = 'all';
+  linkerUI.search = null;
+  linkerUI.progress = { done: 0, total: 0, loaded: 0, catTotal: 0, fromCache: false };
+
+  openModal('批量解析', '<div class="txt" style="color:var(--dim2)">读取状态…</div>', [
+    { id: 'lClose', label: '关闭' }
+  ]);
+
+  let st = null;
+  try { st = await call(window.api.linker.state(), { silent: true }); } catch { st = null; }
+  linkerUI.catalog = (st && st.catalog) || null;
+
+  const cat = linkerUI.catalog;
+  // 文案拆成几个节点：一个是固定句、数字和日期单独成段，
+  // 这样多语言替换才不会卡在「句中夹日期」这种拼不出来的地方。
+  const catLine = cat
+    ? `<span>已有 Nexus 目录缓存：</span><b>${fmtNum(cat.count)}</b><span> 个 Mod，抓取时间 </span><span data-i18n-skip>${fmtDate(cat.fetchedAt)}</span>${
+      cat.stale ? '<span>（已过期，会自动重抓）</span>' : ''}`
+    : '还没有 Nexus 目录缓存 —— 第一次解析需要抓一遍全量目录（约 1 分钟），之后 7 天内都复用。';
+  const linked = (st && st.count) || 0;
+
+  $('#mBody').innerHTML = `
+    <div class="lintro">
+      <p>把手动放进 ~Mods 目录、程序没有记录过来源的 Mod，按名字与 Nexus 上的条目对上号，然后补上名字、作者、版本、封面和链接。文件一个都不动，也不会把它们登记成「管理器安装」。</p>
+      <p style="color:var(--dim2)">${catLine}</p>
+      ${linked ? `<p style="color:var(--dim2)">已经关联过 ${fmtNum(linked)} 条 —— 解析只会处理「还没关联」的，重复跑不会重复写。</p>` : ''}
+    </div>`;
+  $('#mFoot').innerHTML = `
+    <button class="btn p" data-mbtn="lStart">开始解析</button>
+    <button class="btn" data-mbtn="lClose">关闭</button>`;
+}
+
+/** 真正跑一次解析 */
+async function runLinkerResolve(force = false) {
+  if (linkerUI.running) return;
+  linkerUI.running = true;
+  linkerUI.phase = 'catalog';
+  linkerUI.rows = [];
+  linkerUI.stats = null;
+  linkerUI.progress = { done: 0, total: 0, loaded: 0, catTotal: 0, fromCache: false };
+  linkerPaint();
+
+  if (linkerUI.offProgress) { try { linkerUI.offProgress(); } catch { /* ignore */ } }
+  linkerUI.offProgress = window.api.linker.onProgress(p => {
+    if (!p) return;
+    if (p.phase === 'catalog') {
+      linkerUI.phase = 'catalog';
+      linkerUI.progress.loaded = p.loaded || 0;
+      linkerUI.progress.catTotal = p.total || 0;
+    } else if (p.phase === 'match') {
+      linkerUI.phase = 'match';
+      linkerUI.progress.done = p.done || 0;
+      linkerUI.progress.total = p.total || 0;
+    }
+    // 进度事件很密（每 10 条一次），节流重绘到 200ms，别把界面顶住
+    const now = Date.now();
+    if (!linkerPaint._at || now - linkerPaint._at > 200) {
+      linkerPaint._at = now;
+      linkerPaint();
+    }
+  });
+
+  let res = null;
+  try {
+    res = await call(window.api.linker.resolve({ force }), { silent: true });
+  } catch (e) {
+    linkerUI.phase = '';
+    linkerUI.running = false;
+    openModal('批量解析', `<div class="txt" style="color:var(--err)">解析失败：${esc(e.message)}</div>`, [
+      { id: 'lClose', label: '关闭' }
+    ]);
+    return;
+  }
+
+  linkerUI.running = false;
+  linkerUI.phase = 'done';
+
+  if (res && res.cancelled) {
+    linkerUI.phase = '';
+    linkerUI.rows = [];
+    linkerPaint();
+    toast('已取消解析', 'warn');
+    return;
+  }
+
+  // 排序：置信度高的在前，同档按分数、再按下载量
+  const rank = { high: 0, medium: 1, low: 2, none: 3 };
+  const results = ((res && res.results) || []).slice();
+  results.sort((a, b) => {
+    const ra = rank[linkConfOf(a)] ?? 3;
+    const rb = rank[linkConfOf(b)] ?? 3;
+    if (ra !== rb) return ra - rb;
+    const sa = (a.best && a.best.score) || 0;
+    const sb = (b.best && b.best.score) || 0;
+    if (sb !== sa) return sb - sa;
+    return String(a.localName).localeCompare(String(b.localName));
+  });
+
+  linkerUI.rows = results.map(r => ({
+    ...r,
+    on: linkConfOf(r) === 'high' && !!r.best,     // 默认只勾高置信
+    sel: r.best ? { ...r.best } : null            // 当前选中（可在下拉框里改）
+  }));
+  linkerUI.stats = (res && res.stats) || null;
+  linkerUI.catalog = (res && res.catalog) || linkerUI.catalog;
+  linkerPaint();
+}
+
+/** 应用勾选的关联 */
+async function applyLinkerChoices() {
+  linkerSyncFromDom();
+  const entries = [];
+  for (const r of linkerUI.rows) {
+    if (!r.on || !r.sel || !r.sel.modId) continue;
+    entries.push({
+      localId: r.localId,
+      modId: Number(r.sel.modId),
+      name: r.sel.name || '',
+      pictureUrl: r.sel.pictureUrl || r.sel.image || '',
+      confidence: r.best && Number(r.best.modId) === Number(r.sel.modId) ? r.best.confidence : 'manual',
+      score: r.best && Number(r.best.modId) === Number(r.sel.modId) ? r.best.score : null,
+      matchedBy: r.best && Number(r.best.modId) === Number(r.sel.modId)
+        ? (r.tagged ? 'tag' : 'auto')
+        : 'manual'
+    });
+  }
+  if (!entries.length) { toast('没有勾选任何要关联的条目', 'warn'); return; }
+
+  toast('正在写入关联并缓存封面…');
+  try {
+    const r = await call(window.api.linker.apply(entries));
+    toast(`已关联 ${r.applied} 条`, 'ok');
+    closeLinkerModal();
+    await refreshAll();
+  } catch { /* call 已经弹过错误提示 */ }
+}
+
+/** 手动搜索：为某一行找候选 */
+async function runLinkerSearch(localId, query) {
+  linkerUI.search = { localId, query: query || '', results: [], busy: true, searched: false };
+  linkerPaint();
+  try {
+    const list = await call(window.api.linker.search(query, 30), { silent: true });
+    linkerUI.search.results = list || [];
+  } catch (e) {
+    linkerUI.search.results = [];
+    toast('搜索失败：' + e.message, 'err');
+  }
+  linkerUI.search.busy = false;
+  linkerUI.search.searched = true;
+  linkerPaint();
 }
 
 function browseCard(n) {
@@ -3736,9 +4138,30 @@ function renderSettings() {
         <div class="hint">必须是包含 <code>SB\\Binaries\\Win64\\SB-Win64-Shipping.exe</code> 的目录。
         ${g.found ? `当前识别：${esc(g.root)}` : '<span style="color:var(--red)">当前未识别到有效目录</span>'}</div>
       </div>
+      ${g.found && g.writable && !g.writable.ok
+        ? `<div class="f"><label></label><div class="hint" style="color:var(--red);line-height:1.75">⚠️ ${esc(g.writable.message || '')}</div></div>`
+        : ''}
       <div class="f">
         <label></label>
         <button class="btn sm" id="btnDetect">自动探测</button>
+      </div>
+    </div>
+
+    <div class="frm">
+      <h3>已安装记录（跟着游戏走）</h3>
+      <div class="f">
+        <label>账本</label>
+        <span id="ledgerLine" style="font-size:12px;color:var(--dim)">读取中…</span>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">管理器会记两份账：一份在自己数据目录的 mods.json，另一份写在游戏根目录的 .sbmod\\ledger.json。整个游戏文件夹搬走（换盘 / 换机器）后账本跟着走，打开管理器会自动把路径对齐，不需要重新关联。</div>
+      </div>
+      <div class="f">
+        <label></label>
+        <button class="btn sm" id="btnLedgerCheck">检查并修复路径</button>
+        <button class="btn sm" id="btnLedgerExport">写入账本到游戏目录</button>
+        <button class="btn sm" id="btnLedgerImport">从账本恢复</button>
       </div>
     </div>
 
@@ -3930,7 +4353,14 @@ function renderSettings() {
       <div class="f">
         <label>数据目录</label>
         <input type="text" id="setDataDir" value="${esc(state.dataDir || '')}" readonly>
+        <i class="tag gray" id="ddTag">默认位置</i>
         <button class="btn sm" id="btnOpenData">打开</button>
+        <button class="btn sm" id="btnChangeData">更改位置…</button>
+        <button class="btn sm" id="btnRestoreData" hidden>恢复默认</button>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint" id="ddHint">数据目录可以改到别的盘（下载缓存与安装包会占用较多空间）。改完需要重启程序才生效。</div>
       </div>
       <div class="f">
         <label>接口缓存</label>
@@ -3967,11 +4397,222 @@ function renderSettings() {
   refreshInstallTools();
   refreshLogLine();
   refreshWatchLine();
+  refreshDataDirLine();
+  refreshLedgerBox();
 
   window.api.translate.stats().then(r => {
     const el = $('#transStats');
     if (el && r.ok) el.textContent = `已缓存 ${r.data.entries} 条译文`;
   });
+}
+
+/* ---------------- 数据目录（可换位置 + 一键搬运） ----------------
+ *
+ * 用户诉求：「数据位置可以在设置中设置，如果已有数据提供一键搬运到新位置」。
+ *
+ * 为什么要能改：`cache/` + `library/` + `backup/` 加起来能到几十 GB，
+ * C 盘紧张的人必须能挪走。
+ *
+ * 实现上**不是热切换** —— `paths.js` 的 DATA / CACHE / LIBRARY 是模块加载时算好的，
+ * store / logger / imageCache 等模块各自也取过一次，热切换等于重建整条链路。
+ * 所以流程是：选目录 → 看目标里有没有旧数据 → 决定旧数据怎么处理 → 搬运 + 改写路径
+ * → 写「指针文件」→ **提示重启**。
+ */
+
+/** 待确认的搬运上下文（`{ from, to }`），由模态框按钮消费 */
+let ddPending = null;
+
+/** 路径比较：Windows 下大小写不敏感，末尾斜杠与分隔符混用都算同一个 */
+function samePath(a, b) {
+  const n = (s) => String(s || '').replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase();
+  return !!a && !!b && n(a) === n(b);
+}
+
+/** 设置页「数据目录」那行的标记与提示（由主进程的 `data:info` 驱动） */
+async function refreshDataDirLine() {
+  const inp = $('#setDataDir');
+  if (!inp) return;
+  let info;
+  try { info = await call(window.api.data.info(), { silent: true }); }
+  catch { return; }
+  state.dataInfo = info;
+  state.dataDir = info.current;
+  inp.value = info.current || '';
+
+  const tag = $('#ddTag');
+  const hint = $('#ddHint');
+  const restore = $('#btnRestoreData');
+  const custom = info.source === 'custom';
+  if (tag) {
+    tag.textContent = custom ? '自定义位置' : '默认位置';
+    tag.className = 'tag ' + (custom ? 'other' : 'gray');
+  }
+  if (restore) restore.hidden = !custom;
+  if (!hint) return;
+
+  // 顺序有讲究：先报「配置的目录用不了」，再报「改了还没重启」，最后才是常规说明
+  if (info.reason === 'unusable') {
+    hint.innerHTML =
+      '<span style="color:var(--accent)">设置的数据目录现在用不了（磁盘未连接或没有权限），' +
+      '已暂时回落到默认位置。恢复可用后重启程序即可切回。</span><br>' +
+      '目标：<code data-i18n-skip>' + esc(info.configured || '') + '</code>';
+  } else if (!samePath(info.current, info.next)) {
+    hint.innerHTML =
+      '新位置已设置好，重启程序后生效。<br>' +
+      '新位置：<code data-i18n-skip>' + esc(info.next || '') + '</code>';
+    if (tag) { tag.textContent = '待重启生效'; tag.className = 'tag other'; }
+  } else {
+    hint.textContent = '数据目录可以改到别的盘（下载缓存与安装包会占用较多空间）。改完需要重启程序才生效。';
+  }
+}
+
+/**
+ * 「更改位置…」向导：选目录 → 探目标 → 问旧数据怎么办 → 搬运 → 重启。
+ */
+async function changeDataDir() {
+  let info = state.dataInfo;
+  if (!info) {
+    try { info = await call(window.api.data.info(), { silent: true }); } catch { return; }
+  }
+  let dir;
+  try { dir = await call(window.api.data.choose({ defaultPath: info.current }), { silent: true }); }
+  catch { return; }
+  if (!dir) return;                                   // 用户取消
+  if (samePath(dir, info.current)) { toast('这个目录就是当前的数据目录'); return; }
+
+  let target;
+  try { target = await call(window.api.data.inspect(dir), { silent: true }); }
+  catch { return; }
+
+  ddPending = { from: info.current, to: dir, restore: false };
+
+  // 目标里已经有数据 → 先把「同名文件怎么办」问清楚，别默默混在一起
+  if (target && target.hasData) {
+    openModal('目标目录里已经有数据', `
+      <div class="hint" style="margin-bottom:6px">这个目录里已经有一份数据了：</div>
+      <div style="margin:4px 0"><code data-i18n-skip>${esc(dir)}</code></div>
+      <div class="hint">这个目录里已经有 ${target.files} 个文件了</div>
+      <div class="hint"><span>约</span> <span data-i18n-skip>${fmtSize(target.bytes)}</span></div>`, [
+      { id: 'ddOver', label: '覆盖目标里的同名文件', primary: true },
+      { id: 'ddKeep', label: '同名文件保留目标那份' },
+      { id: 'ddUse', label: '不搬，直接用那个位置的数据' },
+      { id: 'ddCancel', label: '取消' }
+    ]);
+    return;
+  }
+
+  // 目标空的 → 问要不要把现有数据搬过去；两边都没数据就直接切
+  let src;
+  try { src = await call(window.api.data.inspect(info.current), { silent: true }); }
+  catch { src = null; }
+  if (!src || !src.hasData) {
+    await applyDataDir(dir);
+    return;
+  }
+  openModal('把现有数据搬到新目录吗？', `
+    <div class="hint">当前数据有 ${src.files} 个文件，要搬到新位置吗？</div>
+    <div class="hint"><span>约</span> <span data-i18n-skip>${fmtSize(src.bytes)}</span></div>
+    <div style="margin:4px 0"><code data-i18n-skip>${esc(dir)}</code></div>`, [
+    { id: 'ddMove', label: '移动（推荐，搬完删掉旧目录）', primary: true },
+    { id: 'ddCopy', label: '复制（旧目录保留一份）' },
+    { id: 'ddUse', label: '不搬，直接用那个位置的数据' },
+    { id: 'ddCancel', label: '取消' }
+  ]);
+}
+
+/** 「恢复默认」：默认位置就是 `paths.DEFAULT_DATA` */
+async function restoreDataDir() {
+  const info = state.dataInfo || {};
+  if (!info.default) return;
+  let src;
+  try { src = await call(window.api.data.inspect(info.current), { silent: true }); }
+  catch { src = null; }
+  if (!src || !src.hasData) { await applyDataDir(''); return; }
+  ddPending = { from: info.current, to: info.default, restore: true };
+  openModal('恢复到默认位置', `
+    <div class="hint">当前数据有 ${src.files} 个文件，要搬回默认位置吗？</div>
+    <div class="hint"><span>约</span> <span data-i18n-skip>${fmtSize(src.bytes)}</span></div>
+    <div style="margin:4px 0">默认位置：<code data-i18n-skip>${esc(info.default)}</code></div>`, [
+    { id: 'ddMove', label: '移动（推荐，搬完删掉旧目录）', primary: true },
+    { id: 'ddCopy', label: '复制（旧目录保留一份）' },
+    { id: 'ddUse', label: '不搬，直接用那个位置的数据' },
+    { id: 'ddCancel', label: '取消' }
+  ]);
+}
+
+/** 只写指针文件、立刻提示重启（没有数据要搬时走这条） */
+async function applyDataDir(dir) {
+  ddPending = null;
+  let r;
+  try { r = await window.api.data.setDir(dir || ''); }
+  catch { return; }
+  if (!r || r.ok === false) { toast((r && r.error) || '设置失败', 'err'); return; }
+  if (!r.data.changed) {
+    toast('数据目录没有变化');
+    await refreshDataDirLine();
+    return;
+  }
+  askDataRelaunch(r.data.dir || '');
+}
+
+/** 搬运 + 进度框 + 完成后提示重启 */
+async function runDataMigrate(mode, overwrite) {
+  const p = ddPending;
+  ddPending = null;
+  if (!p) { closeModal(); return; }
+
+  let off = null;
+  try {
+    off = window.api.data.onProgress((x) => {
+      const bar = $('#ddProgBar');
+      const txt = $('#ddProg');
+      const nm = $('#ddProgName');
+      if (!bar || !txt) return;
+      const total = x.total || 0;
+      bar.style.width = (total ? Math.round((x.done / total) * 100) : 5) + '%';
+      txt.textContent = x.phase === 'rewrite' ? '正在改写路径引用…'
+        : x.phase === 'done' ? '收尾…' : '正在搬运…';
+      if (nm) nm.textContent = x.name || '';
+    });
+  } catch { off = null; }
+
+  openModal('正在搬运数据…', `
+    <div class="hint" id="ddProg">正在准备…</div>
+    <div style="margin:4px 0"><code data-i18n-skip id="ddProgName"></code></div>
+    <div style="height:6px;background:var(--panel3);border-radius:3px;overflow:hidden;margin-top:8px">
+      <div id="ddProgBar" style="height:100%;width:0;background:var(--accent);transition:width .2s"></div>
+    </div>
+    <div class="hint" style="margin-top:8px">搬运期间请不要关闭程序。</div>`, []);
+
+  let r;
+  try { r = await window.api.data.migrate(p.from, p.to, { mode, overwrite }); }
+  catch (e) { r = { ok: false, error: e && e.message }; }
+  if (off) off();
+
+  if (!r || r.ok === false) {
+    closeModal();
+    toast((r && r.error) || '搬运失败', 'err');
+    return;
+  }
+  const d = r.data;
+  openModal('需要重启', `
+    <div class="hint" style="margin-bottom:8px">数据已经搬到新位置，重启程序后生效。</div>
+    <div style="margin:6px 0">新位置：<code data-i18n-skip>${esc(d.dir || '')}</code></div>
+    <div class="hint">搬运了 ${d.copied || 0} 个文件，跳过 ${d.skipped || 0} 个已存在的</div>
+    ${d.rewritten ? `<div class="hint">改写了 ${d.rewritten} 处路径引用</div>` : ''}`, [
+    { id: 'ddRelaunch', label: '立即重启', primary: true },
+    { id: 'ddLater', label: '稍后自己重启' }
+  ]);
+}
+
+/** 弹「需要重启」，并让用户选什么时候重启 */
+function askDataRelaunch(dir) {
+  openModal('需要重启', `
+    <div class="hint" style="margin-bottom:8px">数据目录已经改好，重启程序后生效。</div>
+    <div style="margin:6px 0">新位置：<code data-i18n-skip>${esc(dir || '')}</code></div>`, [
+    { id: 'ddRelaunch', label: '立即重启', primary: true },
+    { id: 'ddLater', label: '稍后自己重启' }
+  ]);
 }
 
 /* ---------------- 下载目录监听 ---------------- */
@@ -4681,11 +5322,17 @@ function bindEvents() {
   const dm = $('#drawerMask');
   if (dm) dm.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', e => {
+    // 批量解析的搜索框：回车就搜
+    if (e.key === 'Enter' && e.target && e.target.id === 'linkerQuery') {
+      const q = e.target.value && e.target.value.trim();
+      if (q && linkerUI.search) runLinkerSearch(linkerUI.search.localId, q);
+      return;
+    }
     if (e.key !== 'Escape') return;
-    if ($('#modal').classList.contains('on')) closeModal();
+    if ($('#modal').classList.contains('on')) closeLinkerModal();
     else closeDrawer();
   });
-  $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+  $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeLinkerModal(); });
 
   $('#btnRefresh').addEventListener('click', () => refreshAll(true));
 
@@ -4697,6 +5344,10 @@ function bindEvents() {
   $('#btnImport').addEventListener('click', () => {
     openImportModal();
   });
+
+  // 批量解析：把手工放进去的 Mod 与 Nexus 对上号（用户 2026-11-06）
+  const btnL = $('#btnLinker');
+  if (btnL) btnL.addEventListener('click', () => openLinkerModal());
 
   $('#btnOpenSite').addEventListener('click', () => {
     window.api.openExternal('https://www.nexusmods.com/stellarblade/mods/');
@@ -4981,6 +5632,42 @@ function bindEvents() {
     const gu2 = t.closest('[data-guninstall]');
     if (gu2) { await doUninstallGroup(gu2.dataset.guninstall); return; }
 
+    // 解除关联（抽屉底部）—— 只删关联记录，文件一个都不动
+    const gul = t.closest('[data-gunlink]');
+    if (gul) { await doUnlinkGroup(gul.dataset.gunlink); return; }
+
+    // ---- 批量解析弹窗内部交互 ----
+    const lfilter = t.closest('[data-lfilter]');
+    if (lfilter) {
+      linkerSyncFromDom();
+      linkerUI.filter = lfilter.dataset.lfilter;
+      linkerPaint();
+      return;
+    }
+    const lback = t.closest('[data-lback]');
+    if (lback) { linkerUI.search = null; linkerPaint(); return; }
+    const lgo = t.closest('[data-lgo]');
+    if (lgo) {
+      const q = $('#linkerQuery') && $('#linkerQuery').value;
+      if (q && q.trim()) await runLinkerSearch(linkerUI.search.localId, q.trim());
+      return;
+    }
+    const lpick = t.closest('[data-lpick]');
+    if (lpick) {
+      const [localId, modIdRaw] = String(lpick.dataset.lpick).split('|');
+      const modId = Number(modIdRaw);
+      const hit = ((linkerUI.search && linkerUI.search.results) || []).find(c => Number(c.modId) === modId);
+      const row = linkerUI.rows.find(r => r.localId === localId);
+      if (row && hit) {
+        row.sel = { ...hit, modId };
+        row.on = true;
+        row.matchedByManual = true;
+      }
+      linkerUI.search = null;
+      linkerPaint();
+      return;
+    }
+
     // 抽屉里「已安装的文件」每行的 启用/禁用、卸载 —— 只作用于**这一个文件**
     const iidBtn = t.closest('[data-iid]');
     if (iidBtn) {
@@ -5192,8 +5879,37 @@ function bindEvents() {
         if (taskId && dirs.length) await installWithPick(taskId, dirs);
       }
       else if (id === 'impGo') await parseAndInstall($('#impUrl') && $('#impUrl').value);
+
+      // ---- 数据目录搬运向导 ----
+      else if (id === 'ddCancel') { ddPending = null; closeModal(); }
+      else if (id === 'ddMove') await runDataMigrate('move', false);
+      else if (id === 'ddCopy') await runDataMigrate('copy', false);
+      else if (id === 'ddOver') await runDataMigrate('move', true);
+      else if (id === 'ddKeep') await runDataMigrate('copy', false);
+      else if (id === 'ddUse') {
+        // ⚠️ 「不搬」在两个向导里含义不同：
+        //    更改位置 = 换成用户刚选的那个目录；恢复默认 = 回到默认目录（指针文件删掉）。
+        const p = ddPending || {};
+        ddPending = null;
+        closeModal();
+        await applyDataDir(p.restore ? '' : p.to);
+      }
+      else if (id === 'ddRelaunch') { closeModal(); window.api.data.relaunch(); }
+      else if (id === 'ddLater') { closeModal(); await refreshDataDirLine(); }
       else if (id === 'impPick') await pickLocalArchive();
       else if (id === 'vReveal') { if (state.modalTask) await dlReveal(state.modalTask); closeModal(); }
+
+      // ---- 批量解析 ----
+      else if (id === 'lStart') await runLinkerResolve(false);
+      else if (id === 'lRestart') await runLinkerResolve(false);
+      else if (id === 'lCancel') {
+        try { await window.api.linker.cancel(); } catch { /* 已经结束就别管 */ }
+      }
+      else if (id === 'lApply') await applyLinkerChoices();
+      else if (id === 'lClose') closeLinkerModal();
+      // ---- 已安装记录搬移 ----
+      else if (id === 'rlGo') await applyRelocationNow();
+      else if (id === 'rlClose') closeModal();
       return;
     }
     if (e.target.id === 'nxmClose') { closeDrawer(); return; }
@@ -5244,6 +5960,21 @@ function bindEvents() {
         const r = await call(window.api.game.detect());
         if (!r.candidates.length) toast('没有探测到剑星目录，请手动填写', 'err');
         else toast('探测到：' + r.candidates.join('  |  '));
+      } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnLedgerCheck') {
+      await checkRelocation();
+    } else if (e.target.id === 'btnLedgerExport') {
+      try {
+        const r = await call(window.api.game.ledgerExport());
+        toast(`已写入游戏目录：${fmtNum(r.count)} 条`, 'ok');
+        refreshLedgerBox();
+      } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnLedgerImport') {
+      try {
+        const r = await call(window.api.game.ledgerImport());
+        toast(r.added ? `从账本恢复 ${fmtNum(r.added)} 条` : '账本里没有新记录', 'ok');
+        refreshLedgerBox();
+        await refreshAll();
       } catch { /* 已提示 */ }
     } else if (e.target.id === 'btnSaveKey') {
       try {
@@ -5321,6 +6052,10 @@ function bindEvents() {
       toast(t && t.available ? '解压工具可用：' + t.label : '没找到可用的解压工具，请安装 7-Zip', t && t.available ? 'ok' : 'err');
     } else if (e.target.id === 'btnOpenData') {
       window.api.openPath(state.dataDir);
+    } else if (e.target.id === 'btnChangeData') {
+      await changeDataDir();
+    } else if (e.target.id === 'btnRestoreData') {
+      await restoreDataDir();
     } else if (e.target.id === 'btnViewLog') {
       await openLogViewer();
     } else if (e.target.id === 'btnOpenLogDir') {
@@ -5355,6 +6090,44 @@ function bindEvents() {
     }  });
 
   document.addEventListener('change', async (e) => {
+    // 批量解析复核表里的勾选框 —— 只刷新底部计数，不重绘列表（省得刚点的框闪一下）
+    const lchkEl = e.target.closest && e.target.closest('[data-lchk]');
+    if (lchkEl) {
+      const row = linkerUI.rows.find(r => r.localId === lchkEl.dataset.lchk);
+      if (row) row.on = !!lchkEl.checked;
+      const foot = $('#mFoot');
+      if (foot) foot.innerHTML = linkerFootHtml();
+      return;
+    }
+
+    // 批量解析复核表里的候选下拉框（含「搜索其他 Mod…」那一项）
+    const lselEl = e.target.closest && e.target.closest('[data-lsel]');
+    if (lselEl) {
+      const localId = lselEl.dataset.lsel;
+      const row = linkerUI.rows.find(r => r.localId === localId);
+      if (lselEl.value === '__search') {
+        // 先把当前勾选状态存下来，再切到搜索视图
+        linkerSyncFromDom();
+        lselEl.value = row && row.sel && row.sel.modId ? String(row.sel.modId) : '';
+        linkerUI.search = { localId, query: (row && row.localName) || '', results: [], busy: false, searched: false };
+        linkerPaint();
+        // 打开就能直接搜：名字里的编号/后缀基本没用，先用清洗过的本地名试一次
+        runLinkerSearch(localId, (row && row.normalized) || (row && row.localName) || '');
+        return;
+      }
+      if (row) {
+        const modId = Number(lselEl.value);
+        if (!modId) { row.sel = null; row.on = false; }
+        else {
+          const hit = (row.candidates || []).find(c => Number(c.modId) === modId)
+            || (row.sel && Number(row.sel.modId) === modId ? row.sel : null);
+          row.sel = hit ? { ...hit, modId } : { modId, name: '', pictureUrl: '' };
+        }
+      }
+      linkerPaint();
+      return;
+    }
+
     if (e.target.id === 'setUiLang') {
       // 界面语言：不走 IPC，纯前端的事（存 localStorage，下次启动自己读）。
       // 重刷交给 main() 里注册的 onChange —— 一处收口，别的地方调 setLang 也生效。
@@ -5400,10 +6173,76 @@ function bindEvents() {
 
 async function doSetRoot(root) {
   try {
-    state.game = await call(window.api.game.setRoot(root));
+    const g = await call(window.api.game.setRoot(root));
+    const rl = g && g.relocation;
+    if (g) delete g.relocation;
+    state.game = g;
     state.config = await call(window.api.config.get());
     await refreshAll();
     toast('游戏目录已设置', 'ok');
+    if (rl && (rl.applied || rl.imported)) {
+      const parts = [];
+      if (rl.imported) parts.push(`从游戏目录账本恢复 ${fmtNum(rl.imported)} 条`);
+      if (rl.applied) parts.push(`对齐 ${fmtNum(rl.applied)} 条已安装记录`);
+      toast('账本已跟随新目录：' + parts.join('，'), 'ok');
+    }
+  } catch { /* 已提示 */ }
+}
+
+/* ---------------- 已安装记录（账本 + 搬移修复） ----------------
+ *
+ * 用户的真实场景：把整个游戏文件夹从 `D:\games\Star Blade` 挪到 `c:\Star Blade`。
+ * 打开管理器时 `app:bootstrap` 已经自动对齐过一轮，这里的按钮是留给
+ * 「自动没敢动」的情况 —— 比如新位置只拷了一半文件，那几条得人来判断。
+ */
+
+async function refreshLedgerBox() {
+  const line = $('#ledgerLine');
+  if (!line) return;
+  try {
+    const d = await call(window.api.game.ledger());
+    state.ledger = d;
+    if (!d.root) { line.textContent = '还没设置游戏目录'; return; }
+    if (!d.exists) {
+      line.textContent = `管理器里 ${fmtNum(d.registryCount)} 条 · 游戏目录里还没有账本`;
+      return;
+    }
+    const when = d.writtenAt ? ` <span data-i18n-skip>（${esc(fmtDate(d.writtenAt))}）</span>` : '';
+    line.innerHTML = esc(`管理器里 ${fmtNum(d.registryCount)} 条 · 游戏目录里 ${fmtNum(d.count)} 条`) + when
+      + (d.sameRoot ? '' : ' <span style="color:var(--accent)">游戏目录与账本记录的不一致</span>');
+  } catch (e) {
+    line.textContent = '读取失败：' + (e.message || e);
+  }
+}
+
+/** 试算搬移：能对上的给出条数，对不上的列出来（绝不静默改） */
+async function checkRelocation() {
+  try {
+    const p = await call(window.api.game.relocate());
+    if (!p.total) { toast('还没有安装记录', 'ok'); return; }
+    if (!p.fixable && !p.missing) { toast('所有记录都指向当前游戏目录（无需修复）', 'ok'); return; }
+    const head = p.fixable
+      ? `<p>可以把 ${fmtNum(p.fixable)} 条记录从旧目录改到当前目录（涉及 ${fmtNum(p.files)} 个文件，已逐个核对文件确实存在）。</p>`
+      : '<p>没有可自动对齐的记录。</p>';
+    const paths = p.oldRoot
+      ? `<p class="txt">旧目录：<code>${esc(p.oldRoot)}</code><br>当前目录：<code>${esc(p.newRoot)}</code></p>`
+      : '';
+    const miss = p.missing
+      ? `<p class="txt" style="color:var(--accent)">另有 ${fmtNum(p.missing)} 条找不到对应文件（可能没拷全），这些保持原样不动。</p>`
+      : '';
+    openModal('检查已安装记录', `<div class="lintro">${head}${paths}${miss}</div>`, [
+      { id: 'rlGo', label: `修复 ${fmtNum(p.fixable)} 条`, primary: !!p.fixable },
+      { id: 'rlClose', label: '关闭' }
+    ]);
+  } catch { /* 已提示 */ }
+}
+
+async function applyRelocationNow() {
+  try {
+    const r = await call(window.api.game.relocateApply());
+    closeModal();
+    toast(r.applied ? `已对齐 ${fmtNum(r.applied)} 条记录（文件未改动）` : '没有需要修改的记录', 'ok');
+    await refreshAll();
   } catch { /* 已提示 */ }
 }
 
@@ -5482,6 +6321,35 @@ async function doUninstallGroup(key) {
 }
 
 /**
+ * 解除整组关联（抽屉底部「解除关联」）。
+ *
+ * 只删 `data/mod-links.json` 里对应的记录，磁盘文件一个都不动 ——
+ * 解完之后这条 Mod 回到「未登记」，卡片上的封面/作者随之消失，仅此而已。
+ */
+async function doUnlinkGroup(key) {
+  const g = groupOf(key);
+  if (!g) return;
+  const ids = (g.items || []).map(m => m.id).filter(Boolean);
+  if (!ids.length) return;
+  const okUn = confirm(
+    `解除「${g.name}」与 Nexus 的关联吗？\n\n` +
+    '只忘掉「它是 Nexus 上的哪个 Mod」，磁盘上的文件不会被改动，也不会卸载。\n' +
+    '下次批量解析时它还会被重新比对。'
+  );
+  if (!okUn) return;
+  let removed = 0;
+  for (const id of ids) {
+    try {
+      const r = await call(window.api.linker.unlink(id), { silent: true });
+      removed += (r && r.removed) || 0;
+    } catch { /* 单条失败不中断 */ }
+  }
+  closeDrawer();
+  toast(removed ? `已解除 ${removed} 条关联（文件未改动）` : '没有找到可解除的关联', removed ? 'ok' : 'warn');
+  await refreshAll();
+}
+
+/**
  * 逐文件操作之后，如果抽屉还开在同一组上就**重建**它，
  * 让按钮文案（启用/禁用）、状态行、文件条数立刻反映新状态。
  * 组已经不存在（最后一个文件被卸掉）就顺手关上。
@@ -5534,6 +6402,7 @@ async function refreshAll(showToast) {
     state.downloads = data.downloads || [];
     state.downloadStats = data.downloadStats || {};
     if (data.watch) state.watch = data.watch;
+    state.relocation = data.relocation || null;
     $('#verLine').textContent = 'v' + data.version + (data.packaged ? '' : ' · dev');
     // 启动后第一次拿到配置：把上次的筛选条件套回来（设置页开关关掉时 `applyLastFilters()` 自己返回）。
     // 只做一次 —— 之后 refreshAll 再被调用（手动刷新 / 装完 Mod）都不会重套，
@@ -5555,6 +6424,14 @@ async function refreshAll(showToast) {
     renderPrereq();
     renderSettings();
     if (showToast) toast('已刷新', 'ok');
+    // 搬移过游戏目录 → 启动时已经静默对齐，这里只把结果说出来（否则用户会以为记录丢了）
+    const rl = data.relocation;
+    if (rl && (rl.applied || rl.imported)) {
+      const parts = [];
+      if (rl.imported) parts.push(`从游戏目录账本恢复 ${fmtNum(rl.imported)} 条`);
+      if (rl.applied) parts.push(`对齐 ${fmtNum(rl.applied)} 条已安装记录`);
+      toast('检测到游戏目录搬移：' + parts.join('，'), 'ok');
+    }
   } catch (e) {
     toast('初始化失败：' + e.message, 'err');
   }
