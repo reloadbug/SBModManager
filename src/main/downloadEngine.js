@@ -1150,8 +1150,19 @@ function createDownloadEngine(opts = {}) {
     return result;
   }
 
-  /** 把「注册表里确实装着」的下载任务对齐成已安装（避免装完显示成失败） */
-  function syncFromInstalled(mods) {
+  /**
+   * 把「注册表里确实装着」的下载任务对齐成已安装（避免装完显示成失败）。
+   *
+   * 2026-11-07 追加**反向**对齐：用户手动删掉了游戏里的文件、或整个游戏目录搬走
+   * 之后，任务还停在「已安装」，界面上就既没有「安装」按钮、也不会提醒 ——
+   * 明明下载包还在 `data/library/`，却装不回去。所以传 `reconcile: true` 时，
+   * 「已安装但没有对应文件」的任务会退回「已下载」；安装包也丢了才算失败。
+   *
+   * ⚠️ 只有**确实扫描成功**时才该传 `reconcile: true`（没设置游戏目录时扫描结果
+   *    是空数组，那样会把所有任务都降级）。
+   */
+  function syncFromInstalled(mods, opts = {}) {
+    const reconcile = !!opts.reconcile;
     const ids = new Set();
     const byMod = new Map();
     for (const m of Array.isArray(mods) ? mods : []) {
@@ -1161,7 +1172,30 @@ function createDownloadEngine(opts = {}) {
       if (modId) byMod.set(modId, m);
     }
     for (const t of queue.list()) {
-      if (t.status === 'installed') continue;
+      if (t.status === 'installed') {
+        if (!reconcile) continue;
+        const regId = t.install && t.install.registryId;
+        const modId = Number(t.meta && t.meta.modId);
+        const present = !!((regId && ids.has(regId)) || (modId && byMod.has(modId)));
+        if (present) continue;
+
+        const archived = !!(t.archivePath && fs.existsSync(t.archivePath));
+        queue.update(t.id, {
+          status: archived ? 'downloaded' : 'failed',
+          error: archived ? null : '游戏目录里找不到这些文件，本地也没留安装包（可以重新下载）',
+          install: {
+            ...(t.install || {}),
+            registryId: null,
+            verified: false,
+            missing: true,
+            missingReason: archived
+              ? '游戏里找不到这些文件了 —— 可能被手动删掉，或换过游戏目录（安装包还在，可以直接重装）'
+              : '游戏里找不到这些文件了，安装包也没留'
+          }
+        });
+        logEvent('download:missing', { id: t.id, modId: modId || null, archived });
+        continue;
+      }
       const regId = t.install && t.install.registryId;
       if (regId && ids.has(regId)) {
         queue.update(t.id, { status: 'installed', error: null });

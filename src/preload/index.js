@@ -65,7 +65,9 @@ contextBridge.exposeInMainWorld('api', {
     uninstall: (id, opts) => invoke('mods:uninstall', id, opts),
     reveal: (id) => invoke('mods:reveal', id),
     /** 某个 Nexus modId 已装着的文件清单（覆盖对比用） */
-    filesForModId: (modId) => invoke('mods:filesForModId', modId)
+    filesForModId: (modId) => invoke('mods:filesForModId', modId),
+    /** 手动跑一次「账本 ↔ 磁盘」一致性核对（启动时已自动跑过） */
+    reconcile: () => invoke('mods:reconcile')
   },
 
   /**

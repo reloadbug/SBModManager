@@ -3412,7 +3412,9 @@ function dlItem(t) {
     progress = '<div class="prog ind"><i></i></div>';
   }
 
-  const reason = t.install && t.install.reason ? t.install.reason : '';
+  // 「装过但现在游戏里找不到」的任务：主进程对齐状态时把原因写在 install.missingReason，
+  // 比 `error` 温和（包还在，装回去就行），所以也走蓝字说明而不是红字。
+  const reason = (t.install && (t.install.reason || t.install.missingReason)) || '';
 
   return `
   <div class="${cls.join(' ')}" data-dlid="${esc(t.id)}">
@@ -3503,6 +3505,10 @@ function renderDownload() {
   // 那两类是**在等你操作**（不该显示成正在跑，见 SKILL 铁律 42），口径混着显示会误导。
   const needYouCount = reviewCount + waitAuthCount;
   const runningCount = Math.max(0, (s.active || 0) - needYouCount);
+  // 「已下载但没装进游戏」的：包还在 data/library 里，点一下就能装。
+  // 换过游戏目录、或用户手动删过文件之后，这里会重新冒出来（主进程会按磁盘对齐状态）。
+  const downloadedCount = tasks.filter(t => t.status === 'downloaded').length;
+  const noRoot = !state.game || !state.game.found;
 
   area.innerHTML = `
     <div class="dl-bar">
@@ -3510,16 +3516,21 @@ function renderDownload() {
       ${runningCount ? `<span class="stat">进行中 <b>${runningCount}</b></span>` : ''}
       ${pausedCount ? `<span class="stat">已暂停 <b>${pausedCount}</b></span>` : ''}
       ${needYouCount ? `<span class="stat" style="color:var(--accent)">待处理 <b style="color:var(--accent)">${needYouCount}</b></span>` : ''}
+      ${downloadedCount ? `<span class="stat" style="color:var(--accent)">待安装 <b style="color:var(--accent)">${downloadedCount}</b></span>` : ''}
       <span class="stat">已安装 <b>${s.installed || 0}</b></span>
       ${s.failed ? `<span class="stat" style="color:var(--red)">失败 <b style="color:var(--red)">${s.failed}</b></span>` : ''}
       <div class="spacer"></div>
       ${busyCount ? `<button class="btn sm" data-dl-pauseall="1" title="把正在下载的任务全部停下；已下载的部分会保留，随时能点「全部恢复」接着下">⏸ 全部停止（${busyCount}）</button>` : ''}
       ${resumeCount ? `<button class="btn p sm" data-dl-resumeall="1" title="把所有中断 / 暂停 / 下载失败的任务一次性重新排队：已经下过的部分会接着下，不用从头再来">↻ 全部恢复（${resumeCount}）</button>` : ''}
+      ${downloadedCount && !noRoot ? `<button class="btn p sm" data-dl-installall="1" title="安装包都在管理器目录里，逐个装进当前游戏目录（换过游戏目录也可以用）">⬇ 全部安装（${downloadedCount}）</button>` : ''}
       ${autoConfirmCount ? `<button class="btn p sm" data-dl-confirmall="1" title="把所有「待确认」的包按默认选择直接安装（每组第一套；互不相关的内容全部装上）—— 不用逐个点开">⚡ 一键安装全部（${autoConfirmCount}）</button>` : ''}
       ${waitAuthCount ? `<button class="btn p sm" data-dl-autoauthall="1" title="用已登录的 Nexus 会话逐个取得下载授权，不用再逐条去网页点下载按钮">⚡ 全部自动授权（${waitAuthCount}）</button>` : ''}
       ${reviewCount ? `<button class="btn sm" data-dl-refreshplans="1" title="安装规则升级后，之前识别不了的包可能已经能认出来了">重新识别${reviewCount ? `（${reviewCount}）` : ''}</button>` : ''}
       ${doneCount ? `<button class="btn sm" data-dl-cleardone="1">清理已完成记录（${doneCount}）</button>` : ''}
     </div>
+    ${downloadedCount && noRoot
+      ? `<div class="callout" style="margin:0 0 10px"><span>有 ${fmtNum(downloadedCount)} 个 Mod 已经下载好了（安装包存在管理器目录里），但还没设置游戏目录 —— 设置好之后回到这一页就能直接装进去。</span><button class="btn sm" data-goto-page="p-settings">去设置游戏目录</button></div>`
+      : ''}
     <div class="dl-list">${sorted.map(dlItem).join('')}</div>`;
   $('#sub').textContent = runningCount
     ? `${runningCount} 项进行中` + (needYouCount ? ` · ${needYouCount} 项待处理` : '')
@@ -3686,6 +3697,9 @@ function onAutoAuthProgress(p) {
 /** 「全部恢复」是否在跑（挡住重复点） */
 let resumeAllRunning = false;
 
+/** 「全部安装」是否在跑（挡住重复点）—— 与上面分开，两者可以不同时进行 */
+let installAllRunning = false;
+
 /**
  * 「全部恢复」——把中断 / 下载失败的任务一次性重新排队，**从断点接着下**。
  *
@@ -3746,6 +3760,45 @@ async function dlResumeAll() {
 async function dlStart(id) {
   try { await call(window.api.download.start(id), { silent: true }); await refreshDownloads(); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+/**
+ * 把「已下载但没装」的任务一次性装进当前游戏目录。
+ *
+ * 用途：换过游戏目录、或用户手动删过游戏里的文件之后，安装包还躺在
+ * `data/library/` 里 —— 一条条点「安装」太费手，这里一把装完。
+ * 串行跑：安装要写游戏目录，并发装容易互相覆盖同一个 pak。
+ */
+async function dlInstallAll() {
+  if (installAllRunning) { toast('正在安装中，稍等…'); return null; }
+  installAllRunning = true;
+  const setBtn = (txt, disabled) => {
+    const b = document.querySelector('[data-dl-installall]');
+    if (b) { b.textContent = txt; b.disabled = !!disabled; }
+  };
+  setBtn('安装中…', true);
+  try {
+    const ids = (state.downloads || []).filter(t => t.status === 'downloaded').map(t => t.id);
+    if (!ids.length) { toast('没有待安装的任务'); return null; }
+    let ok = 0, failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      setBtn(`安装中 ${i + 1}/${ids.length}…`, true);
+      try { await call(window.api.download.start(ids[i]), { silent: true }); ok++; }
+      catch { failed++; }
+    }
+    await refreshDownloads();
+    toast(failed
+      ? `已安装 ${fmtNum(ok)} 项，${fmtNum(failed)} 项没能装上（在列表里逐个看原因）`
+      : `已安装 ${fmtNum(ok)} 项`, failed ? 'err' : 'ok');
+    return { ok, failed };
+  } catch (e) {
+    toast(e.message, 'err');
+    return null;
+  } finally {
+    installAllRunning = false;
+    await refreshDownloads();
+    setBtn('⬇ 全部安装', false);
+  }
 }
 
 async function dlCancel(id) {
@@ -4445,6 +4498,11 @@ function renderSettings() {
         <button class="btn sm" id="btnLedgerCheck">检查并修复路径</button>
         <button class="btn sm" id="btnLedgerExport">写入账本到游戏目录</button>
         <button class="btn sm" id="btnLedgerImport">从账本恢复</button>
+        <button class="btn sm" id="btnReconcile" title="拿磁盘的实际文件比一遍：手动删掉的 mod 会从已安装列表里退场，直接改过扩展名的会按磁盘纠正开关">核对磁盘</button>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint" id="reconcileLine">启动时会自动核对一次：账本里记着、但游戏目录里文件已经不在的 Mod 会自动移除（不会删你别的文件）。</div>
       </div>
     </div>
 
@@ -6147,6 +6205,8 @@ function bindEvents() {
     // 2026-10-14 新增：全部停止 / 一键安装全部
     if (t.closest('[data-dl-pauseall]')) { await dlPauseAll(); return; }
     if (t.closest('[data-dl-confirmall]')) { await dlConfirmAll(); return; }
+    // 2026-11-07：已下载但没装（换过游戏目录 / 用户删过文件后重新出现的那批）
+    if (t.closest('[data-dl-installall]')) { await dlInstallAll(); return; }
     const dlAuth = t.closest('[data-dl-auth]');
     if (dlAuth) { await dlAuthorize(dlAuth.dataset.dlAuth); return; }
     const dlStartBtn = t.closest('[data-dl-start]');
@@ -6319,6 +6379,26 @@ function bindEvents() {
         refreshLedgerBox();
         await refreshAll();
       } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnReconcile') {
+      const btn = e.target;
+      btn.disabled = true;
+      try {
+        const r = await call(window.api.mods.reconcile());
+        const line = $('#reconcileLine');
+        const changed = !!(r.dropped || r.trimmed || r.flagged);
+        if (line) {
+          line.textContent = changed
+            ? `按磁盘核对：移除 ${fmtNum(r.dropped)} 条、裁剪 ${fmtNum(r.trimmed)} 条、纠正开关 ${fmtNum(r.flagged)} 条`
+            : `账本与磁盘一致（${fmtNum(r.kept)} 条）`;
+        }
+        if (changed) {
+          toast(`按磁盘核对：移除 ${fmtNum(r.dropped)} 条、裁剪 ${fmtNum(r.trimmed)} 条、纠正开关 ${fmtNum(r.flagged)} 条`, r.dropped ? 'err' : 'ok');
+          await refreshAll();
+        } else {
+          toast(`账本与磁盘一致（${fmtNum(r.kept)} 条）`, 'ok');
+        }
+        refreshLedgerBox();
+      } catch { /* 已提示 */ } finally { btn.disabled = false; }
     } else if (e.target.id === 'btnSaveKey') {
       try {
         await call(window.api.config.set({ nexusApiKey: $('#setApiKey').value.trim() }));
@@ -6799,6 +6879,11 @@ async function refreshAll(showToast) {
       if (rl.imported) parts.push(`从游戏目录账本恢复 ${fmtNum(rl.imported)} 条`);
       if (rl.applied) parts.push(`对齐 ${fmtNum(rl.applied)} 条已安装记录`);
       toast('检测到游戏目录搬移：' + parts.join('，'), 'ok');
+    }
+    // 账本与磁盘对不上（用户手动删了文件）→ 说一声，别让记录无声消失
+    const rc = data.reconciled;
+    if (rc && (rc.dropped || rc.trimmed || rc.flagged)) {
+      toast(`按磁盘核对：移除 ${fmtNum(rc.dropped)} 条、裁剪 ${fmtNum(rc.trimmed)} 条、纠正开关 ${fmtNum(rc.flagged)} 条`, rc.dropped ? 'err' : 'ok');
     }
   } catch (e) {
     toast('初始化失败：' + e.message, 'err');

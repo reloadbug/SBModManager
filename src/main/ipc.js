@@ -18,6 +18,7 @@ const installFlow = require('./installFlow');
 const { createDownloadEngine } = require('./downloadEngine');
 const localState = require('./localState');
 const linker = require('./linker');
+const reconcile = require('./reconcile');
 const relocate = require('./relocate');
 const fsError = require('./fsError');
 const { createBlacklist } = require('./blacklist');
@@ -1122,10 +1123,41 @@ function inspectGame() {
 
 /* ---------------- 已安装 Mod ---------------- */
 
+/* ---------------- 账本 ↔ 磁盘 一致性 ---------------- */
+
+/**
+ * 按磁盘裁决注册表：文件全丢的条目删掉、丢一半的裁剪清单、开关状态纠正。
+ *
+ * 用户手动删了 mod 文件之后，账本若还留着幽灵记录，「已安装」数量、账本条数、
+ * 冲突检测都会说假话 —— 而这三样正是用户拿来判断「到底装了什么」的依据。
+ */
+function reconcileRegistry() {
+  try {
+    const report = reconcile.plan(registry.all());
+    if (reconcile.noteworthy(report)) {
+      const applied = reconcile.apply(registry, report);
+      invalidateLocalIndex();
+      try { syncLedger(currentRoot()); } catch { /* 账本同步失败不影响主流程 */ }
+      logger.event('data:reconciled', {
+        total: report.total, dropped: applied.dropped, trimmed: applied.trimmed,
+        flagged: applied.flagged, missingFiles: report.missingFiles,
+        drop: report.drop.slice(0, 10).map(d => d.name)
+      });
+    }
+    return report;
+  } catch (e) {
+    logger.warn('[一致性] 核对注册表失败：' + e.message);
+    return null;
+  }
+}
+
 function listMods() {
   const root = currentRoot();
   if (!root) return { installed: [], root: null };
   const list = scanner.scan(root, registry, linkReaderSafe());
+  // 顺手对齐下载任务：装过但现在游戏里找不到的，退回「已下载」好让人重装。
+  // `reconcile: true` 只在扫描确实成功时传（没游戏目录时上面就返回了）。
+  try { engine.syncFromInstalled(list, { reconcile: true }); } catch { /* 忽略 */ }
   return { installed: list, root };
 }
 
@@ -1351,6 +1383,8 @@ function register() {
   handle('app:bootstrap', async () => {
     // 先把账本与当前游戏目录对齐（搬移过就静默改回来；注册表空则从游戏目录里的账本恢复）
     const relocation = autoRelocate(currentRoot());
+    // 再按磁盘裁决一次账本：用户手动删掉的文件，不该还挂在「已安装」里。
+    const reconciled = reconcileRegistry();
     const g = inspectGame();
     const mods = listMods();
     const auth = await nexusAuth.getStatus();
@@ -1369,6 +1403,15 @@ function register() {
       game: g,
       installed: mods.installed,
       relocation,
+      reconciled: reconciled
+        ? {
+          total: reconciled.total, kept: reconciled.kept,
+          dropped: reconciled.dropped, trimmed: reconciled.trimmed,
+          flagged: reconciled.flagged, missingFiles: reconciled.missingFiles,
+          droppedItems: reconciled.drop.slice(0, 20),
+          summary: reconcile.summarize(reconciled)
+        }
+        : null,
       dataHome: gameHome.info(),
       translateStats: translator.stats(),
       auth: auth,
@@ -1531,7 +1574,19 @@ function register() {
     const home = initGameHome(root);
     // 换目录往往就是「搬移」——顺手把账本对齐，别让用户自己点
     const relocation = autoRelocate(root);
-    return { ...inspectGame(), relocation, home };
+    // 再按新目录的磁盘实况裁决一次：旧目录里那些没搬过来的记录该退场了
+    const reconciled = reconcileRegistry();
+    // 下载任务也跟着对齐：装在新目录里的算「已安装」，没搬过来的退回「已下载」
+    try {
+      const list = scanner.scan(root, registry, linkReaderSafe());
+      engine.syncFromInstalled(list, { reconcile: true });
+    } catch { /* 对齐失败不影响换目录本身 */ }
+    return {
+      ...inspectGame(), relocation, home,
+      reconciled: reconciled
+        ? { dropped: reconciled.dropped, trimmed: reconciled.trimmed, flagged: reconciled.flagged, summary: reconcile.summarize(reconciled) }
+        : null
+    };
   });
   handle('game:ensureModsDir', () => {
     const root = currentRoot();
@@ -1595,6 +1650,22 @@ function register() {
     // 磁盘上确实装着的 → 对齐下载队列状态
     try { engine.syncFromInstalled(r.installed); } catch { /* 忽略 */ }
     return r;
+  });
+  /**
+   * 手动跑一次「账本 ↔ 磁盘」核对（设置页那颗「核对磁盘」按钮）。
+   * 启动时其实已经自动跑过一轮，这里给一个能随时重跑、并且看得见结果的入口。
+   */
+  handle('mods:reconcile', () => {
+    const report = reconcileRegistry();
+    if (!report) throw new Error('核对失败，详情见日志');
+    try { engine.syncFromInstalled(listMods().installed, { reconcile: true }); } catch { /* 忽略 */ }
+    return {
+      total: report.total, kept: report.kept,
+      dropped: report.dropped, trimmed: report.trimmed, flagged: report.flagged,
+      missingFiles: report.missingFiles,
+      droppedItems: report.drop.slice(0, 20),
+      summary: reconcile.summarize(report)
+    };
   });
   handle('mods:setEnabled', (id, enabled) => setEnabled(id, enabled));
   handle('mods:uninstall', (id, opts) => uninstall(id, opts));
