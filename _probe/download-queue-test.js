@@ -50,6 +50,40 @@ async function main() {
     assert.throws(() => restarted.add({ modId: 0 }), /Mod ID/);
     assert.throws(() => restarted.update(failed.task.id, { status: 'made-up' }), /状态/);
 
+    // ── 进度与状态分流（2026-11-07 用户报「有下载进度时筛选按钮会失灵，一闪一闪的」）──
+    // 根因：updateProgress 也走 onChange → 主进程推 download:changed → 渲染层整页 innerHTML 重绘，
+    //       卡片 <img> 全量重载（闪），按下与松开之间节点被换掉，click 不派发（按钮失灵）。
+    let changes = 0;
+    let ticks = 0;
+    const watched = createDownloadQueue({
+      file,
+      onChange: () => { changes += 1; },
+      onTick: () => { ticks += 1; }
+    });
+    const changes0 = changes;
+    watched.updateProgress(task.id, { percent: 61 });
+    assert.equal(changes, changes0, 'updateProgress 不应触发 onChange（否则界面整页重绘）');
+    assert.equal(ticks, 1, 'updateProgress 应走 onTick');
+    watched.update(task.id, { status: 'queued' });
+    assert.equal(changes, changes0 + 1, '状态变化仍然走 onChange');
+
+    // 接线静态断言（源码层面把这条约定钉住）
+    const read = (rel) => fs.promises.readFile(path.join(__dirname, '..', rel), 'utf8');
+    const queueSrc = await read('src/main/downloadQueue.js');
+    const upBody = queueSrc.slice(queueSrc.indexOf('function updateProgress'), queueSrc.indexOf('function findByIdentity'));
+    assert(!/onChange\(/.test(upBody), 'updateProgress 里不能再调 onChange');
+    assert(/onTick\(clone\(task\)\)/.test(upBody), 'updateProgress 要调 onTick');
+
+    const engineSrc = await read('src/main/downloadEngine.js');
+    assert(/onTick:\s*\(task\)\s*=>/.test(engineSrc), 'downloadEngine 要把 onTick 转给 onProgress');
+    assert(/onProgress\(task\.id, \{ received/.test(engineSrc), '进度回调要带 received/total/percent');
+
+    const appSrc = await read('src/renderer/app.js');
+    assert(/function dlStatusSig\(/.test(appSrc), 'app.js 要有 dlStatusSig');
+    assert(/if \(dlStatusSig\(prev\) === dlStatusSig\(state\.downloads\)\)/.test(appSrc), 'onDownloadChanged 状态未变时要提前返回');
+    assert(/function renderLiveStrip\(/.test(appSrc), 'app.js 要有 renderLiveStrip');
+    assert(/cur\.outerHTML = html/.test(appSrc), 'renderLiveStrip 应就地替换 .live 节点');
+
     console.log('download queue tests passed');
   } finally {
     await fs.promises.rm(dir, { recursive: true, force: true });

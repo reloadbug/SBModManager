@@ -455,6 +455,62 @@ async function main() {
       t('复活的任务 error 被清掉（needs_review 不该带红字报错）', () => !by('rv1').error ? true : by('rv1').error);
     }
 
+    console.log('\n=== 18) 纯下载进度只走 onProgress，不再刷 onChange（0.3.7 闪烁修复）===');
+    // 背景（2026-11-07 用户报「有下载进度时筛选按钮会失灵，一闪一闪的」）：
+    //   updateProgress 曾经也调 onChange → 主进程推 download:changed → 渲染层把已安装页整块
+    //   innerHTML 重建 → 卡片图片全量重载（闪）+ 按下与松开之间节点被换掉（click 不派发）。
+    //   现在进度单走 onTick → onProgress（= download:progress 轻量通道）。
+    {
+      const splitFile = path.join(root, 'downloads13.json');
+      const counts = { change: 0, tick: 0, lastTick: null, statuses: [] };
+      const splitEngine = createDownloadEngine({
+        file: splitFile,
+        libraryDir,
+        now: () => '2026-11-07T00:00:00.000Z',
+        makeId: () => 'sp' + (++idc),
+        getRoot: () => 'D:/fake/game',
+        getLayout: () => ({}),
+        getRegistry: () => fakes.registry,
+        onChange: (task) => { counts.change++; counts.statuses.push(task && task.status); },
+        onProgress: (id, x) => { counts.tick++; counts.lastTick = x; },
+        ...makeFakes({
+          downloadImpl: (uri, dest, { onProgress }) => new Promise((resolve) => {
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            let n = 0;
+            const tick = () => {
+              n += 500;
+              onProgress({ received: n, total: 10000, percent: n / 100 });
+              if (n >= 10000) {
+                const head = Buffer.from('PK\x03\x04', 'latin1');
+                fs.writeFileSync(dest, Buffer.concat([head, Buffer.alloc(1016, 7)]));
+                resolve({ path: dest, size: 1020, total: 10000, filename: path.basename(dest) });
+                return;
+              }
+              setTimeout(tick, 4);
+            };
+            setTimeout(tick, 4);
+          })
+        })
+      });
+      const sp = splitEngine.enqueueNexus({ game: 'stellarblade', modId: 999, fileId: 3, name: '进度分离' });
+      const change0 = counts.change;
+      splitEngine.attachNxm({ game: 'stellarblade', modId: 999, fileId: 3, key: 'K3', expires: 1 });
+      await waitFor(() => splitEngine.get(sp.task.id).status === 'installed');
+      const changeDuring = counts.change - change0;
+      t('下载进度确实到了 onProgress（20 次分片 → ≥18 次）', () => counts.tick >= 18 ? true : 'tick=' + counts.tick);
+      t('onProgress 收到 received/total/percent', () =>
+        counts.lastTick && typeof counts.lastTick.percent === 'number' && typeof counts.lastTick.total === 'number'
+          ? true : JSON.stringify(counts.lastTick));
+      t('状态推送次数不随进度次数增长（20 次进度分片 → 状态通知 ≤12 次）', () =>
+        counts.statuses.length <= 12 ? true : 'change=' + counts.statuses.length + ' tick=' + counts.tick + ' ' + JSON.stringify(counts.statuses));
+      t('状态变化仍然照常推送（最终 installed 在里面）', () =>
+        counts.statuses.includes('installed') ? true : JSON.stringify(counts.statuses));
+      t('最终进度 100% 且任务已装好', () => {
+        const x = splitEngine.get(sp.task.id);
+        return (x.progress.percent === 100 && x.status === 'installed') ? true : x.status + ' / ' + JSON.stringify(x.progress);
+      });
+    }
+
     console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
   } finally {
     await fs.promises.rm(root, { recursive: true, force: true });

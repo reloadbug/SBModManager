@@ -4,6 +4,30 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.7] - 2026-11-07
+
+- **下载进度不再让界面抖**：以前每来一次进度回调，已安装页就被整块重画一遍 ——
+  卡片封面图全部重新加载（看着一闪一闪），更糟的是按下与松开鼠标之间按钮节点被换掉，
+  click 根本不派发，所以「有下载进度时筛选 / 多选这些按钮会失灵」。现在进度单独走一条
+  轻量通道，只改进度条和顶部实时条，其余 DOM 一个节点都不动。
+
+### 修复
+
+- `src/main/downloadQueue.js`：`updateProgress()` 不再触发 `onChange`（那条是「状态变了」
+  用的），改走新增的 `onTick` —— 进度每秒好几次，拿它做整页重绘等于自找抖动。
+- `src/main/downloadEngine.js`：把 `onTick` 转给 `onProgress`（IPC 侧就是 `download:progress`），
+  只带 `received / total / percent` 三个字段。
+- `src/renderer/app.js`：`onDownloadChanged()` 先比「任务 id + 状态」指纹，**一个状态没变就
+  只调 `renderLiveStrip()`** 就地替换顶部那条实时条；新增 `renderLiveStrip()` 与 `dlStatusSig()`。
+
+### 测试
+
+- `_probe/download-queue-test.js`：补「进度不触发 onChange、只触发 onTick」的功能断言 +
+  源码约定断言（`updateProgress` 里不许出现 `onChange(`、引擎必须把 onTick 转给 onProgress、
+  app.js 必须有 `dlStatusSig` / `renderLiveStrip`）。
+- `_probe/download-engine-test.js`：新增第 18 段，跑一次真下载（20 个进度分片），
+  断言进度到 `onProgress` 而状态通知次数不随进度次数增长。
+
 ## [0.3.6] - 2026-11-07
 
 - **账本按磁盘纠正**：你自己在资源管理器里删掉 Mod 文件、或者绕过管理器改了扩展名，

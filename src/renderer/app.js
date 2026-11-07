@@ -4288,12 +4288,28 @@ function openDownloadDrawer(id) {
   showDrawer();
 }
 
-/** 队列整体变化（新增 / 状态变更）→ 全量重绘 */
+/** 队列整体变化（新增 / 状态变更 / 删除）→ 全量重绘 */
 function onDownloadChanged(info) {
   if (!info) return;
   const prev = state.downloads || [];
   state.downloads = info.tasks || [];
   state.downloadStats = info.stats || {};
+
+  /**
+   * 🔴 只换了进度、状态一个没变 → **绝不能整页重画**。
+   *
+   * 实测故障（2026-11-07 用户报「有下载进度时筛选按钮会失灵，一闪一闪的」）：
+   * 进度事件曾经走的是 `download:changed`，于是已安装页每来一次进度就
+   * `area.innerHTML = …` 重建一遍 —— 卡片里的 `<img>` 全部重新加载（闪），
+   * 而且用户按下与松开鼠标之间节点被换掉，click 根本不派发（按钮「失灵」）。
+   *
+   * 现在主进程把纯进度分流到 `download:progress`（见 downloadQueue），这里再兜一层保险：
+   * 状态签名没变就只增量刷新顶部实时条，其余 DOM 一个节点都不动。
+   */
+  if (dlStatusSig(prev) === dlStatusSig(state.downloads)) {
+    renderLiveStrip();
+    return;
+  }
 
   renderDownload();
   renderSidebar();
@@ -4312,6 +4328,33 @@ function onDownloadChanged(info) {
   const justFailed = info.task && info.task.status === 'failed' &&
     !prev.some(t => t.id === info.task.id && t.status === 'failed');
   if (justFailed) toast('下载/安装失败：' + (info.task.error || ''), 'err');
+}
+
+/** 「任务 id + 状态」拼成的指纹：只有它变了才值得整页重画 */
+function dlStatusSig(tasks) {
+  return (tasks || []).map(t => String(t.id) + ':' + String(t.status)).join('|');
+}
+
+/**
+ * 只刷新已安装页顶部的实时条（`.live`），不碰下面的工具栏与卡片网格。
+ *
+ * 已安装页的实时条是整块 `innerHTML` 里的一段，所以要做成「就地替换那一个节点」：
+ * 有就换内容、没有就插到最前面、没有任务可显示就摘掉。
+ */
+function renderLiveStrip() {
+  const area = $('#installedArea');
+  if (!area) return;
+  const html = liveStrip();
+  const cur = area.querySelector(':scope > .live');
+  if (!html) {
+    if (cur) cur.remove();
+    return;
+  }
+  if (cur) {
+    cur.outerHTML = html;
+    return;
+  }
+  area.insertAdjacentHTML('afterbegin', html);
 }
 
 /** 细粒度进度 → 只改那一根进度条，不整体重绘（否则每个分片都重排一次 DOM） */

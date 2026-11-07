@@ -57,7 +57,17 @@ function identity(meta) {
   return [String(meta.game || 'stellarblade').toLowerCase(), Number(meta.modId) || 0, Number(meta.fileId) || 0].join(':');
 }
 
-function createDownloadQueue({ file, onChange = null, now = () => new Date().toISOString(), makeId = () => crypto.randomUUID() } = {}) {
+/**
+ * @param {object} opts
+ * @param {string} opts.file 任务数据文件
+ * @param {Function} opts.onChange **状态变化**时才调（新增 / 改状态 / 删任务）
+ * @param {Function} opts.onTick **纯进度**走这里（每次分片都会调，别拿它做整页重绘）
+ *
+ * 🔴 为什么把进度单列一条通道：`updateProgress` 每秒会调好几次，若它也走 `onChange`，
+ *    界面就被迫在每次进度回调里整块重画 —— 实测表现是「有下载进度时筛选按钮失灵、一闪一闪」：
+ *    innerHTML 重建把筛选 chip 换掉，mousedown 与 mouseup 落在不同节点上，click 根本不派发。
+ */
+function createDownloadQueue({ file, onChange = null, onTick = null, now = () => new Date().toISOString(), makeId = () => crypto.randomUUID() } = {}) {
   if (!file) throw new Error('downloadQueue 需要数据文件路径');
   const db = readJson(file, { version: 1, tasks: [] });
   if (!Array.isArray(db.tasks)) db.tasks = [];
@@ -150,8 +160,9 @@ function createDownloadQueue({ file, onChange = null, now = () => new Date().toI
     task.progress = { ...task.progress, ...(progress || {}) };
     task.updatedAt = now();
     writeJson(file, db);
-    if (typeof onChange === 'function') {
-      try { onChange(clone(task), list()); } catch { /* 忽略 */ }
+    // 只推「进度」，**不推 onChange** —— 详见 createDownloadQueue 顶部注释
+    if (typeof onTick === 'function') {
+      try { onTick(clone(task)); } catch { /* 忽略 */ }
     }
     return clone(task);
   }

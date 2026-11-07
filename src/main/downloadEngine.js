@@ -104,7 +104,18 @@ function createDownloadEngine(opts = {}) {
     file,
     now,
     makeId,
-    onChange: (task, list) => { if (onChange) { try { onChange(task, list); } catch { /* 通知失败不影响持久化 */ } } }
+    onChange: (task, list) => { if (onChange) { try { onChange(task, list); } catch { /* 通知失败不影响持久化 */ } } },
+    /**
+     * 纯下载进度：直接转给 `onProgress`（IPC 侧就是 `download:progress` 这条轻量通道），
+     * **不要**把它变成一次 `onChange` —— 那样界面会被迫整页重绘（见 downloadQueue 顶部注释）。
+     */
+    onTick: (task) => {
+      if (typeof onProgress !== 'function') return;
+      try {
+        const p = task && task.progress ? task.progress : {};
+        onProgress(task.id, { received: p.received, total: p.total, percent: p.percent, resumed: p.resumed });
+      } catch { /* 忽略 */ }
+    }
   });
 
   /* ---------------- 下载归档的命名与落点 ---------------- */
