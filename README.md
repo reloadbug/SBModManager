@@ -4,7 +4,9 @@
 
 - 项目主页：<https://github.com/reloadbug/SBModManager>
 - **下载安装包**：<https://github.com/reloadbug/SBModManager/releases/latest>
-  （`SBModManager-0.2.11-setup.exe` 安装版 / `SBModManager-0.2.11-portable.exe` 免安装版，需 Windows 10/11 x64）
+  （`SBModManager-<版本>-setup.exe` 安装版 / `SBModManager-<版本>-portable.exe` 免安装版，需 Windows 10/11 x64）
+- **双击就能用**：装好之后直接点桌面上的「剑星 Mod 管理器」；不想安装就双击 portable 版。
+  高分屏（125% / 150% / 250%）按系统缩放原生渲染，不需要任何启动脚本。
 - **一键安装**：双击仓库里的 **`安装.bat`**（或命令行跑 `install.ps1`）—— 自动下载最新版并静默安装，详见 [安装](#安装)
 - 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 - 问题反馈：<https://github.com/reloadbug/SBModManager/issues>
@@ -152,8 +154,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\�
 | `-NoPrompt` | 不询问安装目录，一律用默认（批处理 / 无人值守） |
 | `-DryRun` | 只显示计划，不做任何改动（也不会询问） |
 
-> 默认安装位置：安装版在 `%LOCALAPPDATA%\Programs\剑星 Mod 管理器`，
+> 默认安装位置：安装版在 `%LOCALAPPDATA%\Programs\sbmodmanager`（桌面会留「剑星 Mod 管理器」快捷方式），
 > 便携版在 `%LOCALAPPDATA%\Programs\SBModManager`。
+> `-InstallDir` 支持相对路径、`%LOCALAPPDATA%` 这类环境变量，以及带空格 / 中文的路径。
 > `-InstallDir` 支持相对路径、`%LOCALAPPDATA%` 这类环境变量，以及带空格 / 中文的路径。
 
 > **中国大陆网络**：直连 `github.com` 下 release 往往很慢甚至超时，三种办法 ——

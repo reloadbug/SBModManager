@@ -98,6 +98,19 @@ if (USE_COMPAT) {
   }
 }
 
+/**
+ * 高分屏。
+ *
+ * 打包出来的 exe 自带 `dpiAware=true/pm`（按显示器感知 DPI），Windows 不会把
+ * 界面当成 96 DPI 位图拉伸，所以在 4K / 200% 缩放下文字和封面都是原生的清晰度。
+ * 这里再显式打开 Chromium 的高 DPI 支持开关：个别机器（尤其是混合缩放的多屏、
+ * 或者从 100% 屏拖到 150% 屏）不加这一条会出现「界面突然变糊」。
+ *
+ * 注意**不要**再设 `force-device-scale-factor` —— 那会强制忽略用户的系统缩放，
+ * 在 150% 的屏幕上界面会小得没法看。用户想更大/更小，用系统缩放或 Ctrl+加减。
+ */
+app.commandLine.appendSwitch('high-dpi-support', '1');
+
 const START_AT = Date.now();
 let gpuCrashes = 0;
 let relaunching = false;
