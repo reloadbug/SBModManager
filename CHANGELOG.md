@@ -4,6 +4,14 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.2] - 2026-11-08
+
+- **换成新图标**：用「护盾 + 剑 + 紫色星环」那张美术稿做应用图标（exe、快捷方式、任务栏统一）。
+  `build/make-icon.py` 改成「美术稿驱动」：读 `build/icon-source.png` → 居中裁切（四周留白
+  按 7% 裁掉，否则 16~32px 缩下来一团糊）→ 抗锯齿圆角 → 极淡冷光描边收口 → 产出
+  `icon.png`(1024) + 多尺寸 `icon.ico`(16/24/32/48/64/128/256) + `icon-preview.png`（小尺寸
+  可读性检查图）。换图标以后只要把新图存成 `build/icon-source.png` 再跑一次脚本。
+
 ## [0.4.1] - 2026-11-07
 
 - **卸载 Mod 跨盘报错**：游戏在 `c:\Star Blade`、管理器数据在 `d:\…` 时，卸载会抛

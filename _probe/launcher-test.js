@@ -134,6 +134,47 @@ t('提到安装版与便携版', () => {
 });
 t('说明双击即用', () => ok(/双击/.test(readme), 'README 应说明双击启动'));
 
+console.log('\n[4b] 图标（美术稿驱动）');
+t('有源图 build/icon-source.png', () => {
+  const p = path.join(ROOT, 'build', 'icon-source.png');
+  ok(fs.existsSync(p), '缺 build/icon-source.png —— 换图标就是把新图存成这个名字再跑 make-icon.py');
+  const w = fs.statSync(p).size;
+  ok(w > 100 * 1024, `源图只有 ${(w / 1024).toFixed(0)}KB，太小了不像是美术稿`);
+});
+t('icon.png 是 1024 的 png', () => {
+  const p = path.join(ROOT, 'build', 'icon.png');
+  ok(fs.existsSync(p), '缺 build/icon.png');
+  // PNG 头 16~24 字节是宽高（大端）
+  const b = fs.readFileSync(p).subarray(16, 24);
+  const w = b.readUInt32BE(0);
+  const h = b.readUInt32BE(4);
+  ok(w === 1024 && h === 1024, `期望 1024×1024，实得 ${w}×${h}`);
+});
+t('icon.ico 是多尺寸（不是单张 256 糊出来的）', () => {
+  const p = path.join(ROOT, 'build', 'icon.ico');
+  ok(fs.existsSync(p), '缺 build/icon.ico');
+  const b = fs.readFileSync(p);
+  const type = b.readUInt16LE(2);
+  const count = b.readUInt16LE(4);
+  eq(type, 1, 'ico 头 type 应为 1');
+  ok(count >= 5, `ico 里只有 ${count} 个尺寸，任务栏/小图标会糊`);
+  const sizes = [];
+  for (let i = 0; i < count; i++) {
+    const off = 6 + i * 16;
+    const w = b[off] === 0 ? 256 : b[off];
+    sizes.push(w);
+  }
+  ok(sizes.includes(16) && sizes.includes(32) && sizes.includes(256), 'ico 应含 16/32/256，实得 ' + sizes.join('/'));
+});
+t('make-icon.py 从源图生成（不再手绘矢量）', () => {
+  const py = fs.readFileSync(path.join(ROOT, 'build', 'make-icon.py'), 'utf8');
+  ok(/icon-source\.png/.test(py), 'make-icon.py 应读取 build/icon-source.png');
+  ok(/format='ICO'/.test(py) || /format="ICO"/.test(py), 'make-icon.py 应输出 ICO');
+});
+t('小尺寸预览图存在（换图标时要眼看 16px）', () => {
+  ok(fs.existsSync(path.join(ROOT, 'build', 'icon-preview.png')), '缺 build/icon-preview.png');
+});
+
 console.log('\n[5] dist/ 里的产物（没打包就跳过）');
 const dist = path.join(ROOT, 'dist');
 const version = String(pkg.version);
