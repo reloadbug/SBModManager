@@ -1168,5 +1168,14 @@
     '已开始安装 %s 个包': 'Installation von %s Paketen gestartet',
     '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）': 'Installation von %s Paketen gestartet; %s konnten nicht starten (Gründe auf der Download-Seite)',
     '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。': 'Im Manager-Ordner liegen %s Pakete, die nicht im aktuellen Spielordner installiert sind (die Pakete bleiben beim Manager und wandern nicht mit dem Spiel).',
+    '安装包目录': 'Installationspaket-Ordner',
+    '里面的包': 'Enthaltene Pakete',
+    '自定义': 'Eigener',
+    '默认': 'Standard',
+    '这个目录不存在（点「恢复默认」或换个目录）': 'Ordner fehlt (auf „Standard" klicken oder anderen wählen).',
+    '更改目录…': 'Ordner ändern…',
+    '%s 个包 · %s · 其中 %s 个还没装进当前游戏目录': '%s Pakete · %s · davon %s noch nicht im Spielordner',
+    '安装包目录已改为：': 'Paketordner geändert:',
+    '重启管理器后生效': 'Wirkt nach Neustart des Managers',
   });
 })();

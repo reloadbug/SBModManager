@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const { ipcMain, shell, app, BrowserWindow, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -1476,7 +1476,9 @@ function register() {
       exists: (() => { try { return fs.existsSync(paths.DATA); } catch { return false; } })(),
       active: engine ? engine.stats().active : 0,
       // 数据是不是已经在游戏目录里（`<游戏根>\.sbmod`）
-      gameHome: gameHome.info()
+      gameHome: gameHome.info(),
+      // 安装包目录（下载好的压缩包放这儿；可以指到别的盘）
+      library: { dir: paths.LIBRARY, default: paths.DEFAULT_LIBRARY, configured: paths.LIBRARY_CONFIGURED }
     };
   });
 
@@ -1688,6 +1690,57 @@ function register() {
     const r = engine.enqueueLocal(archivePath, meta || {}, { auto: true, from: 'library', ...(opts || {}) });
     broadcastDownloads(r.task);
     return r;
+  });
+  /**
+   * 安装包目录本身：路径 + 里面有多少包 + 有多少还能装。
+   *
+   * 为什么要专门一条：默认的安装包目录在**管理器数据目录**下
+   * （打包版是 `%APPDATA%\剑星 Mod 管理器\data\library`），
+   * 而很多人把包攒在别的盘（开发时是仓库里的 `data\library`），
+   * 两边不是同一个目录 —— 用户会以为「识别不到」。设置页把它显出来、可改。
+   */
+  handle('library:info', () => {
+    const scan = localLibrary.scan({
+      dir: paths.LIBRARY,
+      root: currentRoot(),
+      entries: registry.all(),
+      tasks: engine.list()
+    });
+    let size = 0;
+    try {
+      for (const f of fs.readdirSync(paths.LIBRARY, { withFileTypes: true })) {
+        if (!f.isFile()) continue;
+        try { size += fs.statSync(path.join(paths.LIBRARY, f.name)).size; } catch { /* 单个读不到就跳过 */ }
+      }
+    } catch { /* 目录不在就 0 */ }
+    return {
+      dir: paths.LIBRARY,
+      default: paths.DEFAULT_LIBRARY,
+      configured: paths.LIBRARY_CONFIGURED,
+      exists: scan.exists,
+      total: scan.total,
+      installable: scan.installable,
+      skipped: scan.skipped,
+      size
+    };
+  });
+  /** 弹框选一个安装包目录（不挂主窗口） */
+  handle('library:choose', async (opts) => {
+    const o = opts || {};
+    const r = await dialog.showOpenDialog({
+      title: '选择安装包目录',
+      defaultPath: o.defaultPath || paths.LIBRARY,
+      buttonLabel: '用这个目录',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (r.canceled || !r.filePaths || !r.filePaths.length) return null;
+    return r.filePaths[0];
+  });
+  /** 把安装包目录指到别处（传空 = 恢复默认）；重启后生效 */
+  handle('library:setDir', (dir) => {
+    const r = paths.setLibraryDir(dir);
+    logger.event('data:libraryDir', { dir: r.dir, custom: r.custom });
+    return { ...r, restart: true };
   });
   handle('mods:reveal', (id) => {
     const mods = listMods().installed;

@@ -1168,5 +1168,14 @@
     '已开始安装 %s 个包': 'Started installing %s packages',
     '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）': 'Started installing %s packages; %s could not start (see reasons on the download page)',
     '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。': '%s install packages are still in the manager folder and not in the current game folder (they stay in the manager folder and do not move with the game).',
+    '安装包目录': 'Install package folder',
+    '里面的包': 'Packages inside',
+    '自定义': 'Custom',
+    '默认': 'Default',
+    '这个目录不存在（点「恢复默认」或换个目录）': 'This folder doesn\'t exist (click "Reset" or pick another).',
+    '更改目录…': 'Change folder…',
+    '%s 个包 · %s · 其中 %s 个还没装进当前游戏目录': '%s packages · %s · %s not installed in the current game folder yet',
+    '安装包目录已改为：': 'Install package folder changed to:',
+    '重启管理器后生效': 'Takes effect after restarting the manager',
   });
 })();

@@ -253,14 +253,52 @@ function setDataDir(dir) {
   return { dir: norm, source: 'custom' };
 }
 
+/**
+ * 「安装包目录」—— 下载好的 zip/7z/rar 都放这儿。
+ *
+ * 默认跟着管理器走（`<管理器数据目录>\library`），因为它是**缓存**级的体积大户
+ * （用户那边已经 14 GB），不该塞进游戏目录、也不该跟着游戏搬。
+ * 但很多人的包攒在别的盘上，所以允许在设置页指到任意目录：
+ * 指针文件里存 `libraryDir`，启动时用；不是绝对路径或建不出来就回落默认。
+ */
+const LIBRARY_CONFIGURED = (() => {
+  const raw = typeof POINTER.libraryDir === 'string' ? POINTER.libraryDir.trim() : '';
+  if (!raw || !path.isAbsolute(raw)) return '';
+  return path.resolve(raw);
+})();
+/** 默认安装包目录（= 管理器数据目录下的 library） */
+const DEFAULT_LIBRARY = path.join(APP_DATA, 'library');
+/** 实际使用的安装包目录 */
+const LIBRARY = LIBRARY_CONFIGURED && canUseDir(LIBRARY_CONFIGURED) ? LIBRARY_CONFIGURED : DEFAULT_LIBRARY;
+
 const CACHE = path.join(APP_DATA, 'cache');
 const IMAGES = path.join(CACHE, 'images');
 const GALLERY = path.join(CACHE, 'gallery');
 const META = path.join(CACHE, 'meta');
-const LIBRARY = path.join(APP_DATA, 'library');
 const TMP = path.join(APP_DATA, 'tmp');
 const BACKUP = path.join(APP_DATA, 'backup');
 const LOGS = path.join(APP_DATA, 'logs');
+
+/**
+ * 把「安装包目录」改到别处（传空 = 恢复默认）。
+ *
+ * 和 `setDataDir()` 一样：路径常量在模块加载时就算好了，所以**重启后生效**。
+ * 只动指针文件里的 `libraryDir` 一个字段，别的字段（dataDir / gameRoot）原样留着。
+ */
+function setLibraryDir(dir) {
+  const cur = readPointer();
+  const clean = typeof dir === 'string' ? dir.trim() : '';
+  if (!clean) delete cur.libraryDir;
+  else cur.libraryDir = path.resolve(clean);
+  cur.updatedAt = new Date().toISOString();
+  try {
+    fs.mkdirSync(path.dirname(BOOTSTRAP), { recursive: true });
+    fs.writeFileSync(BOOTSTRAP, JSON.stringify(cur, null, 2) + '\n', 'utf8');
+  } catch (e) {
+    throw new Error('写不进配置文件（' + BOOTSTRAP + '）：' + e.message);
+  }
+  return { dir: clean ? path.resolve(clean) : DEFAULT_LIBRARY, custom: !!clean };
+}
 
 function ensure() {
   for (const d of [APP_DATA, DATA, CACHE, IMAGES, GALLERY, META, LIBRARY, TMP, BACKUP, LOGS]) {
@@ -280,6 +318,11 @@ module.exports = {
   DATA_CONFIGURED,       // 配置的自定义目录（不可用时也保留原值，供界面提示）
   BOOTSTRAP_FILE: BOOTSTRAP,
   userDataDir, defaultDataDir, pickDataDir, readBootstrap, canUseDir, setDataDir,
+
+  // —— 安装包目录可配置相关 ——
+  DEFAULT_LIBRARY,       // 默认安装包目录（= APP_DATA/library）
+  LIBRARY_CONFIGURED,    // 用户指定的安装包目录（'' = 用默认）
+  setLibraryDir,
 
   // —— 跟着游戏走的那份数据 ——
   GAME_HOME_DIR, STATE_NAMES,

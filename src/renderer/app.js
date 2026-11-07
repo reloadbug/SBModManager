@@ -4664,6 +4664,28 @@ function renderSettings() {
     </div>
 
     <div class="frm">
+      <h3>安装包目录</h3>
+      <div class="f">
+        <label>目录</label>
+        <span id="libDirLine" style="font-size:12px;color:var(--dim)">读取中…</span>
+      </div>
+      <div class="f">
+        <label>里面的包</label>
+        <span id="libStatLine" style="font-size:12px;color:var(--dim)"></span>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">下载好的压缩包都放在这里，删除、重装都从这儿取。默认在管理器自己的数据目录下；包攒在别的盘（比如 D 盘的仓库目录）就可以点「更改目录」指过去 —— 指完之后启动时会读那个目录。换过游戏目录时，这里没装过的包还能在「下载」页重装。</div>
+      </div>
+      <div class="f">
+        <label></label>
+        <button class="btn sm" id="btnLibChoose">更改目录…</button>
+        <button class="btn sm" id="btnLibOpen">打开目录</button>
+        <button class="btn sm" id="btnLibReset">恢复默认</button>
+      </div>
+    </div>
+
+    <div class="frm">
       <h3>Nexus 账号</h3>
       <div class="f">
         <label>登录状态</label>
@@ -4898,6 +4920,7 @@ function renderSettings() {
   refreshDataDirLine();
   refreshDataHomeLine();
   refreshLedgerBox();
+  refreshLibDirBox();
 
   window.api.translate.stats().then(r => {
     const el = $('#transStats');
@@ -6560,6 +6583,27 @@ function bindEvents() {
         }
         refreshLedgerBox();
       } catch { /* 已提示 */ } finally { btn.disabled = false; }
+    } else if (e.target.id === 'btnLibChoose') {
+      try {
+        const dir = await call(window.api.download.libraryChoose({ defaultPath: (state.libDir && state.libDir.dir) || '' }));
+        if (!dir) return;
+        const r = await call(window.api.download.librarySetDir(dir));
+        toast('安装包目录已改为：' + r.dir + '\n重启管理器后生效', 'ok');
+        refreshLibDirBox();
+      } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnLibOpen') {
+      try {
+        const d = state.libDir && state.libDir.dir;
+        if (!d) { toast('还读不到安装包目录', 'err'); return; }
+        await call(window.api.openPath(d));
+      } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnLibReset') {
+      if (!confirm('把安装包目录恢复成默认（管理器数据目录下的 library）？\n\n已经下载的包不会删，只是不再看那个自定义目录。')) return;
+      try {
+        const r = await call(window.api.download.librarySetDir(''));
+        toast('已恢复默认：' + r.dir + '\n重启管理器后生效', 'ok');
+        refreshLibDirBox();
+      } catch { /* 已提示 */ }
     } else if (e.target.id === 'btnSaveKey') {
       try {
         await call(window.api.config.set({ nexusApiKey: $('#setApiKey').value.trim() }));
@@ -6802,6 +6846,38 @@ function refreshDataHomeLine() {
     ? '游戏目录（跟着游戏走）：'
     : '暂存在管理器目录，下次启动会切换到游戏目录：';
   el.innerHTML = esc(label) + `<span data-i18n-skip style="font-family:ui-monospace,Consolas,monospace">${esc(dir)}</span>`;
+}
+
+/* ---------------- 安装包目录 ---------------- */
+/**
+ * 显示「安装包目录」，并说清楚里面有几百个包、其中多少还能装。
+ *
+ * 用户遇到过的困惑：打包版默认目录是 `%APPDATA%\剑星 Mod 管理器\data\library`，
+ * 而他攒包的目录是别的盘 —— 界面上没有任何地方写着「我在看哪个目录」，
+ * 于是看起来就像「识别不到」。这里把路径和盘点的数字直接摆出来。
+ */
+async function refreshLibDirBox() {
+  const dirLine = $('#libDirLine');
+  const statLine = $('#libStatLine');
+  if (!dirLine || !statLine) return;
+  try {
+    const d = await call(window.api.download.libraryInfo(), { silent: true });
+    state.libDir = d;
+    const isCustom = !!(d.configured && d.configured === d.dir);
+    dirLine.innerHTML = `<span data-i18n-skip style="font-family:ui-monospace,Consolas,monospace">${esc(d.dir || '')}</span>`;
+    dirLine.innerHTML += isCustom
+      ? ' <span class="tag">自定义</span>'
+      : ' <span class="tag">默认</span>';
+    if (!d.exists) {
+      statLine.textContent = '这个目录不存在（点「恢复默认」或换个目录）';
+      return;
+    }
+    const mb = d.size ? fmtSize(d.size) : '0 B';
+    statLine.textContent = `${fmtNum(d.total)} 个包 · ${mb} · 其中 ${fmtNum(d.installable)} 个还没装进当前游戏目录`;
+  } catch (e) {
+    dirLine.textContent = '读取失败：' + (e && e.message ? e.message : '');
+    statLine.textContent = '';
+  }
 }
 
 async function refreshLedgerBox() {

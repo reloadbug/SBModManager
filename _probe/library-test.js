@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 /**
  * 「管理器自带安装包」盘点断言套件（0.3.7）。
  *
@@ -194,6 +194,45 @@ for (const k of ['装进游戏', '把这份安装包装进当前游戏目录', '
   '全部装进去（%s）', '还有 %s 个没列出来（装完上面这些再看）', '正在安装中，稍等…',
   '已开始安装 %s 个包', '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）',
   '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。']) {
+  ok(keyList.includes(k), 'i18n 有键：' + k.slice(0, 22));
+}
+
+/* ============================ D2. 安装包目录可配置 ============================ */
+console.log('\n=== D2) 安装包目录：可指到别的盘（0.4.0）===');
+
+const pathsSrc = read('src/main/paths.js');
+ok(pathsSrc.includes('LIBRARY_CONFIGURED'), 'paths.js 有 LIBRARY_CONFIGURED（指针里的 libraryDir）');
+ok(pathsSrc.includes('DEFAULT_LIBRARY'), 'paths.js 有 DEFAULT_LIBRARY');
+ok(/LIBRARY_CONFIGURED\s*&&\s*canUseDir\(LIBRARY_CONFIGURED\)\s*\?\s*LIBRARY_CONFIGURED\s*:\s*DEFAULT_LIBRARY/.test(pathsSrc),
+  '指到建不出来的目录时回落默认（不能因为一个坏路径就打不开）');
+ok(/function setLibraryDir\(dir\)/.test(pathsSrc), 'paths.js 有 setLibraryDir()');
+ok(/libraryDir/.test(pathsSrc) && /readPointer\(\)/.test(pathsSrc), 'setLibraryDir 走指针文件（不碰注册表）');
+ok(pathsSrc.includes('setLibraryDir,'), 'paths.js 导出了 setLibraryDir');
+ok(pathsSrc.includes('LIBRARY_CONFIGURED,'), 'paths.js 导出了 LIBRARY_CONFIGURED');
+
+ok(ipc.includes("handle('library:info'"), 'ipc 有 library:info');
+ok(ipc.includes("handle('library:choose'"), 'ipc 有 library:choose');
+ok(ipc.includes("handle('library:setDir'"), 'ipc 有 library:setDir');
+ok(/library:info'[\s\S]{0,400}dir: paths\.LIBRARY/.test(ipc), 'library:info 报的是真正在用的目录');
+ok(/library:setDir'[\s\S]{0,300}paths\.setLibraryDir/.test(ipc), 'library:setDir 落到 paths.setLibraryDir');
+ok(/library:setDir'[\s\S]{0,400}restart:\s*true/.test(ipc), '改完告诉界面「重启后生效」');
+ok(/data:info'[\s\S]{0,1400}library:\s*\{\s*dir: paths\.LIBRARY/.test(ipc), 'data:info 里也带上安装包目录');
+
+ok(pre.includes("libraryInfo: () => invoke('library:info')"), 'preload 暴露 download.libraryInfo()');
+ok(pre.includes("libraryChoose: (opts) => invoke('library:choose', opts)"), 'preload 暴露 download.libraryChoose()');
+ok(pre.includes("librarySetDir: (dir) => invoke('library:setDir', dir)"), 'preload 暴露 download.librarySetDir()');
+
+ok(appSrc.includes('async function refreshLibDirBox()'), 'app.js 有 refreshLibDirBox()');
+ok(appSrc.includes('refreshLibDirBox();'), '设置页渲染时会刷新这一行');
+ok(appSrc.includes('id="libDirLine"'), '设置页有目录行');
+ok(appSrc.includes('id="btnLibChoose"'), '设置页有「更改目录…」');
+ok(appSrc.includes('id="btnLibOpen"'), '设置页有「打开目录」');
+ok(appSrc.includes('id="btnLibReset"'), '设置页有「恢复默认」');
+ok(appSrc.includes("e.target.id === 'btnLibChoose'"), '改目录的点击分支');
+ok(appSrc.includes("e.target.id === 'btnLibReset'"), '恢复默认的点击分支');
+
+for (const k of ['安装包目录', '里面的包', '更改目录…', '打开目录', '恢复默认',
+  '%s 个包 · %s · 其中 %s 个还没装进当前游戏目录', '安装包目录已改为：', '重启管理器后生效']) {
   ok(keyList.includes(k), 'i18n 有键：' + k.slice(0, 22));
 }
 

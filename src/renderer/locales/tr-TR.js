@@ -1168,5 +1168,14 @@
     '已开始安装 %s 个包': '%s paket kurulmaya başlandı',
     '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）': '%s paket kurulmaya başlandı; %s başlatılamadı (nedenler İndirilenler sayfasında)',
     '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。': 'Yönetici klasöründe, geçerli oyun klasörüne kurulmamış %s paket var (paketler yöneticide kalır, oyunla taşınmaz).',
+    '安装包目录': 'Kurulum paketi klasörü',
+    '里面的包': 'İçindeki paketler',
+    '自定义': 'Özel',
+    '默认': 'Varsayılan',
+    '这个目录不存在（点「恢复默认」或换个目录）': 'Klasör yok ("Varsayılan"a bas ya da başka seç).',
+    '更改目录…': 'Klasörü değiştir…',
+    '%s 个包 · %s · 其中 %s 个还没装进当前游戏目录': '%s paket · %s · bunlardan %s hâlâ kurulmadı',
+    '安装包目录已改为：': 'Paket klasörü değişti:',
+    '重启管理器后生效': 'Yöneticiyi yeniden başlatınca geçerli olur',
   });
 })();

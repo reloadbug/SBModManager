@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
 
 /**
@@ -220,6 +220,12 @@ contextBridge.exposeInMainWorld('api', {
      * 队列被清理过、或者换过游戏目录之后，「下好了没装」还能在这里看到。
      */
     library: () => invoke('library:list'),
+    /** 安装包目录本身：路径、包数量、体积（设置页显示 / 可改） */
+    libraryInfo: () => invoke('library:info'),
+    /** 弹框选一个安装包目录，返回路径或 null */
+    libraryChoose: (opts) => invoke('library:choose', opts),
+    /** 把安装包目录指到别处（传空 = 恢复默认），重启后生效 */
+    librarySetDir: (dir) => invoke('library:setDir', dir),
     /** 把 library 里的某个包装进当前游戏目录 */
     installFromLibrary: (archivePath, meta, opts) => invoke('library:install', archivePath, meta, opts),
     /** 队列变化（新增 / 状态变更 / 进度写库），返回取消订阅函数 */
