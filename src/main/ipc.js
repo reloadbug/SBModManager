@@ -20,6 +20,7 @@ const localState = require('./localState');
 const linker = require('./linker');
 const reconcile = require('./reconcile');
 const localLibrary = require('./localLibrary');
+const fsMove = require('./fsMove');
 const relocate = require('./relocate');
 const fsError = require('./fsError');
 const { createBlacklist } = require('./blacklist');
@@ -1280,14 +1281,14 @@ function uninstall(id, { purge = false } = {}) {
       const from = path.join(L.modsDir, f.name);
       if (!fs.existsSync(from)) continue;
       if (purge) { fs.unlinkSync(from); moved.push({ file: f.name, deleted: true }); }
-      else { fs.renameSync(from, path.join(dest, f.name)); moved.push({ file: f.name, to: dest }); }
+      else { moved.push({ file: f.name, to: dest, via: fsMove.movePath(from, path.join(dest, f.name)) }); }
     }
   } else if (mod.kind === 'script') {
     // 同 setEnabled：路径必须用目录名，`name` 关联后是显示名
     const from = path.join(L.ue4ssModsDir, mod.dir || mod.name);
     if (fs.existsSync(from)) {
       if (purge) { fs.rmSync(from, { recursive: true, force: true }); moved.push({ file: mod.dir || mod.name, deleted: true }); }
-      else { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.renameSync(from, dest); moved.push({ file: mod.dir || mod.name, to: dest }); }
+      else { fs.mkdirSync(path.dirname(dest), { recursive: true }); moved.push({ file: mod.dir || mod.name, to: dest, via: fsMove.movePath(from, dest) }); }
     }
   } else {
     // 落到 SB\ 等非标准位置的 mod（框架包）：没有磁盘特征，只能按 manifest 精确回滚。
@@ -1307,8 +1308,7 @@ function uninstall(id, { purge = false } = {}) {
       else {
         const to = path.join(dest, rel.split('/').join(path.sep));
         fs.mkdirSync(path.dirname(to), { recursive: true });
-        fs.renameSync(f.path, to);
-        moved.push({ file: rel, to });
+        moved.push({ file: rel, to, via: fsMove.movePath(f.path, to) });
       }
     }
 

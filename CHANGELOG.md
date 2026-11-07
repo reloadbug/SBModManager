@@ -4,6 +4,16 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.1] - 2026-11-07
+
+- **卸载 Mod 跨盘报错**：游戏在 `c:\Star Blade`、管理器数据在 `d:\…` 时，卸载会抛
+  `EXDEV: cross-device link not permitted, rename 'c:\…\x.pak' -> 'd:\…\x.pak'` —— Windows 的
+  改名不能跨盘，而卸载是「把文件移到 `data/backup/uninstalled/` 方便回滚」，一跨盘就整条失败。
+  现在统一走新的 `fsMove`：先试改名（同盘最快），只有确实跨卷时才退化成「复制 + 删源」；
+  复制成功但原文件删不掉（游戏占着）时给的是一句人话，而不是裸错误码。
+  同类隐患一并修掉：下载完成后把压缩包搬进「安装包目录」、以及老库结构迁移，都改走 `fsMove`
+  —— 安装包目录被指到别的盘之后，这两处原本也会栽在 EXDEV 上。
+
 ## [0.4.0] - 2026-11-07
 
 - **安装包目录可以指到别的盘**：下载好的压缩包默认放在管理器的数据目录下

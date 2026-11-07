@@ -7,6 +7,7 @@ const { createImageCache } = require('./imageCache');
 const { runInstall, ownedPathsFor, explainConflicts } = require('./installFlow');
 const { sniffExtension, buildArchiveName, buildLegacyArchiveName, extOf } = require('./archiveName');
 const fsError = require('./fsError');
+const fsMove = require('./fsMove');
 const fsPromises = require('fs').promises;
 
 /**
@@ -186,7 +187,8 @@ function createDownloadEngine(opts = {}) {
     if (path.resolve(dest).toLowerCase() === path.resolve(downloadedPath).toLowerCase()) return downloadedPath;
     try {
       await fsPromises.mkdir(libraryDir, { recursive: true });
-      await fsPromises.rename(downloadedPath, dest);
+      // 安装包目录可以指到别的盘（0.4.0 起），跨卷 rename 会 EXDEV —— 交给 fsMove 退化成复制
+      await fsMove.movePathAsync(downloadedPath, dest);
       return dest;
     } catch (e) {
       // rename 失败（跨卷 / 目标被占）就留在原处，至少包还在
@@ -241,7 +243,7 @@ function createDownloadEngine(opts = {}) {
         let dest = path.join(libraryDir, base);
         dest = uniqueDest(dest, taken);
         try {
-          fs.renameSync(src, dest);
+          fsMove.movePath(src, dest);
           moved++;
           if (t) queue.update(t.id, { archivePath: dest, filename: path.basename(dest) });
         } catch { /* 搬不动的留给用户自己看，不阻断启动 */ }
