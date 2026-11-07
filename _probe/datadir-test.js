@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 /**
  * 第三十八轮：「数据目录可以在设置里改位置 + 已有数据一键搬运」。
  *
@@ -362,7 +362,7 @@ function readSrc(rel) {
     ((app.match(/data-i18n-skip>\$\{esc\(/g) || []).length >= 4 ? true : '新提示里的路径没打 skip'));
 
   const keys = JSON.parse(fs.readFileSync(path.join(__dirname, 'i18n-keys.json'), 'utf8'));
-  eq(keys.length, 1116, '键表 1116 条（0.2.10 的 997 + 数据目录 43 + 批量解析 47 + 文件名标识 2 + 游戏目录搬移 27）');
+  eq(keys.length, 1119, '键表 1119 条（0.2.10 的 997 + 数据目录 43 + 批量解析 47 + 文件名标识 2 + 游戏目录搬移 27 + 数据跟着游戏走 3）');
   const NEW_KEYS = [
     '更改位置…', '恢复默认', '默认位置', '自定义位置', '待重启生效', '约',
     '目标目录里已经有数据', '这个目录里已经有一份数据了：', '把现有数据搬到新目录吗？',

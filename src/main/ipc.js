@@ -32,7 +32,8 @@ const { createGalleryFetcher } = require('./nexusGallery');
 const { createImageCache } = require('./imageCache');
 const variantCover = require('./variantCover');
 const dataMigrate = require('./dataMigrate');
-const { readJson, writeJson } = require('./store');
+const gameHome = require('./gameHome');
+const { readJson, writeJson, setMirror } = require('./store');
 
 let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites;
 
@@ -114,6 +115,10 @@ function init() {
   // 安装规则升级后，让「待确认」的老任务重新算一次方案（只改 plan，不自动装）。
   // 延迟到界面就绪之后再跑：analyze 要真解压压缩包，别跟启动抢 CPU。
   setTimeout(() => { engine.refreshUnknownPlans().catch(() => {}); }, 6000);
+
+  // 数据跟着游戏走：记下游戏目录、第一次见到就把状态铺进 `<游戏根>\.sbmod`、
+  // 之后每次写盘都镜像一份（下次启动就直接用游戏目录里那份）
+  initGameHome();
 
   initWatcher();
 }
@@ -447,7 +452,7 @@ async function autoAuthorizeTask(id) {
     engine.markAuthFailed(id, reason);
     broadcastDownloads(null);
     logger.event('download:autoauthFailed', {
-      id, modId, fileId, code, rawCode: r.code, reason: r.reason, snippet: r.snippet || null
+      id, modId, fileId, code, rawCode: r.code, reason: r.reason, via: r.via || null, snippet: r.snippet || null
     });
     return { ok: false, code, reason, taskId: id };
   }
@@ -456,7 +461,7 @@ async function autoAuthorizeTask(id) {
   const info = { ...r.info };
   if (r.fileName && !(t.meta && t.meta.fileName)) info.fileName = r.fileName;
   const task = await handleIncomingNxm(info);
-  logger.event('download:autoauth', { id, modId, fileId, taskId: task && task.id });
+  logger.event('download:autoauth', { id, modId, fileId, taskId: task && task.id, via: r.via || 'fetch' });
   return { ok: true, taskId: (task && task.id) || id };
 }
 
@@ -716,6 +721,41 @@ function invalidateLocalIndex() { localIdxCache = { at: 0, index: null }; }
  *   ② 账本额外存一份到 `<游戏根>\.sbmod\ledger.json`，跟着游戏文件夹一起被搬走，
  *      换机器/重装管理器都能从它恢复。
  */
+
+/* ---------------- 数据跟着游戏走 ----------------
+ *
+ * `<游戏根>\.sbmod\` 里存的是「状态」（config / mods / mod-links / blacklist /
+ * favorites / downloads / watch-seen / ledger），缓存与日志仍留在管理器目录。
+ * 详见 `gameHome.js` 的文件头；启动时若那儿已经有 config.json，`paths` 会直接用它。
+ */
+
+/**
+ * 记下游戏目录 + 第一次见到它时把当前状态铺进去 + 挂上「每次写盘都镜像一份」的钩子。
+ * 幂等，可以反复调用（启动一次、换游戏目录再一次）。
+ */
+function initGameHome(root) {
+  const r = root || currentRoot();
+  try {
+    if (!r) return { ok: false, reason: 'no-game-root' };
+    const seeded = gameHome.seed(r, paths.DATA);
+    paths.setGameRootHint(r);
+    setMirror((file, data) => gameHome.mirror(r, file, data));
+    if (seeded.copied.length) {
+      logger.event('data:gameHomeSeeded', { dir: seeded.dir, copied: seeded.copied, failed: seeded.failed.length });
+    }
+    return {
+      ok: true,
+      dir: seeded.dir,
+      copied: seeded.copied,
+      failed: seeded.failed,
+      dataSource: paths.DATA_SOURCE,
+      isGameHome: seeded.dir.toLowerCase() === String(paths.DATA).toLowerCase()
+    };
+  } catch (e) {
+    logger.warn('[数据] 初始化游戏目录数据失败：' + e.message);
+    return { ok: false, reason: e.message };
+  }
+}
 
 /** 把账本同步一份到游戏目录。失败不抛 —— 附加保险不能拖累安装主流程 */
 function syncLedger(root) {
@@ -1286,6 +1326,7 @@ function register() {
       game: g,
       installed: mods.installed,
       relocation,
+      dataHome: gameHome.info(),
       translateStats: translator.stats(),
       auth: auth,
       dataDir: paths.DATA,
@@ -1329,18 +1370,26 @@ function register() {
     const picked = paths.pickDataDir(paths.readBootstrap(), paths.DEFAULT_DATA);
     const custom = picked.source === 'custom';
     const usable = !custom || paths.canUseDir(picked.dir);
+    // 「跟着游戏走」的那份优先：指针里的游戏目录下已有 `<游戏根>\.sbmod\config.json`
+    // 就说明下次启动会读它，界面得照这个说，不能还说「会用默认目录」
+    const ptr = paths.readPointer();
+    const hintRoot = typeof ptr.gameRoot === 'string' ? ptr.gameRoot.trim() : '';
+    const homeReady = hintRoot && !custom ? paths.gameHomeReady(hintRoot) : false;
+    const homeDir = homeReady ? paths.gameHomeOf(hintRoot) : '';
     return {
       current: paths.DATA,                                   // 本进程正在用
-      next: usable ? picked.dir : paths.DEFAULT_DATA,         // 重启后会用的
+      next: homeDir || (usable ? picked.dir : paths.DEFAULT_DATA),  // 重启后会用的
       configured: custom ? picked.dir : '',
       default: paths.DEFAULT_DATA,
-      source: usable ? picked.source : 'default',
+      source: homeDir ? 'game' : (usable ? picked.source : 'default'),
       reason: usable ? picked.reason : 'unusable',
       bootstrap: paths.BOOTSTRAP_FILE,
       userData: paths.userDataDir(),
       packaged: !!app.isPackaged,
       exists: (() => { try { return fs.existsSync(paths.DATA); } catch { return false; } })(),
-      active: engine ? engine.stats().active : 0
+      active: engine ? engine.stats().active : 0,
+      // 数据是不是已经在游戏目录里（`<游戏根>\.sbmod`）
+      gameHome: gameHome.info()
     };
   });
 
@@ -1435,9 +1484,11 @@ function register() {
   handle('game:setRoot', (root) => {
     if (!game.isGameRoot(root)) throw new Error('该目录不是有效的剑星根目录（未找到 SB\\Binaries\\Win64\\SB-Win64-Shipping.exe）');
     config.set({ gameRoot: root });
+    // 数据跟着新游戏目录走：先把状态铺进去（已有则不覆盖）、记指针、挂镜像
+    const home = initGameHome(root);
     // 换目录往往就是「搬移」——顺手把账本对齐，别让用户自己点
     const relocation = autoRelocate(root);
-    return { ...inspectGame(), relocation };
+    return { ...inspectGame(), relocation, home };
   });
   handle('game:ensureModsDir', () => {
     const root = currentRoot();

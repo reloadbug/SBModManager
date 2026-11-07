@@ -90,6 +90,60 @@ function readBootstrap() {
 }
 
 /**
+ * 指针文件的完整内容（不只是 dataDir —— 现在还记 `gameRoot`）。
+ * 读不到 / 坏了都当空对象，绝不抛。
+ */
+function readPointer() {
+  const raw = readBootstrap();
+  if (!raw) return {};
+  try {
+    const j = JSON.parse(raw);
+    return (j && typeof j === 'object') ? j : {};
+  } catch { return {}; }
+}
+
+/**
+ * 把「游戏目录」记进指针文件（只改这一个字段，别的字段原样保留）。
+ *
+ * 为什么要有它：数据现在优先放在 `<游戏根>\.sbmod\`（跟着游戏走），
+ * 但**启动那一刻得先知道游戏在哪**才能去读那里的 config.json —— 这就是那个死结。
+ * 指针文件放在固定位置（userData，纯文件，不碰注册表）只负责回答「上次游戏在哪儿」，
+ * 真正的数据（配置、安装账本、关联、账本）全在游戏目录里。
+ */
+function setGameRootHint(root) {
+  const cur = readPointer();
+  const next = { ...cur };
+  const clean = typeof root === 'string' ? root.trim() : '';
+  if (clean) next.gameRoot = path.resolve(clean); else delete next.gameRoot;
+  next.updatedAt = new Date().toISOString();
+  try {
+    fs.mkdirSync(path.dirname(BOOTSTRAP), { recursive: true });
+    fs.writeFileSync(BOOTSTRAP, JSON.stringify(next, null, 2) + '\n', 'utf8');
+    return next;
+  } catch { return cur; }
+}
+
+/** 游戏目录里那份「跟着走」的数据目录名 */
+const GAME_HOME_DIR = '.sbmod';
+
+/** `<游戏根>\.sbmod` */
+function gameHomeOf(root) {
+  return root ? path.join(root, GAME_HOME_DIR) : '';
+}
+
+/** 游戏目录里那份数据算「存在」的标志文件 */
+function gameHomeConfigOf(root) {
+  return root ? path.join(gameHomeOf(root), 'config.json') : '';
+}
+
+/** 游戏目录里是否已经有一套数据（有 config.json 就算） */
+function gameHomeReady(root) {
+  if (!root || !path.isAbsolute(root)) return false;
+  try { return fs.statSync(gameHomeConfigOf(root)).isFile(); } catch { return false; }
+}
+
+
+/**
  * 目录能不能真的用：建得出来、并且写得进去。
  * 自定义目录指向一个不存在的盘符（比如拔掉的移动硬盘）时这里会失败。
  */
@@ -107,7 +161,7 @@ const picked = pickDataDir(readBootstrap(), DEFAULT_DATA);
 
 /** 用户**配置**的数据目录（= 指针文件里写的），即使它当前不可用 */
 const DATA_CONFIGURED = picked.source === 'custom' ? picked.dir : '';
-/** 用户是改过位置，还是用的默认 */
+/** 数据从哪来：'default'（管理器目录）| 'custom'（用户指定）| 'game'（游戏目录里跟着走的那份） */
 let DATA_SOURCE = picked.source;
 /** 最终**实际**使用的数据目录 */
 let DATA = picked.dir;
@@ -123,6 +177,50 @@ if (DATA_SOURCE === 'custom' && !canUseDir(DATA)) {
 }
 
 /**
+ * 缓存 / 日志 / 下载好的压缩包这些「体积大、丢了还能再生」的东西**永远跟着管理器走**。
+ * 只有配置与账本跟着游戏走 —— 免得往游戏目录里塞几百 MB 图片缓存。
+ */
+const APP_DATA = DATA;
+
+/** 指针里记的游戏目录（启动时靠它找到 `<游戏根>\.sbmod`） */
+const POINTER = readPointer();
+let GAME_ROOT = typeof POINTER.gameRoot === 'string' ? POINTER.gameRoot.trim() : '';
+if (!GAME_ROOT || !path.isAbsolute(GAME_ROOT)) GAME_ROOT = '';
+/** `<游戏根>\.sbmod`（没有游戏目录时是空串） */
+let GAME_HOME = GAME_ROOT ? gameHomeOf(GAME_ROOT) : '';
+/** 游戏目录里是否已经有一套数据 */
+let GAME_HOME_READY = GAME_ROOT ? gameHomeReady(GAME_ROOT) : false;
+
+// **优先游戏目录**：只要那儿有 config.json 就用它 —— 这是「配置跟着游戏走」的落点。
+// 例外：用户显式把数据目录指到了别处（custom），以用户为准。
+if (DATA_SOURCE !== 'custom' && GAME_HOME_READY && canUseDir(GAME_HOME)) {
+  DATA = GAME_HOME;
+  DATA_SOURCE = 'game';
+  DATA_REASON = '';
+}
+
+/**
+ * 哪些文件属于「跟着游戏走」的那份状态。
+ * 其余（cache / library / tmp / backup / logs）都留在 APP_DATA。
+ */
+const STATE_NAMES = [
+  'config.json', 'mods.json', 'mod-links.json', 'blacklist.json',
+  'favorites.json', 'downloads.json', 'watch-seen.json', 'ledger.json'
+];
+
+/**
+ * 某个状态文件在游戏目录里的镜像路径；不需要镜像（或本来就是它自己）时返回空串。
+ * 写文件时统一走这条判断，见 `store.writeJson()` 里挂的 mirror。
+ */
+function homeMirrorOf(file) {
+  if (!GAME_HOME) return '';
+  const name = path.basename(file);
+  if (!STATE_NAMES.includes(name)) return '';
+  if (path.dirname(path.resolve(file)).toLowerCase() === path.resolve(GAME_HOME).toLowerCase()) return '';
+  return path.join(GAME_HOME, name);
+}
+
+/**
  * 把数据目录改到别处（传空 = 恢复默认）。
  *
  * ⚠️ **重启后生效** —— `DATA` 与下面那一串路径常量都是模块加载时算好的，
@@ -131,27 +229,42 @@ if (DATA_SOURCE === 'custom' && !canUseDir(DATA)) {
  */
 function setDataDir(dir) {
   if (!dir) {
-    try { fs.unlinkSync(BOOTSTRAP); } catch { /* 本来就没有 */ }
+    // 恢复默认：把 dataDir 去掉。**但游戏目录的指针要留着** —— 不然下次启动
+    // 就找不到 `<游戏根>\.sbmod` 了（数据跟着游戏走全靠它）。
+    // 没有 gameRoot 要记的时候，仍旧把指针文件整个删掉（保持老行为）。
+    const cur = readPointer();
+    delete cur.dataDir;
+    delete cur.updatedAt;
+    if (!cur.gameRoot) {
+      try { fs.unlinkSync(BOOTSTRAP); } catch { /* 本来就没有 */ }
+      return { dir: DEFAULT_DATA, source: 'default' };
+    }
+    cur.updatedAt = new Date().toISOString();
+    try {
+      fs.mkdirSync(path.dirname(BOOTSTRAP), { recursive: true });
+      fs.writeFileSync(BOOTSTRAP, JSON.stringify(cur, null, 2) + '\n', 'utf8');
+    } catch { /* 写不进去就维持现状 */ }
     return { dir: DEFAULT_DATA, source: 'default' };
   }
   const norm = path.resolve(dir);
+  const cur = readPointer();
   fs.mkdirSync(path.dirname(BOOTSTRAP), { recursive: true });
-  fs.writeFileSync(BOOTSTRAP, JSON.stringify({ dataDir: norm }, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(BOOTSTRAP, JSON.stringify({ ...cur, dataDir: norm }, null, 2) + '\n', 'utf8');
   return { dir: norm, source: 'custom' };
 }
 
-const CACHE = path.join(DATA, 'cache');
+const CACHE = path.join(APP_DATA, 'cache');
 const IMAGES = path.join(CACHE, 'images');
 const GALLERY = path.join(CACHE, 'gallery');
 const META = path.join(CACHE, 'meta');
-const LIBRARY = path.join(DATA, 'library');
-const TMP = path.join(DATA, 'tmp');
-const BACKUP = path.join(DATA, 'backup');
-const LOGS = path.join(DATA, 'logs');
+const LIBRARY = path.join(APP_DATA, 'library');
+const TMP = path.join(APP_DATA, 'tmp');
+const BACKUP = path.join(APP_DATA, 'backup');
+const LOGS = path.join(APP_DATA, 'logs');
 
 function ensure() {
-  for (const d of [DATA, CACHE, IMAGES, GALLERY, META, LIBRARY, TMP, BACKUP, LOGS]) {
-    fs.mkdirSync(d, { recursive: true });
+  for (const d of [APP_DATA, DATA, CACHE, IMAGES, GALLERY, META, LIBRARY, TMP, BACKUP, LOGS]) {
+    try { fs.mkdirSync(d, { recursive: true }); } catch { /* 游戏目录不可写时别拦启动 */ }
   }
 }
 
@@ -161,11 +274,18 @@ module.exports = {
 
   // —— 数据目录可配置相关 ——
   DEFAULT_DATA,          // 默认位置（界面上「恢复默认」的落脚点）
-  DATA_SOURCE,           // 'default' | 'custom'
+  APP_DATA,              // 缓存/日志/下载包所在（永远跟着管理器）
+  DATA_SOURCE,           // 'default' | 'custom' | 'game'
   DATA_REASON,           // 指针文件被忽略的原因（'' = 正常）
   DATA_CONFIGURED,       // 配置的自定义目录（不可用时也保留原值，供界面提示）
   BOOTSTRAP_FILE: BOOTSTRAP,
   userDataDir, defaultDataDir, pickDataDir, readBootstrap, canUseDir, setDataDir,
+
+  // —— 跟着游戏走的那份数据 ——
+  GAME_HOME_DIR, STATE_NAMES,
+  GAME_ROOT, GAME_HOME, GAME_HOME_READY,
+  gameHomeOf, gameHomeConfigOf, gameHomeReady, homeMirrorOf,
+  readPointer, setGameRootHint,
 
   configFile: path.join(DATA, 'config.json'),
   registryFile: path.join(DATA, 'mods.json'),

@@ -1119,5 +1119,8 @@
     '已写入游戏目录：%s 条': 'Scritto nella cartella del gioco: %s',
     '账本里没有新记录': 'Nessun nuovo record nel registro',
     '账本已跟随新目录：': 'Il registro ha seguito la nuova cartella: ',
+    '游戏目录（跟着游戏走）：': 'Cartella del gioco (segue il gioco): ',
+    '暂存在管理器目录，下次启动会切换到游戏目录：': 'Salvato temporaneamente nella cartella dati del gestore; al prossimo avvio passerà alla cartella del gioco: ',
+    '配置与账本跟着游戏走，存在游戏根目录的 .sbmod 里；图片与下载缓存体积大，留在管理器自己的数据目录。第一次识别到游戏目录时会立刻把当前数据写进去，之后每次改动都会同步。': 'Configurazione e registri seguono il gioco e risiedono in .sbmod nella radice del gioco; le cache di immagini e download sono grandi e restano nella cartella dati del gestore. Al primo riconoscimento di una cartella di gioco i dati correnti vengono scritti lì e poi mantenuti sincronizzati.',
   });
 })();

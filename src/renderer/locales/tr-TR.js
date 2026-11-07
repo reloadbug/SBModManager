@@ -1119,5 +1119,8 @@
     '已写入游戏目录：%s 条': 'Oyun klasörüne yazıldı: %s',
     '账本里没有新记录': 'Kayıtta yeni kayıt yok',
     '账本已跟随新目录：': 'Kayıt yeni klasöre taşındı: ',
+    '游戏目录（跟着游戏走）：': 'Oyun klasörü (oyunla birlikte taşınır): ',
+    '暂存在管理器目录，下次启动会切换到游戏目录：': 'Geçici olarak yönetici veri klasöründe; sonraki başlatmada oyun klasörüne geçecek: ',
+    '配置与账本跟着游戏走，存在游戏根目录的 .sbmod 里；图片与下载缓存体积大，留在管理器自己的数据目录。第一次识别到游戏目录时会立刻把当前数据写进去，之后每次改动都会同步。': 'Yapılandırma ve kayıtlar oyunla birlikte taşınır ve oyun kökündeki .sbmod içinde tutulur; görsel ve indirme önbellekleri büyük olduğu için yöneticinin kendi veri klasöründe kalır. Bir oyun klasörü ilk kez tanındığında mevcut veriler hemen oraya yazılır ve sonrasında eşitlenir.',
   });
 })();

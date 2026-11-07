@@ -1119,5 +1119,8 @@
     '已写入游戏目录：%s 条': 'Written to the game folder: %s',
     '账本里没有新记录': 'No new records in the ledger',
     '账本已跟随新目录：': 'The ledger followed to the new folder: ',
+    '游戏目录（跟着游戏走）：': 'Game folder (travels with the game): ',
+    '暂存在管理器目录，下次启动会切换到游戏目录：': 'Temporarily in the manager data folder; switches to the game folder on next start: ',
+    '配置与账本跟着游戏走，存在游戏根目录的 .sbmod 里；图片与下载缓存体积大，留在管理器自己的数据目录。第一次识别到游戏目录时会立刻把当前数据写进去，之后每次改动都会同步。': 'Config and records travel with the game and live in .sbmod in the game root; image and download caches are large, so they stay in the manager own data folder. The first time a game folder is recognized the current data is written there at once and kept in sync afterwards.',
   });
 })();

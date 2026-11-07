@@ -13,12 +13,29 @@ function readJson(file, fallback) {
   }
 }
 
+/**
+ * 写文件时的「镜像」钩子。
+ *
+ * 数据现在优先放在 `<游戏根>\.sbmod\`（跟着游戏走），但缓存/日志仍留在管理器目录，
+ * 而且真要在会话中途换数据目录就得重建整条链路（见 `paths.setDataDir` 的注释）。
+ * 所以这里的做法是：**照旧写当前目录，同时把同一份内容镜像到游戏目录**。
+ * 下一次启动时 `paths` 会优先读游戏目录里那份，等于自动完成了「跟着游戏走」。
+ *
+ * 由 `ipc.init()` 用 `gameHome.mirror` 装上；纯 Node 探针里没人装，钩子是空的。
+ */
+let mirrorFn = null;
+function setMirror(fn) { mirrorFn = typeof fn === 'function' ? fn : null; }
+
 /** 原子写入 JSON（先写 .tmp 再 rename，避免半截文件） */
 function writeJson(file, data) {
   const tmp = file + '.tmp';
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
   fs.renameSync(tmp, file);
+  if (mirrorFn) {
+    // 镜像失败绝不能影响主写入（游戏目录可能只读/被占用）
+    try { mirrorFn(file, data); } catch { /* 忽略 */ }
+  }
 }
 
 /* ---------------- 配置 ---------------- */
@@ -71,4 +88,4 @@ function createConfigStore(file) {
   };
 }
 
-module.exports = { readJson, writeJson, createConfigStore, DEFAULT_CONFIG };
+module.exports = { readJson, writeJson, createConfigStore, setMirror, DEFAULT_CONFIG };

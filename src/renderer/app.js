@@ -4154,8 +4154,12 @@ function renderSettings() {
         <span id="ledgerLine" style="font-size:12px;color:var(--dim)">读取中…</span>
       </div>
       <div class="f">
+        <label>数据文件</label>
+        <span id="dataHomeLine" style="font-size:12px;color:var(--dim)">读取中…</span>
+      </div>
+      <div class="f">
         <label></label>
-        <div class="hint">管理器会记两份账：一份在自己数据目录的 mods.json，另一份写在游戏根目录的 .sbmod\\ledger.json。整个游戏文件夹搬走（换盘 / 换机器）后账本跟着走，打开管理器会自动把路径对齐，不需要重新关联。</div>
+        <div class="hint">配置与账本都跟着游戏走：存在游戏根目录的 .sbmod 里（config.json、mods.json、mod-links.json、blacklist.json、favorites.json 等），整个游戏文件夹搬走（换盘 / 换机器）后它们跟着一起走。图片缓存、Nexus 目录缓存和下载的压缩包体积大，留在管理器自己的数据目录里。第一次识别到一个游戏目录时会立刻把当前数据写进去，之后每次改动都会同步。</div>
       </div>
       <div class="f">
         <label></label>
@@ -4398,6 +4402,7 @@ function renderSettings() {
   refreshLogLine();
   refreshWatchLine();
   refreshDataDirLine();
+  refreshDataHomeLine();
   refreshLedgerBox();
 
   window.api.translate.stats().then(r => {
@@ -6196,6 +6201,23 @@ async function doSetRoot(root) {
  * 「自动没敢动」的情况 —— 比如新位置只拷了一半文件，那几条得人来判断。
  */
 
+/**
+ * 「数据文件在哪」—— 配置/账本现在跟着游戏走，得让用户看得见到底落在哪。
+ * 两种情况：已经切到游戏目录（source='game'）；或者本会话还在管理器目录、
+ * 下次启动才会切过去（第一次识别到游戏目录的那一次）。
+ */
+function refreshDataHomeLine() {
+  const el = $('#dataHomeLine');
+  if (!el) return;
+  const h = state.dataHome || {};
+  const dir = String(h.dataDir || '');
+  if (!dir) { el.textContent = '还没设置游戏目录'; return; }
+  const label = h.source === 'game'
+    ? '游戏目录（跟着游戏走）：'
+    : '暂存在管理器目录，下次启动会切换到游戏目录：';
+  el.innerHTML = esc(label) + `<span data-i18n-skip style="font-family:ui-monospace,Consolas,monospace">${esc(dir)}</span>`;
+}
+
 async function refreshLedgerBox() {
   const line = $('#ledgerLine');
   if (!line) return;
@@ -6403,6 +6425,7 @@ async function refreshAll(showToast) {
     state.downloadStats = data.downloadStats || {};
     if (data.watch) state.watch = data.watch;
     state.relocation = data.relocation || null;
+  state.dataHome = data.dataHome || null;
     $('#verLine').textContent = 'v' + data.version + (data.packaged ? '' : ' · dev');
     // 启动后第一次拿到配置：把上次的筛选条件套回来（设置页开关关掉时 `applyLastFilters()` 自己返回）。
     // 只做一次 —— 之后 refreshAll 再被调用（手动刷新 / 装完 Mod）都不会重套，

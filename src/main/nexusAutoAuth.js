@@ -266,7 +266,47 @@ async function fetchNxm(o = {}) {
     if (i < retries) await sleep(RETRY_DELAYS[Math.min(i, RETRY_DELAYS.length - 1)]);
   }
 
+  // net 栈被 Cloudflare 拦住时，换成渲染进程再要一次。
+  // 2026-11 起 `session.fetch()` 一律吃挑战页，而同一个 cookie 在窗口里导航就能过 ——
+  // 差别只在请求指纹，所以这条路不是「更努力地重试」，而是**换个人去问**。
+  if (last.code === 'challenge' || last.code === 'http' || last.code === 'network') {
+    const w = await viaWindow(url, { modId, timeoutMs });
+    if (w) {
+      if (w.ok) return w;
+      // 窗口也没成：challenge 时保留更「准确」的窗口结论（同样是 challenge 就等价）
+      if (w.code && w.code !== 'network') return w;
+    }
+  }
+
   return last;
+}
+
+/**
+ * 渲染进程兜底（惰性 require：本模块在没有 electron 的环境里也要能跑断言）。
+ * @returns {Promise<object|null>} 拿不到窗口能力时返回 null
+ */
+async function viaWindow(url, o = {}) {
+  let mod;
+  try {
+    mod = require('./nexusPopupWindow');
+  } catch (_e) {
+    return null;   // 没有 electron（探针/静态断言）就跳过
+  }
+  try {
+    const fid = Number(new URL(url).searchParams.get('id'));
+    const r = await mod.fetchNxm({ game: 'stellarblade', modId: o.modId, fileId: fid, timeoutMs: o.timeoutMs });
+    if (!r || !r.ok) {
+      // 诊断留档：哪条渲染路线、卡在哪一步、页面长的什么样
+      try {
+        require('./logger').warn('[自动授权] 渲染进程兜底未成功：' + JSON.stringify({
+          via: r && r.via, code: r && r.code, reason: r && r.reason, diag: (r && r.diag) || null
+        }));
+      } catch (_e) { /* 日志失败不影响主流程 */ }
+    }
+    return r;
+  } catch (e) {
+    return { ok: false, code: 'network', reason: (e && e.message) || String(e), via: 'window' };
+  }
 }
 
 /** 把失败码翻译成给用户看的一句话 */

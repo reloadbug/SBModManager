@@ -276,6 +276,51 @@ t('全部自动授权按钮带条数', () => /全部自动授权（\$\{waitAuthC
 t('批量下载汇总文案跟随开关', () => /state\.config\.autoAuthorize === false/.test(app) ? true : '没跟随');
 t('导出给探针用', () => /dlAutoAuthorize, dlAutoAuthorizeAll/.test(app) ? true : '没导出');
 
+/* ---------------- D. 渲染进程兜底（Cloudflare 挑战页） ----------------
+ *
+ * 2026-11 起 `session.fetch()` 打弹层端点一律吃挑战页，而同一 cookie 在窗口里
+ * 导航就能过。修法是「换个人去问」：`nexusPopupWindow` 用隐藏窗口取弹层，
+ * 解析仍然交给 `nexusAutoAuth.parsePopup`（解析器只能有一份）。
+ * 这一段只做**静态接线**断言 —— 真机验证靠 `--shot` 通道手工跑。
+ */
+const pw = require('../src/main/nexusPopupWindow');
+const ipcSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'ipc.js'), 'utf8');
+const autoSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'nexusAutoAuth.js'), 'utf8');
+const pwSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'nexusPopupWindow.js'), 'utf8');
+
+t('nexusPopupWindow 导出 fetchNxm', () => (typeof pw.fetchNxm === 'function' ? true : '缺'));
+t('nexusPopupWindow 导出两条渲染路线', () => (
+  typeof pw.readViaPage === 'function' && typeof pw.readViaPopup === 'function' ? true : '缺'));
+t('弹层 URL 与 autoauth 一致', () => {
+  const a = pw.popupUrlOf(18208, 7804);
+  const b = aa.popupUrl({ game: 'stellarblade', fileId: 18208 });
+  return a === b ? true : `不一致 ${a} != ${b}`;
+});
+t('文件页 URL 带 tab=files 与 file_id', () => (
+  /\/stellarblade\/mods\/4110\?tab=files&file_id=18208$/.test(pw.filesPageUrl('stellarblade', 4110, 18208))
+    ? true : pw.filesPageUrl('stellarblade', 4110, 18208)));
+t('页面内 XHR 带 credentials 与 X-Requested-With', () => (
+  /credentials: 'include'/.test(pwSrc) && /'X-Requested-With': 'XMLHttpRequest'/.test(pwSrc) ? true : '缺'));
+t('挑战页会等一会儿再读（不是一锤子）', () => (
+  /waitChallengeGone/.test(pwSrc) && /CHALLENGE_WAIT_MS/.test(pwSrc) ? true : '缺'));
+t('窗口用 persist:nexus 分区（复用登录态）', () => (
+  /partition: nexusAuth\.PARTITION/.test(pwSrc) ? true : '没复用分区'));
+t('窗口一定销毁（finally destroy）', () => (
+  /finally[\s\S]{0,120}win\.destroy\(\)/.test(pwSrc) ? true : '可能泄漏窗口'));
+t('解析仍走 parsePopup（解析器单一来源）', () => (
+  /auto\.parsePopup\(/.test(pwSrc) ? true : '自己又写了一份解析'));
+t('fetchNxm 在 challenge/http/network 后兜底一次', () => (
+  /last\.code === 'challenge' \|\| last\.code === 'http' \|\| last\.code === 'network'/.test(autoSrc)
+    ? true : '没兜底'));
+t('兜底是惰性 require（无 electron 也能断言）', () => (
+  /require\('\.\/nexusPopupWindow'\)/.test(autoSrc) ? true : '缺'));
+t('兜底失败会留诊断日志', () => (
+  /渲染进程兜底未成功/.test(autoSrc) ? true : '没留日志'));
+t('ipc 传了 modId（渲染路线要打开文件页）', () => (
+  /nexusAutoAuth\.fetchNxm\(\{[^}]*modId[^}]*fileId/.test(ipcSrc) ? true : '没传 modId'));
+t('autoAuth 日志区分走哪条路', () => (
+  /via: r\.via \|\| 'fetch'/.test(ipcSrc) ? true : '没记 via'));
+
 console.log('');
 console.log('===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
 process.exit(fail ? 1 : 0);

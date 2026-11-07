@@ -1119,5 +1119,8 @@
     '已写入游戏目录：%s 条': 'Gravado na pasta do jogo: %s',
     '账本里没有新记录': 'Nenhum registro novo no registro',
     '账本已跟随新目录：': 'O registro acompanhou a nova pasta: ',
+    '游戏目录（跟着游戏走）：': 'Pasta do jogo (acompanha o jogo): ',
+    '暂存在管理器目录，下次启动会切换到游戏目录：': 'Guardado temporariamente na pasta de dados do gerenciador; mudará para a pasta do jogo na próxima inicialização: ',
+    '配置与账本跟着游戏走，存在游戏根目录的 .sbmod 里；图片与下载缓存体积大，留在管理器自己的数据目录。第一次识别到游戏目录时会立刻把当前数据写进去，之后每次改动都会同步。': 'A configuração e os registros acompanham o jogo e ficam em .sbmod na raiz do jogo; os caches de imagens e downloads são grandes e permanecem na pasta de dados do gerenciador. Na primeira vez que uma pasta de jogo é reconhecida, os dados atuais são gravados nela e depois mantidos em sincronia.',
   });
 })();

@@ -1119,5 +1119,8 @@
     '已写入游戏目录：%s 条': 'In den Spielordner geschrieben: %s',
     '账本里没有新记录': 'Keine neuen Einträge im Register',
     '账本已跟随新目录：': 'Register folgt dem neuen Ordner: ',
+    '游戏目录（跟着游戏走）：': 'Spielordner (wandert mit dem Spiel mit): ',
+    '暂存在管理器目录，下次启动会切换到游戏目录：': 'Vorläufig im Datenordner des Managers; beim nächsten Start wird in den Spielordner gewechselt: ',
+    '配置与账本跟着游戏走，存在游戏根目录的 .sbmod 里；图片与下载缓存体积大，留在管理器自己的数据目录。第一次识别到游戏目录时会立刻把当前数据写进去，之后每次改动都会同步。': 'Konfiguration und Aufzeichnungen wandern mit dem Spiel mit und liegen in .sbmod im Spielstammverzeichnis; Bild- und Download-Caches sind groß und bleiben im Datenordner des Managers. Beim ersten Erkennen eines Spielordners werden die aktuellen Daten sofort dorthin geschrieben und danach synchron gehalten.',
   });
 })();
