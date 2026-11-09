@@ -5221,8 +5221,8 @@ function paintCrash() {
     return;
   }
   if (!st.report) {
-    area.innerHTML = `<div class="${st.error ? 'callout err' : 'callout'}">${esc(st.error || '还没分析过。')}</div>
-      <div style="margin-top:12px"><button class="btn p" data-crash="reload">开始分析</button></div>`;
+    area.innerHTML = `<div class="crashbar"><button class="btn p" data-crash="reload">开始分析</button></div>
+      <div class="${st.error ? 'callout err' : 'callout'}">${esc(st.error || '还没分析过。')}</div>`;
     bindCrashButtons(area);
     return;
   }
@@ -5235,6 +5235,17 @@ function paintCrash() {
   const ue = rep.ue4ss || {};
   const env = rep.env || {};
   const h = [];
+
+  /* 操作按钮放在**最上面并吸顶**（`.crashbar`）。
+     这页的分析结论、嫌疑 Mod、日志概览加起来能滚好几屏，按钮如果留在页底，
+     每次想「重新分析 / 看日志 / 打开崩溃目录」都得先滚到底 —— 用户反馈「操作按钮放顶部，
+     滚动也不消失」。吸顶的写法与 `.bhead` 同一套路，`.body` 有 16px padding 需要负 margin 抵消。 */
+  h.push(`<div class="crashbar">
+    <button class="btn p" data-crash="reload">重新分析</button>
+    ${env.ue4ssLog ? `<button class="btn" data-crashread="${esc(env.ue4ssLog)}">看 UE4SS.log</button>` : ''}
+    <button class="btn" data-crash="openDir">打开崩溃目录</button>
+    <span class="crashbar-at">分析于 ${esc(fmtDate(rep.generatedAt))}</span>
+  </div>`);
 
   /* 结论 */
   h.push(`<div class="crash-verdict" style="--c:${lv.color}">
@@ -5328,14 +5339,6 @@ function paintCrash() {
       </div>`);
     }
   }
-
-  /* 底部按钮 */
-  h.push(`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px">
-    <button class="btn p" data-crash="reload">重新分析</button>
-    ${env.ue4ssLog ? `<button class="btn" data-crashread="${esc(env.ue4ssLog)}">看 UE4SS.log</button>` : ''}
-    <button class="btn" data-crash="openDir">打开崩溃目录</button>
-    <span style="color:var(--dim2);font-size:11px">分析于 ${esc(fmtDate(rep.generatedAt))}</span>
-  </div>`);
 
   area.innerHTML = h.join('');
   bindCrashButtons(area);

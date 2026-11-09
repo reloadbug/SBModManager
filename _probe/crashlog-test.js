@@ -353,6 +353,22 @@ function testWiring() {
   const css = read('src/renderer/style.css');
   ok('F13 样式', /\.crash-verdict/.test(css) && /\.sus-bar/.test(css) && /\.crash-row/.test(css));
 
+  /* 操作按钮要放顶部并吸顶：这一页的结论 + 嫌疑 + 日志概览能滚好几屏，
+     按钮留在页底的后果是每次都要先滚到底才能点「重新分析」。 */
+  const paint = app.slice(app.indexOf('function paintCrash('), app.indexOf('async function renderCrash('));
+  ok('F15 按钮在最上面（crashbar 先于结论）',
+    paint.indexOf('class="crashbar"') > -1 &&
+    paint.indexOf('class="crashbar"') < paint.indexOf('crash-verdict'));
+  ok('F16 顶部条里三个动作齐全',
+    /class="crashbar"[\s\S]{0,400}data-crash="reload"/.test(paint) &&
+    /class="crashbar"[\s\S]{0,400}data-crashread=/.test(paint) &&
+    /class="crashbar"[\s\S]{0,400}data-crash="openDir"/.test(paint));
+  ok('F17 页底不再重复放按钮（reload 只剩顶部条 + 未分析态两处）',
+    !/底部按钮/.test(paint) && (paint.match(/data-crash="reload"/g) || []).length === 2);
+  ok('F18 未分析态也用同一个条', /class="crashbar"><button class="btn p" data-crash="reload">开始分析/.test(paint));
+  ok('F19 样式是吸顶（top:-16px 与 .bhead 同套路）',
+    /\.crashbar\{position:sticky;top:-16px/.test(css) && /\.crashbar-at\{/.test(css));
+
   // 语言包不用动：新界面文本就是中文原文，其它语言缺键会回退中文
   ok('F14 没碰语言包键表', !fs.existsSync(path.join(ROOT, '_probe/i18n-keys.json')) ||
     !read('_probe/i18n-keys.json').includes('崩溃诊断'));

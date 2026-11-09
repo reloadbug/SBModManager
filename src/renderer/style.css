@@ -618,6 +618,15 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 .crash-kv>span:first-child{color:var(--dim2);width:88px;flex:none}
 .crash-kv>span:last-child{color:var(--text);word-break:break-all}
 
+/* 操作按钮吸顶：结论 + 嫌疑 + 日志概览能滚好几屏，按钮必须一直看得见。
+   写法与 `.bhead` 完全同一套路（`.body` 有 16px padding，负 margin 抵消它，
+   再用 padding 补回内边距；`top:-16px` 与 `margin-top:-16px` 必须成对，
+   sticky 约束的是 margin box），背景必须不透明，否则下面的内容会透出来。 */
+.crashbar{position:sticky;top:-16px;z-index:19;background:var(--bg);
+  display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  margin:-16px -16px 12px;padding:16px 16px 11px;border-bottom:1px solid var(--border)}
+.crashbar-at{color:var(--dim2);font-size:11px;margin-left:auto}
+
 .crash-row{display:flex;gap:10px;align-items:center;padding:7px 0;
   border-bottom:1px dashed #262B33;font-size:11.5px;color:var(--dim);flex-wrap:wrap}
 .crash-row .t{font-family:Consolas,monospace;color:#C8CEDA;flex:none}

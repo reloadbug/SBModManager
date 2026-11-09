@@ -1,3 +1,30 @@
+# 更新日志
+
+本项目的所有重要变更都记录在这里。
+格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
+版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
+
+## [0.4.17] - 2026-11-10
+
+「崩溃诊断」页的操作按钮挪到顶部并吸顶 —— 结论、嫌疑 Mod、日志概览加起来能滚好几屏，
+按钮留在页底的后果是每次想重新分析都得先滚到底。
+
+### 修改
+
+- 「重新分析」「看 UE4SS.log」「打开崩溃目录」从页底移到页面最上面，包在 `.crashbar` 里
+  `position:sticky` 吸顶（与浏览页 `.bhead` 同一套写法：负 margin 抵消 `.body` 的 16px padding，
+  `top:-16px` 与 `margin-top:-16px` 成对出现，背景不透明）。「分析于 …」时间戳靠右显示。
+- 还没分析过时的「开始分析」也用同一个条，位置一致；页底不再重复放按钮。
+
+### 测试
+
+- `_probe/crashlog-test.js` 新增 F15–F19：按钮排在结论之前、三个动作都在条内、
+  页底不重复、未分析态同一条、CSS 确实是 `position:sticky;top:-16px`。
+- 真机（dev，真数据 `c:\Star Blade`）：条是 `#crashArea` 的第一个子元素，
+  按钮文案 `["重新分析","看 UE4SS.log","打开崩溃目录"]`；页面可滚 1324px，
+  `scrollTop` 取 0 / 60% / 底部三个位置时条的 `top` 都等于滚动容器的 `top`（54px），
+  结论块正常从 125px 开始往下滚。
+
 ## [0.4.16] - 2026-11-10
 
 修一个「双击图标毫无反应」的死锁：主进程活着、窗口却不见了，于是它一直占着单实例锁，
@@ -9,20 +36,15 @@
   远程桌面、安全软件插手）永远不来，窗口就一直藏在 `show:false` 后面 —— 这正是僵尸实例的来源。
 - 第二个实例进来时改成走新的 `showMainWindow()`：隐藏的 `show`、最小化的 `restore`、
   已经销毁的直接重建。原来只做 `restore()+focus()`，对隐藏窗口完全无效。
-- 抢不到单实例锁时不再静默退出：先写/读一个心跳文件（`instance-alive.txt`）看对方有没有响应；
-  2.5 秒没响应就弹窗说明情况，并提供「强制重启」（结束旧进程 → `app.relaunch()`）。
+- 抢不到单实例锁时不再静默退出：比对心跳文件（`instance-alive.txt`）看对方有没有响应；
+  12 秒还没有心跳就判定为卡死的僵尸实例，自动结束旧进程并 `app.relaunch()`。
+  刻意不弹窗 —— 窗口都显示不出来的环境里，对话框会把新进程一起挂死。
   便携版重启时走 `PORTABLE_EXECUTABLE_FILE`，不会去重启 `%TEMP%` 里那份临时副本。
 
 ### 测试
 
 - `_probe/launcher-test.js` 新增 `[2b]` 六组断言：兜底 show、`showMainWindow` 的三个分支、
   心跳比对、强制重启的进程清理与 `relaunch`、顶层 `dialog`/`execFileSync` 引入。
-
-# 更新日志
-
-本项目的所有重要变更都记录在这里。
-格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
-版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
 ## [0.4.15] - 2026-11-10
 
