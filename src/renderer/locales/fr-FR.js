@@ -1177,5 +1177,8 @@
     '%s 个包 · %s · 其中 %s 个还没装进当前游戏目录': '%s paquets · %s · dont %s pas encore installés',
     '安装包目录已改为：': 'Dossier des paquets modifié :',
     '重启管理器后生效': 'Effectif après redémarrage',
+    '详情': 'Détails',
+    '本地安装包': 'Paquet local',
+    '显示更多（还有 %s 个）': 'Afficher plus (%s restants)',
   });
 })();

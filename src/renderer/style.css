@@ -540,4 +540,9 @@ body.sel .cover .tag{left:38px}
 .lib-n{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
 .lib-m{flex:none;font-size:11px;color:var(--dim2);white-space:nowrap}
 .lib-item .btn{flex:none}
+/* 卡片版：直接复用浏览页的 .card 版式（封面 / 标题 / 摘要 / 信息行），只是排进 .lib-grid */
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(208px,1fr));gap:12px;padding:12px}
+.lib-grid .card{background:var(--panel2)}
+.lib-grid .cover{height:104px}
+.lib-more{padding:0 12px 12px;display:flex;justify-content:center;font-size:11px;color:var(--dim2)}
 .lib-more{padding:8px 12px;font-size:11px;color:var(--dim2)}

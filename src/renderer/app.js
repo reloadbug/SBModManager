@@ -47,6 +47,13 @@ const state = {
   // 管理器自带安装包（data/library）的盘点结果 —— 队列被清理过之后，
   // 「下好了没装」只能靠它才看得见（主进程 `library:list`）。
   library: null,
+  // 「管理器里还有 N 个包」一次列几个（卡片比原来的一行文字占地方）
+  libShown: 12,
+  // modId -> { name, author, summary, version, image }：卡片要显示封面和作者，
+  // 磁盘上的包只有文件名可推断出 modId，所以详情得另外补（下载队列里的任务优先，其次问 Nexus）。
+  libMeta: null,
+  // 已经问过 Nexus 的 modId（问不到的也记下来，避免每次重绘都再问一遍）
+  libMetaTried: null,
   nxmStatus: null,
   installTools: null,
   // 下载目录监听状态（bootstrap 带回）
@@ -3841,28 +3848,125 @@ function libraryCount() {
   return (state.library && state.library.installable) || 0;
 }
 
-function libRowHtml(it) {
-  const meta = [`#${it.modId}`, it.version ? 'v' + esc(it.version) : '', fmtSize(it.size)]
-    .filter(Boolean).join(' · ');
-  return `<div class="lib-item">
-    <span class="lib-n" data-i18n-skip title="${esc(it.filename)}">${esc(it.name)}</span>
-    <span class="lib-m" data-i18n-skip>${meta}</span>
-    <button class="btn sm p" data-lib-install="${it.modId}" title="把这份安装包装进当前游戏目录">装进游戏</button>
+/**
+ * 取一个 modId 的展示信息（名字/作者/摘要/版本/封面）。
+ * 顺序：先看已经问到的缓存 → 再看下载队列里的任务 meta（不联网、当场就有）
+ * → 都没有就返回 null，由 `ensureLibMeta()` 回头去 Nexus 补。
+ */
+function libMetaFor(modId) {
+  const id = String(modId);
+  if (state.libMeta && state.libMeta.has(id)) return state.libMeta.get(id);
+  const t = (state.downloads || []).find(x => x.meta && String(x.meta.modId) === id);
+  if (t && t.meta) {
+    const m = t.meta;
+    if (m.name || m.author || m.summary || m.image) {
+      return {
+        name: m.name || '',
+        author: m.author || '',
+        summary: m.summary || '',
+        version: m.version || '',
+        image: m.image || m.pictureUrl || ''
+      };
+    }
+  }
+  return null;
+}
+
+let libMetaBusy = false;
+
+/**
+ * 补齐卡片要显示的信息。
+ * 磁盘上的包只留得下 modId/版本/大小，封面和作者必须问 Nexus；
+ * 一次只问前面几张卡（6 个），问完重绘一次，避免一上来 300 个包把接口打爆。
+ * 问不到的也进 `libMetaTried`，这样不会每次重绘都再问一遍。
+ */
+async function ensureLibMeta() {
+  if (libMetaBusy) return;
+  if (!state.library || !state.library.items || !state.library.items.length) return;
+  const nx = window.api && window.api.nexus;
+  if (!nx || typeof nx.detail !== 'function') return;
+  if (!state.libMeta) state.libMeta = new Map();
+  if (!state.libMetaTried) state.libMetaTried = new Set();
+  const shown = state.library.items.slice(0, state.libShown || 12);
+  const todo = shown
+    .filter(it => !state.libMeta.has(String(it.modId)) && !state.libMetaTried.has(String(it.modId)))
+    .slice(0, 6);
+  if (!todo.length) return;
+  libMetaBusy = true;
+  let got = 0;
+  try {
+    for (const it of todo) {
+      const id = String(it.modId);
+      state.libMetaTried.add(id);
+      try {
+        const d = await call(nx.detail(it.modId), { silent: true });
+        if (d && (d.name || d.image)) {
+          state.libMeta.set(id, {
+            name: d.name || '',
+            author: d.author || '',
+            summary: d.summary || '',
+            version: d.version || '',
+            image: d.image || d.pictureUrl || ''
+          });
+          got++;
+        }
+      } catch { /* 没网 / 没 API Key 就退回文件名，不打扰用户 */ }
+    }
+  } finally {
+    libMetaBusy = false;
+  }
+  if (got) renderDownload();
+}
+
+/** 一张「管理器自带的安装包」卡片 —— 版式照抄浏览页（封面 + 标题 + 摘要 + 信息行 + 动作） */
+function libCardHtml(it) {
+  const meta = libMetaFor(it.modId) || {};
+  const title = meta.name || it.name;
+  const ver = it.version || meta.version || '';
+  const ext = (String(it.filename).match(/\.([a-z0-9]{1,5})$/i) || [null, ''])[1].toUpperCase();
+  const img = meta.image || coverForMod(it.modId) || '';
+  const summary = meta.summary || it.filename;
+  return `
+  <div class="card" data-libcard="${it.modId}">
+    <div class="cover">
+      ${img
+        ? `<img src="${esc(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'无封面图'}))">`
+        : `<div class="ph">本地安装包<br>${esc(ext || '压缩包')}</div>`}
+      ${ext ? `<span class="tag">${esc(ext)}</span>` : ''}
+      <span class="lb dl">安装包</span>
+    </div>
+    <div class="cbody">
+      <h3 data-i18n-skip title="${esc(title)}">${esc(title)}</h3>
+      <div class="zh" data-i18n-skip title="${esc(summary)}">${esc(summary)}</div>
+      <div class="meta">
+        <span class="chip">#${it.modId}</span>
+        ${ver ? `<span class="chip">v${esc(ver)}</span>` : ''}
+        ${meta.author ? `<span data-i18n-skip title="作者">${esc(clip(meta.author, 14))}</span>` : ''}
+        <span>${fmtSize(it.size)}</span>
+        <div class="acts">
+          <button class="btn sm" data-libdetail="${it.modId}" title="看这个 Mod 在 Nexus 上的详情">详情</button>
+          <button class="btn sm p" data-lib-install="${it.modId}" title="把这份安装包装进当前游戏目录">装进游戏</button>
+        </div>
+      </div>
+    </div>
   </div>`;
 }
 
 function libraryBoxHtml() {
   const n = libraryCount();
   if (!n) return '';
-  const items = (state.library.items || []).slice(0, 60);
-  const more = n - items.length;
+  const items = state.library.items || [];
+  const shown = Math.min(state.libShown || 12, items.length);
+  const more = Math.max(0, items.length - shown);
+  // 渲染完再回头补详情（异步，补到了会自己再重绘一次）
+  if (typeof queueMicrotask === 'function') queueMicrotask(() => { ensureLibMeta(); });
   return `<div class="lib-box">
     <div class="lib-head">
       <span>管理器里还有 <b>${fmtNum(n)}</b> 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。</span>
       <button class="btn p sm" data-lib-installall="1">全部装进去（${fmtNum(n)}）</button>
     </div>
-    <div class="lib-list">${items.map(libRowHtml).join('')}</div>
-    ${more > 0 ? `<div class="lib-more">还有 ${fmtNum(more)} 个没列出来（装完上面这些再看）</div>` : ''}
+    <div class="lib-grid">${items.slice(0, shown).map(libCardHtml).join('')}</div>
+    ${more > 0 ? `<div class="lib-more"><button class="btn sm" data-lib-more="1">显示更多（还有 ${fmtNum(more)} 个）</button></div>` : ''}
   </div>`;
 }
 
@@ -6391,6 +6495,10 @@ function bindEvents() {
   if (t.closest('[data-lib-installall]')) { await libInstallAll(); return; }
   const libOne = t.closest('[data-lib-install]');
   if (libOne) { await libInstall(libOne.dataset.libInstall); return; }
+  // 卡片上的「显示更多」与「详情」（详情直接开 Nexus 抽屉，和浏览页一模一样）
+  if (t.closest('[data-lib-more]')) { state.libShown = (state.libShown || 12) + 12; renderDownload(); return; }
+  const libDetail = t.closest('[data-libdetail]');
+  if (libDetail) { openNexusDrawer(libDetail.dataset.libdetail); return; }
     const dlAuth = t.closest('[data-dl-auth]');
     if (dlAuth) { await dlAuthorize(dlAuth.dataset.dlAuth); return; }
     const dlStartBtn = t.closest('[data-dl-start]');

@@ -810,6 +810,12 @@ const TABLE = [
   ['%s 个包 · %s · 其中 %s 个还没装进当前游戏目录', ['%s 個包 · %s · 其中 %s 個還沒裝進目前遊戲目錄', '%s packages · %s · %s not installed in the current game folder yet', '%s 個 · %s · うち %s 個は現在のゲームフォルダに未インストール', '%s개 · %s · 그중 %s개는 현재 게임 폴더에 아직 설치되지 않음', '%s пакетов · %s · из них %s ещё не в папке игры', '%s Pakete · %s · davon %s noch nicht im Spielordner', '%s paquets · %s · dont %s pas encore installés', '%s paquetes · %s · de ellos %s sin instalar', '%s pacotes · %s · sendo %s ainda não instalados', '%s pacchetti · %s · di cui %s non ancora installati', '%s pakietów · %s · w tym %s jeszcze nie zainstalowano', '%s paket · %s · bunlardan %s hâlâ kurulmadı', '%s แพ็กเกจ · %s · โดย %s ยังไม่ได้ติดตั้ง']],
   ['安装包目录已改为：', ['安裝包目錄已改為：', 'Install package folder changed to:', 'インストールパッケージフォルダを変更しました：', '설치 패키지 폴더를 변경했습니다:', 'Папка пакетов изменена:', 'Paketordner geändert:', 'Dossier des paquets modifié :', 'Carpeta de paquetes cambiada:', 'Pasta de pacotes alterada:', 'Cartella dei pacchetti cambiata:', 'Zmieniono folder pakietów:', 'Paket klasörü değişti:', 'เปลี่ยนโฟลเดอร์แพ็กเกจเป็น:']],
   ['重启管理器后生效', ['重新啟動管理器後生效', 'Takes effect after restarting the manager', 'マネージャーを再起動すると反映されます', '관리자를 다시 시작하면 적용됩니다', 'Применится после перезапуска', 'Wirkt nach Neustart des Managers', 'Effectif après redémarrage', 'Se aplica tras reiniciar', 'Aplica-se após reiniciar', 'Attivo dopo il riavvio', 'Zadziała po restarcie', 'Yöneticiyi yeniden başlatınca geçerli olur', 'มีผลหลังรีสตาร์ทตัวจัดการ']],
+  /* ── 0.4.3 · 管理器自带安装包改成卡片（与浏览页同一套版式） ── */
+  ['安装包', ['安裝包', 'Package', 'パッケージ', '패키지', 'Пакет', 'Paket', 'Paquet', 'Paquete', 'Pacote', 'Pacchetto', 'Pakiet', 'Paket', 'แพ็กเกจ']],
+  ['详情', ['詳情', 'Details', '詳細', '상세', 'Подробнее', 'Details', 'Détails', 'Detalles', 'Detalhes', 'Dettagli', 'Szczegóły', 'Ayrıntılar', 'รายละเอียด']],
+  ['作者', ['作者', 'Author', '作者', '제작자', 'Автор', 'Autor', 'Auteur', 'Autor', 'Autor', 'Autore', 'Autor', 'Yazar', 'ผู้สร้าง']],
+  ['本地安装包', ['本機安裝包', 'Local package', 'ローカルパッケージ', '로컬 패키지', 'Локальный пакет', 'Lokales Paket', 'Paquet local', 'Paquete local', 'Pacote local', 'Pacchetto locale', 'Pakiet lokalny', 'Yerel paket', 'แพ็กเกจในเครื่อง']],
+  ['显示更多（还有 %s 个）', ['顯示更多（還有 %s 個）', 'Show more (%s left)', 'さらに表示（残り %s 個）', '더 보기 (%s개 남음)', 'Показать ещё (осталось %s)', 'Mehr anzeigen (%s übrig)', 'Afficher plus (%s restants)', 'Mostrar más (%s restantes)', 'Mostrar mais (%s restantes)', 'Mostra altri (%s rimasti)', 'Pokaż więcej (pozostało %s)', 'Daha fazla göster (%s kaldı)', 'แสดงเพิ่มเติม (เหลือ %s)']],
 ];
 
 /**

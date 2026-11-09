@@ -1177,5 +1177,8 @@
     '%s 个包 · %s · 其中 %s 个还没装进当前游戏目录': '%s packages · %s · %s not installed in the current game folder yet',
     '安装包目录已改为：': 'Install package folder changed to:',
     '重启管理器后生效': 'Takes effect after restarting the manager',
+    '详情': 'Details',
+    '本地安装包': 'Local package',
+    '显示更多（还有 %s 个）': 'Show more (%s left)',
   });
 })();

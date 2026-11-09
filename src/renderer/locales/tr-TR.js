@@ -1177,5 +1177,8 @@
     '%s 个包 · %s · 其中 %s 个还没装进当前游戏目录': '%s paket · %s · bunlardan %s hâlâ kurulmadı',
     '安装包目录已改为：': 'Paket klasörü değişti:',
     '重启管理器后生效': 'Yöneticiyi yeniden başlatınca geçerli olur',
+    '详情': 'Ayrıntılar',
+    '本地安装包': 'Yerel paket',
+    '显示更多（还有 %s 个）': 'Daha fazla göster (%s kaldı)',
   });
 })();

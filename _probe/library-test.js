@@ -188,6 +188,26 @@ const css = read('src/renderer/style.css');
 ok(css.includes('.lib-box'), 'style.css 有 .lib-box');
 ok(css.includes('.lib-item'), 'style.css 有 .lib-item');
 
+/* ---- 0.4.3：清单从「一行文字」改成与浏览页同款卡片 ---- */
+ok(appSrc.includes('function libCardHtml(it)'), 'app.js 有 libCardHtml()（卡片版）');
+ok(appSrc.includes('function libMetaFor('), 'app.js 有 libMetaFor()（先用队列 meta 兜底）');
+ok(appSrc.includes('async function ensureLibMeta()'), 'app.js 有 ensureLibMeta()（回头问 Nexus 补封面/作者）');
+ok(appSrc.includes('libShown: 12'), 'state 里有「一次列几张卡」的 libShown');
+ok(appSrc.includes('libMetaTried'), 'state 里有 libMetaTried（问不到的也不再反复问）');
+const cardSrc = appSrc.slice(appSrc.indexOf('function libCardHtml(it)'), appSrc.indexOf('function libraryBoxHtml()'));
+ok(cardSrc.includes('class="cover"') && cardSrc.includes('class="cbody"'),
+  '卡片用的是浏览页那套 .cover / .cbody 版式');
+ok(/<h3 data-i18n-skip/.test(cardSrc), '卡片里标题跳过 i18n（Mod 名不翻译）');
+ok(cardSrc.includes("data-libdetail=\"${it.modId}\""), '卡片上有「详情」按钮');
+ok(cardSrc.includes("data-lib-install=\"${it.modId}\""), '卡片上有「装进游戏」按钮');
+ok(cardSrc.includes('fmtSize(it.size)'), '卡片里显示安装包大小');
+ok(cardSrc.includes('meta.author'), '卡片里显示作者');
+ok(appSrc.includes("t.closest('[data-lib-more]')"), '「显示更多」的点击分支');
+ok(appSrc.includes("t.closest('[data-libdetail]')"), '「详情」的点击分支（开 Nexus 抽屉）');
+ok(/ensureLibMeta\(\)/.test(appSrc.slice(appSrc.indexOf('function libraryBoxHtml()'), appSrc.indexOf('async function libInstallOne'))),
+  '每次渲染清单都会顺手触发一次补详情');
+ok(css.includes('.lib-grid'), 'style.css 有 .lib-grid（卡片网格）');
+
 const keys = JSON.parse(read('_probe/i18n-keys.json'));
 const keyList = Array.isArray(keys) ? keys : Object.keys(keys);
 for (const k of ['装进游戏', '把这份安装包装进当前游戏目录', '已加入安装队列', '可本地装 %s',
@@ -195,6 +215,10 @@ for (const k of ['装进游戏', '把这份安装包装进当前游戏目录', '
   '已开始安装 %s 个包', '已开始安装 %s 个包，%s 个没能开始（在下载页看原因）',
   '管理器里还有 %s 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。']) {
   ok(keyList.includes(k), 'i18n 有键：' + k.slice(0, 22));
+}
+// 0.4.3 卡片版新增的文案
+for (const k of ['安装包', '详情', '作者', '本地安装包', '显示更多（还有 %s 个）']) {
+  ok(keyList.includes(k), 'i18n 有键：' + k);
 }
 
 /* ============================ D2. 安装包目录可配置 ============================ */
