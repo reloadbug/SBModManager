@@ -62,6 +62,27 @@ function imageCache() {
 async function imagesForMod(modId, opts = {}) {
   const id = Number(modId);
   if (!Number.isFinite(id) || id <= 0) return [];
+
+  const shape = list => (list || [])
+    .filter(x => x && x.localUrl)
+    .map(x => ({ localUrl: x.localUrl, url: x.url, path: x.path, mime: x.mime, size: x.size }));
+
+  /*
+   * 磁盘优先（0.4.9）。
+   *
+   * 用户 2026-11-09：「已经显示的图集要保存到本地……已经缓存了图片的就不要再下载一次了」。
+   * 改动前这里一上来就问图集抓取器：它按 7 天 TTL 缓存**页面上的 URL 列表**，
+   * 过期就开隐藏窗口重新抓 mod 页 —— 于是已安装 / 已下载的详情每次打开都可能
+   * 先转一圈 spinner，还白跑一次网络，哪怕图片文件明明已经在 `data/cache/images` 里。
+   *
+   * 现在：磁盘上有几张就用几张；只有一张都没有（或用户点了「刷新图集」传 force）
+   * 才去抓。`diskOnly` 是给渲染层「只读本地、绝不联网」用的。
+   */
+  let local = [];
+  try { local = await imageCache().listCached(id); } catch { local = []; }
+  if (local.length && !opts.force) return shape(local);
+  if (opts.diskOnly) return shape(local);
+
   let urls = [];
   if (gallery) {
     try {
@@ -75,9 +96,7 @@ async function imagesForMod(modId, opts = {}) {
   if (!urls.length) return [];
   let cached = [];
   try { cached = await imageCache().cacheModImages(id, urls, opts); } catch { cached = []; }
-  return (cached || []).filter(x => x && x.localUrl).map(x => ({
-    localUrl: x.localUrl, url: x.url, path: x.path, mime: x.mime, size: x.size
-  }));
+  return shape(cached);
 }
 
 function init() {
@@ -2129,6 +2148,22 @@ function register() {
    * `urls` 可选：给了就用给定的；没给就走图集抓取 → 官方 images 回落。
    * 返回最多 5 张「不同图片」的本地地址（同一张图的不同尺寸会被归并成一张）。
    */
+  /**
+   * 只读本地的那份图集（0.4.9）：不发任何网络请求。
+   * 渲染层先用它把「已经存下来的图」立刻画出来，没有才去 `mod:images` 抓。
+   */
+  handle('mod:imagesDisk', (modId) => {
+    const id = Number(modId);
+    if (!Number.isFinite(id) || id <= 0) return [];
+    try {
+      return imageCache().listCached(id).then(list => (list || [])
+        .filter(x => x && x.localUrl)
+        .map(x => ({ localUrl: x.localUrl, url: x.url, path: x.path, mime: x.mime, size: x.size })));
+    } catch {
+      return [];
+    }
+  });
+
   handle('mod:images', async (modId, urls, opts) => {
     const given = Array.isArray(urls) ? urls.filter(Boolean) : [];
     if (given.length) {

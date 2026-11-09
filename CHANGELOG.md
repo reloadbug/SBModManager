@@ -4,6 +4,25 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.9] - 2026-11-09
+
+图集只下载一次：已经存到本地的图，打开详情就直接用。
+
+### 修改
+
+- 已安装 / 已下载的详情抽屉打开时先问磁盘（新通道 `mod:imagesDisk`，只读
+  `data/cache/images/<modId>/`），**本地有几张就立刻画几张**，不再先转 spinner 再走一趟网络。
+- 主进程 `imagesForMod()` 也改成磁盘优先：本地已有图就直接返回，只有一张都没有、
+  或者用户点了「刷新图集」（带了 `force`）才去抓 Nexus 的图集页。
+- 图片元数据里补记原始网址（`url`），这样光看磁盘就能还原「这个 Mod 存过哪几张图」。
+  老缓存没有这个字段，照旧可用（只是 url 为空）。
+
+### 测试
+
+- `_probe/image-cache-test.js` 补 11 条：listCached 列出已落盘的图、带 file:// 地址与大小、
+  按文件时间排序、元数据里有原始网址、**listCached 不发任何网络请求**、无缓存/非法 ID 返回空数组；
+  另加接线断言（ipc 磁盘优先 + `mod:imagesDisk` 通道、preload 方法、渲染层两段式）。
+
 ## [0.4.8] - 2026-11-09
 
 界面上一眼能看到「当前游戏是哪个版本」。

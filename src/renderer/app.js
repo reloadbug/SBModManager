@@ -403,12 +403,28 @@ function cachedImagesOf(meta) {
 /**
  * 异步把某个 Mod 的图集填进 `#galleryBox`。
  *
- * 走主进程 `mod:images`：先抓 Nexus mod 页的图集（最多 5 张**不同**的图），
- * 抓不到再回落官方 API 的封面。结果已缓存在本地，下次打开是瞬时的。
+ * 两段式（0.4.9，用户 2026-11-09：「已经显示的图集要保存到本地……已经缓存了图片的
+ * 就不要再下载一次了」）：
+ *   ① 先问 `mod:imagesDisk` —— 只读 `data/cache/images/<modId>/` 里已有的文件，
+ *      有就立刻画出来，**一个网络请求都不发**（也就没有 spinner）。
+ *   ② 本地确实没有（或者用户点了「刷新图集」传了 force），才走 `mod:images`
+ *      去抓 Nexus 的图集，抓到的同样落盘，下次打开就是第 ① 条的快路径。
  */
 async function fillGallery(modId, { force = false } = {}) {
   const box = $('#galleryBox');
   if (!box) return;
+
+  if (!force) {
+    let local = [];
+    try { local = await call(window.api.modImagesDisk(modId), { silent: true }); } catch { local = []; }
+    const box0 = $('#galleryBox');
+    if (!box0) return;                     // 抽屉已关 / 内容已换，别再写
+    if (local && local.length) {
+      box0.innerHTML = `<div class="lbl">图集 · ${local.length} 张（已缓存到本地）</div>${imageGrid(local)}`;
+      return;                              // 本地就有，收工，不联网
+    }
+  }
+
   box.innerHTML = '<div class="txt" style="color:var(--dim2)"><span class="spin"></span> 正在获取该 Mod 的图集…</div>';
   let imgs = [];
   try {

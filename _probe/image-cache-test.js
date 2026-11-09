@@ -113,6 +113,37 @@ async function main() {
       'https://images.nexusmods.com/other.png'
     ]);
 
+    // ---- 0.4.9：已经落盘的图能直接从磁盘列出来（listCached），且不带任何网络请求 ----
+    // 用户 2026-11-09：「已经显示的图集要保存到本地……已经缓存了图片的就不要再下载一次了」
+    const callsBeforeList = counts.get('/ok') || 0;
+    const onDisk = await cache.listCached(123);
+    assert.equal(onDisk.length, 2, 'mod 123 应该列出两张已缓存的图');
+    assert.deepEqual(onDisk.map(x => x.path).sort(), [results[0].path, results[1].path].sort());
+    assert(onDisk.every(x => x.localUrl.startsWith('file://') && x.size > 0), '都带 file:// 地址与大小');
+    assert(onDisk.every(x => typeof x.at === 'number' && x.at > 0), '都带文件时间（用于稳定排序）');
+    assert.deepEqual(onDisk.map(x => x.url).sort(), [firstUrl, secondUrl].sort(), '元数据里记下了原始网址');
+    assert.equal(counts.get('/ok') || 0, callsBeforeList, 'listCached 不许发网络请求');
+
+    // 元数据文件里确实写了 url（别的脚本也能靠它还原「这个 mod 存过哪几张图」）
+    const metadataFile = results[0].path.replace(/\.png$/, '.json');
+    assert.equal(JSON.parse(await fs.promises.readFile(metadataFile, 'utf8')).url, firstUrl);
+
+    assert.deepEqual(await cache.listCached(999), [], '没缓存过的 mod 返回空数组');
+    assert.deepEqual(await cache.listCached('abc'), [], '非法 Mod ID 返回空数组');
+    assert.deepEqual(await cache.listCached(), [], '不传参数也不炸');
+
+    // ---- 接线：主进程磁盘优先 + 新通道 + preload + 渲染层两段式 ----
+    const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    const ipcSource = read('src/main/ipc.js');
+    assert.match(ipcSource, /local = await imageCache\(\)\.listCached\(id\)/, 'imagesForMod 先问磁盘');
+    assert.match(ipcSource, /if \(local\.length && !opts\.force\) return shape\(local\);/, '磁盘上有就不再联网');
+    assert.match(ipcSource, /handle\('mod:imagesDisk'/, '新增 mod:imagesDisk 通道');
+    const preloadSource = read('src/preload/index.js');
+    assert.match(preloadSource, /modImagesDisk: modId => invoke\('mod:imagesDisk', modId\)/, 'preload 暴露 modImagesDisk');
+    const rendererSource = read('src/renderer/app.js');
+    assert.match(rendererSource, /window\.api\.modImagesDisk\(modId\)/, 'fillGallery 先读本地');
+    assert.match(rendererSource, /if \(local && local\.length\) \{/, '本地有图就直接画，不转 spinner');
+
     console.log('image cache tests passed');
   } finally {
     await new Promise(resolve => server.close(resolve));

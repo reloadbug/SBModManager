@@ -223,7 +223,10 @@ function createImageCache({ imagesDir = paths.IMAGES, concurrency = 4, requestIm
       const filePath = path.join(directory, `${hash}.${metadata.extension}`);
       const stat = await fs.promises.stat(filePath);
       if (!stat.isFile() || stat.size !== metadata.size) return null;
-      return { path: filePath, mime: metadata.mime, size: metadata.size, localUrl: pathToFileURL(filePath).href };
+      // `url` 是这张图在 Nexus 上的地址（0.4.9 起才写进元数据；老缓存没有，给空串）。
+      // 有了它，本地磁盘就能独立还原出「这个 mod 存过哪几张图」，不必再问网络。
+      const url = typeof metadata.url === 'string' ? metadata.url : '';
+      return { path: filePath, url, mime: metadata.mime, size: metadata.size, localUrl: pathToFileURL(filePath).href };
     } catch {
       return null;
     }
@@ -247,7 +250,7 @@ function createImageCache({ imagesDir = paths.IMAGES, concurrency = 4, requestIm
     const suffix = crypto.randomBytes(6).toString('hex');
     const tempImage = path.join(directory, `.${hash}.${suffix}.tmp`);
     const tempMetadata = path.join(directory, `.${hash}.${suffix}.json.tmp`);
-    const metadata = JSON.stringify({ mime, size: body.length, extension });
+    const metadata = JSON.stringify({ mime, size: body.length, extension, url: parsedUrl.href });
 
     try {
       await fs.promises.writeFile(tempImage, body, { flag: 'wx' });
@@ -320,7 +323,42 @@ function createImageCache({ imagesDir = paths.IMAGES, concurrency = 4, requestIm
     return Promise.all(unique.map(url => cacheOne(id, url)));
   }
 
-  return { cacheModImages };
+  /**
+   * 列出某个 mod **已经在本地**的图（只读磁盘，不发任何网络请求）。
+   *
+   * 背景（用户 2026-11-09 提的）：已安装 / 已下载的详情里「已经缓存了图片的
+   * 就不要再下载一次」。改动前每次打开详情都会打一次 `mod:images`，主进程
+   * 先问图集抓取器（`nexusGallery`，7 天 TTL，过期就开隐藏窗口抓 mod 页），
+   * 于是界面上先出现 spinner，还白跑一趟网络。
+   *
+   * 有了这个函数，渲染层可以先问磁盘：有就直接渲染，一个请求都不发。
+   *
+   * 返回按文件修改时间升序（≈ 当初显示的顺序），元素形状与 `cacheModImages`
+   * 的命中项一致：`{ url, path, mime, size, localUrl, at }`。
+   */
+  async function listCached(modId) {
+    const id = String(modId);
+    if (!/^\d+$/.test(id)) return [];
+    const directory = path.join(imagesDir, id);
+    let names = [];
+    try { names = await fs.promises.readdir(directory); } catch { return []; }
+
+    const out = [];
+    for (const name of names) {
+      if (!name.endsWith('.json') || name.startsWith('.')) continue;   // 跳过 .tmp 中间件与隐藏文件
+      const hash = name.slice(0, -5);
+      if (!/^[0-9a-f]{64}$/.test(hash)) continue;
+      const hit = await readCached(directory, hash);
+      if (!hit) continue;                                             // 元数据与文件对不上（残缺）就跳过
+      let at = 0;
+      try { at = (await fs.promises.stat(hit.path)).mtimeMs || 0; } catch { at = 0; }
+      out.push({ ...hit, at });
+    }
+    out.sort((a, b) => (a.at || 0) - (b.at || 0));
+    return out;
+  }
+
+  return { cacheModImages, listCached };
 }
 
 module.exports = {
