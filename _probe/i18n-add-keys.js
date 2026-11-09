@@ -1385,7 +1385,38 @@ const TABLE = [
     'Nie udało się pobrać kolejnych obrazów (być może blokuje Cloudflare lub mod nie ma dodatkowych obrazów).',
     'Daha fazla galeri görseli alınamadı (Cloudflare engelliyor olabilir veya bu modun ek görseli yok).',
     'ดึงภาพแกลเลอรีเพิ่มไม่ได้ (อาจถูก Cloudflare บล็อก หรือมอดนี้ไม่มีภาพเพิ่มเติม)'
-  ]]
+  ]],
+  // ---------- ⑲ 「已下载」+「未安装」两个筛选可以同时开（2026-11-10） ----------
+  ['（「已下载」+「未安装」同时开着）', ['（「已下載」+「未安裝」同時開著）', '("Downloaded" + "Not installed" both on)',
+    '（「ダウンロード済み」+「未インストール」を同時に表示中）', "('다운로드됨' + '설치 안 됨' 동시 켜짐)", '(включены и «Скачано», и «Не установлено»)',
+    '(„Heruntergeladen“ + „Nicht installiert“ beide aktiv)', '(« Téléchargé » + « Non installé » activés ensemble)',
+    '(«Descargado» + «No instalado» activados a la vez)', '("Baixado" + "Não instalado" ativados juntos)',
+    '(«Scaricato» + «Non installato» attivi insieme)', '(„Pobrane“ + „Niezainstalowane“ włączone razem)',
+    '(«İndirildi» + «Kurulmadı» birlikte açık)', '(เปิดทั้ง "ดาวน์โหลดแล้ว" และ "ยังไม่ติดตั้ง")']],
+  ['已下载 共 %s 个', ['已下載 共 %s 個', 'Downloaded total %s', 'ダウンロード済み 計 %s 個', '다운로드됨 총 %s개',
+    'Скачано всего: %s', 'Heruntergeladen gesamt %s', 'Téléchargés au total %s', 'Descargados en total %s',
+    'Baixados no total %s', 'Scaricati in totale %s', 'Pobrane łącznie %s', 'Toplam indirilen %s', 'ดาวน์โหลดแล้วทั้งหมด %s']],
+  ['这条件下没有已下载但没装的 Mod', ['這條件下沒有已下載但沒裝的 Mod', 'No downloaded-but-not-installed mods match this filter',
+    'この条件に合う「ダウンロード済みで未インストール」の Mod はありません', "이 조건에 맞는 '다운로드했지만 설치 안 된' Mod가 없습니다",
+    'Под этот фильтр не подходит ни один скачанный, но не установленный мод', 'Keine heruntergeladenen, aber nicht installierten Mods für diesen Filter',
+    'Aucun mod téléchargé mais non installé ne correspond à ce filtre', 'Ningún mod descargado pero no instalado coincide con este filtro',
+    'Nenhum mod baixado mas não instalado corresponde a este filtro', 'Nessuna mod scaricata ma non installata corrisponde a questo filtro',
+    'Żaden pobrany, ale niezainstalowany mod nie pasuje do tego filtra', 'Bu filtreye uyan, indirilmiş ama kurulmamış mod yok',
+    'ไม่มี Mod ที่ดาวน์โหลดแล้วแต่ยังไม่ติดตั้งตรงกับเงื่อนไขนี้']],
+  ['已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。', ['已下載的有 %s 個，但都被關鍵詞或黑名單篩掉了。清掉篩選再看看。',
+    '%s are downloaded, but the keyword or blacklist filtered them all out. Clear the filters and try again.',
+    'ダウンロード済みは %s 個ありますが、キーワードかブラックリストで全て除外されました。フィルターを解除して確認してください。',
+    '다운로드된 항목이 %s개 있지만 키워드나 블랙리스트로 모두 걸러졌습니다. 필터를 해제하고 다시 보세요.',
+    'Скачано %s, но все отфильтрованы ключевым словом или чёрным списком. Сбросьте фильтры.',
+    '%s sind heruntergeladen, wurden aber durch Suchbegriff oder Blacklist alle ausgefiltert. Filter zurücksetzen.',
+    '%s sont téléchargés, mais tous ont été filtrés par le mot-clé ou la liste noire. Effacez les filtres et réessayez.',
+    'Hay %s descargados, pero el filtro de palabra clave o la lista negra los ocultaron todos. Borra los filtros y vuelve a mirar.',
+    'Há %s baixados, mas todos foram filtrados pela palavra-chave ou pela lista negra. Limpe os filtros e veja de novo.',
+    'Ce ne sono %s scaricati, ma tutti filtrati dalla parola chiave o dalla blacklist. Azzera i filtri e riprova.',
+    'Pobranych jest %s, ale wszystkie odfiltrowało słowo kluczowe lub czarna lista. Wyczyść filtry.',
+    '%s indirilmiş var, ama hepsi anahtar sözcük veya kara liste tarafından elendi. Filtreleri temizleyip tekrar bakın.',
+    'ดาวน์โหลดแล้ว %s รายการ แต่ถูกคำค้นหรือบัญชีดำกรองออกทั้งหมด ล้างตัวกรองแล้วดูอีกครั้ง']],
+
 ];
 
 /**

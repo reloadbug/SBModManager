@@ -1231,5 +1231,9 @@
     '正在获取这个 Mod 的图集…': 'Bu modun galerisi yükleniyor…',
     '图集还在抓，先看这张主图；抓到会自动补上。': 'Galeri hâlâ alınıyor - şimdilik ana görseli gösteriyoruz; geldiğinde kendiliğinden tamamlanacak.',
     '没能取到更多图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。': 'Daha fazla galeri görseli alınamadı (Cloudflare engelliyor olabilir veya bu modun ek görseli yok).',
+    '（「已下载」+「未安装」同时开着）': '(«İndirildi» + «Kurulmadı» birlikte açık)',
+    '已下载 共 %s 个': 'Toplam indirilen %s',
+    '这条件下没有已下载但没装的 Mod': 'Bu filtreye uyan, indirilmiş ama kurulmamış mod yok',
+    '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': '%s indirilmiş var, ama hepsi anahtar sözcük veya kara liste tarafından elendi. Filtreleri temizleyip tekrar bakın.',
   });
 })();

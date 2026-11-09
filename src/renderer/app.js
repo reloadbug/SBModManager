@@ -2370,22 +2370,67 @@ function browseRest(b) {
  * 全选 / 计数都走这里，两套清单共用同一个多选状态。
  */
 function browseVisibleItems() {
-  if (state.browse.onlyDownloaded) return (state.library && state.library.items) || [];
+  if (state.browse.onlyDownloaded) return libVisibleItems((state.library && state.library.items) || []);
   return state.browse.items || [];
 }
 
-/** 「只显示未安装」与「已下载」互斥，按钮高亮同步（两处调用：点筛选、从下载页跳过来） */
+/**
+ * 「已下载」清单的本地筛选：关键词 + 黑名单（隐藏模式）。
+ *
+ * 为什么单独一份而不是复用 `applyLocalFilter`：那份是对 Nexus 返回的在线条目做的
+ * （判断「装没装」要再查一次注册表），而这里的条目本来就来自本地安装包清单，
+ * 已经天然是「下好了、但当前游戏目录里没有」的那批 —— 两个筛选可以同时开着，
+ * 同时开着时口径仍然一致（交集 = 已下载 且 未安装），不用再算一遍。
+ *
+ * 用户 2026-11-10：「已下载与未安装可以同时选中，筛选出已下载但是还没有安装的 mod」。
+ */
+function libVisibleItems(list) {
+  const b = state.browse;
+  let kept = list || [];
+  const q = String(b.search || '').trim().toLowerCase();
+  if (q) {
+    kept = kept.filter(it => {
+      const meta = libMetaFor(it.modId) || it.info || {};
+      const hay = [
+        it.name, it.filename, meta.name, meta.author, meta.summary,
+        '#' + it.modId, String(it.modId)
+      ].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  if (b.blockMode === 'hide' && b.blocked.size) {
+    kept = kept.filter(it => !b.blocked.has(String(it.modId)));
+  }
+  return kept;
+}
+
+/**
+ * 两个筛选按钮的高亮同步（三处调用：点筛选、从下载页跳过来、刷新后）。
+ *
+ * 2026-11-10 起「已下载」与「只显示未安装」**不再互斥**：用户要的是「已下载但没装」
+ * 这个交集，两个都点亮才说明白自己在看什么。所以这里只各自反映自己的开关状态。
+ */
 function syncOnlyTabs() {
   const b = state.browse;
   $$('#newOnlyTabs button').forEach(x => {
     if (x.hasAttribute('data-onlydl')) x.classList.toggle('on', !!b.onlyDownloaded);
-    else x.classList.toggle('on', !b.onlyDownloaded && !!b.onlyUninstalled);
+    else x.classList.toggle('on', !!b.onlyUninstalled);
   });
 }
 
-/** 「已下载」筛选的统计行（勾选变化时只重写这一行，不重画卡片） */
-function downloadedStatsHtml(count, listed) {
-  return `已下载但没装 <b>${fmtNum(count)}</b> 个 · 已列出 ${fmtNum(listed)} 个 · 选中 <b>${fmtNum(state.sel.ids.size)}</b> 个` +
+/**
+ * 「已下载」筛选的统计行（勾选变化时只重写这一行，不重画卡片）。
+ *
+ * `count` 是**筛选后**的条数，`total` 是筛选前的条数 —— 两个都开着时才看得出
+ * 「关键词/黑名单剔掉了多少」，否则用户会以为清单里的包凭空少了。
+ */
+function downloadedStatsHtml(count, listed, total) {
+  const b = state.browse;
+  const scope = (typeof total === 'number' && total !== count)
+    ? ` · 已下载 共 ${fmtNum(total)} 个`
+    : '';
+  const both = b.onlyUninstalled ? '（「已下载」+「未安装」同时开着）' : '';
+  return `已下载但没装 <b>${fmtNum(count)}</b> 个${scope}${both} · 已列出 ${fmtNum(listed)} 个 · 选中 <b>${fmtNum(state.sel.ids.size)}</b> 个` +
     (state.sel.on ? '（勾选后点右上「批量安装」）' : '（点「多选」后勾卡片，可批量安装）');
 }
 
@@ -2393,9 +2438,10 @@ function refreshDownloadedStats() {
   if (!state.browse.onlyDownloaded) return;
   const stats = $(`#browseStats`);
   if (!stats) return;
-  const items = (state.library && state.library.items) || [];
+  const all = (state.library && state.library.items) || [];
+  const items = libVisibleItems(all);
   const listed = Math.min(items.length, state.libShown || 12);
-  stats.innerHTML = downloadedStatsHtml(items.length, listed);
+  stats.innerHTML = downloadedStatsHtml(items.length, listed, all.length);
 }
 
 /**
@@ -2408,18 +2454,26 @@ function renderBrowseDownloaded() {
   const stats = $('#browseStats');
   const more = $('#btnLoadMore');
   if (more) more.style.display = 'none';
-  const items = (state.library && state.library.items) || [];
   if (!state.library) {
     area.innerHTML = `<div class="grid">${Array.from({ length: 8 }, () => '<div class="skeleton"></div>').join('')}</div>`;
     if (stats) stats.innerHTML = '正在盘点管理器里的安装包…';
     return;
   }
+  const all = (state.library && state.library.items) || [];
+  const items = libVisibleItems(all);
   if (!items.length) {
-    area.innerHTML = `<div class="empty">
-      <h3>没有已下载但没装的 Mod</h3>
-      <p>管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。</p>
-    </div>`;
-    if (stats) stats.innerHTML = '已下载但没装 <b>0</b> 个';
+    // 分两种「空」：本来就没有下载包，还是筛选把现有的都剔掉了 —— 提示不能混
+    const filtered = all.length > 0;
+    area.innerHTML = filtered
+      ? `<div class="empty">
+          <h3>这条件下没有已下载但没装的 Mod</h3>
+          <p>已下载的有 ${fmtNum(all.length)} 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。</p>
+        </div>`
+      : `<div class="empty">
+          <h3>没有已下载但没装的 Mod</h3>
+          <p>管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。</p>
+        </div>`;
+    if (stats) stats.innerHTML = downloadedStatsHtml(0, 0, all.length);
     selSyncAll();
     selUpdateBar();
     return;
@@ -2428,7 +2482,7 @@ function renderBrowseDownloaded() {
   const rest = items.length - shown.length;
   area.innerHTML = `<div class="grid">${shown.map(it => libCardHtml(it, { selectable: true, hideDetail: true })).join('')}</div>` +
     (rest > 0 ? `<div class="lib-more"><button class="btn sm" data-lib-more="1">显示更多（还有 ${fmtNum(rest)} 个）</button></div>` : '');
-  if (stats) stats.innerHTML = downloadedStatsHtml(items.length, shown.length);
+  if (stats) stats.innerHTML = downloadedStatsHtml(items.length, shown.length, all.length);
   selSyncAll();
   selUpdateBar();
   ensureLibMeta();
@@ -3097,10 +3151,17 @@ async function openNexusDrawer(modId) {
       <div class="kv"><span>更新时间</span><span>${fmtDate(m.updatedAt)}</span></div>
     `;
     $('#dFoot').innerHTML = '';                       // 这个抽屉不用底部栏
+    // 详情页也要有 👍 / 👎（用户 2026-11-10：「已下载的 mod 只要能与 nexus 关联上，
+    // 也要有点赞和不喜欢的按钮；详情页也要有」）。放在操作行最前面，与卡片上的位置一致；
+    // 这里 mod 一定来自 Nexus 列表，所以一定有 modId，不用判断。
+    // 本地已经有安装包时，给一颗「装进游戏」—— 省掉「加入下载队列」再等一遍下载。
+    const libOne = libItemOf(m.modId);
     $('#dActions').innerHTML = `
+      ${voteHtml(m)}
       <button class="btn" data-openurl="${esc(m.url)}">在浏览器打开</button>
       <button class="btn" data-gallery="${m.modId}">刷新图集</button>
       <button class="btn" data-install="${m.modId}">手动安装</button>
+      ${libOne ? `<button class="btn" data-lib-install="${m.modId}" title="管理器里已经有这份安装包（${esc(libOne.filename)}），直接装进当前游戏目录">装进游戏</button>` : ''}
       <button class="btn p" data-dl-add="${m.modId}">⬇ 加入下载队列</button>
     `;
     loadFiles(m.modId);
@@ -3146,7 +3207,10 @@ async function applyDrawerLocalState(modId) {
   //    （`#dActions`，图片下方 —— 不滚动就能点），已安装 / 下载详情仍在底部固定栏。
   const foot = state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot');
   if (!foot || !st) return;
-  const openBtn = `<button class="btn" data-openurl="${esc(cur.url)}">在浏览器打开</button>`;
+  // 👍 / 👎 跟着一起重写：这一段会把整个操作行换掉（按本地状态只留「打开 / 装进游戏 / 去下载页」），
+  // 用户 2026-11-10 要求详情页也要有点赞和不喜欢 —— 不带上就会被下面几行覆盖掉。
+  const vote = state.drawer.kind === 'nexus' ? voteHtml(cur) : '';
+  const openBtn = `${vote}<button class="btn" data-openurl="${esc(cur.url)}">在浏览器打开</button>`;
   if (st.act === 'install') {
     // 库里的包没有 taskId，走 library:install（否则按钮点了没反应）
     foot.innerHTML = openBtn + (local.taskId
@@ -4214,6 +4278,7 @@ function libCardHtml(it, opts) {
         ${meta.author ? `<span data-i18n-skip title="作者">${esc(clip(meta.author, 14))}</span>` : ''}
         <span>${fmtSize(it.size)}</span>
         <div class="acts">
+          ${it.modId ? voteHtml(it) : ''}
           ${o.hideDetail ? '' : `<button class="btn sm" data-libdetail="${it.modId}" title="看这个 Mod 在 Nexus 上的详情">详情</button>`}
           <button class="btn sm" data-libreveal="${it.modId}" title="在资源管理器里定位这份安装包">定位</button>
           <button class="btn sm d" data-libdel="${it.modId}" title="从管理器里删掉这份安装包（不影响已经装进游戏的文件）">删除</button>
@@ -6374,7 +6439,9 @@ function bindEvents() {
     // 「已下载」：本地安装包清单（不走 Nexus 分页），可多选批量安装
     if (e.target.closest('button[data-onlydl]')) {
       state.browse.onlyDownloaded = !state.browse.onlyDownloaded;
-      if (state.browse.onlyDownloaded) state.browse.onlyUninstalled = false;
+      // 2026-11-10：不再清掉「未安装」。两个筛选可以同时开，
+      // 同时开着的口径就是「已下载 且 没装」—— 也正是「已下载」清单本来的内容，
+      // 所以这里只是把高亮点亮，不动另一个开关。
       syncOnlyTabs();
       selClear();
       if (state.browse.onlyDownloaded) await refreshLibrary();
@@ -6384,9 +6451,10 @@ function bindEvents() {
     const b = e.target.closest('button[data-onlynew]');
     if (!b) return;
     state.browse.onlyUninstalled = !state.browse.onlyUninstalled;
-    if (state.browse.onlyUninstalled) state.browse.onlyDownloaded = false;
     syncOnlyTabs();
     selClear();
+    // 「已下载」视图开着时，这个开关也是本地清单上的筛选，不用回 Nexus 重拉
+    if (state.browse.onlyDownloaded) { renderBrowse(); return; }
     loadBrowse(true);
   });
 

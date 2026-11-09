@@ -1231,5 +1231,9 @@
     '正在获取这个 Mod 的图集…': 'Chargement de la galerie de ce mod…',
     '图集还在抓，先看这张主图；抓到会自动补上。': 'Galerie en cours de récupération - voici l’image principale en attendant ; elle se complétera automatiquement.',
     '没能取到更多图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。': 'Impossible de récupérer plus d\'images (Cloudflare bloque peut-être, ou ce mod n\'a pas d\'images supplémentaires).',
+    '（「已下载」+「未安装」同时开着）': '(« Téléchargé » + « Non installé » activés ensemble)',
+    '已下载 共 %s 个': 'Téléchargés au total %s',
+    '这条件下没有已下载但没装的 Mod': 'Aucun mod téléchargé mais non installé ne correspond à ce filtre',
+    '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': '%s sont téléchargés, mais tous ont été filtrés par le mot-clé ou la liste noire. Effacez les filtres et réessayez.',
   });
 })();

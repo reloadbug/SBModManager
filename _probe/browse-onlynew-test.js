@@ -132,6 +132,66 @@ console.log('\n=== installedIdsOf：本地状态 IPC ===');
   t('装完后「只看未安装」列表里直接移除该卡片', () => /if \(b\.onlyUninstalled && m\.local && m\.local\.state === 'installed'\) \{[\s\S]{0,260}card\.remove\(\);/.test(code));
   t('空态文案把 this 筛选算进去', () => /b\.category \|\| b\.tags\.length \|\| b\.onlyUninstalled/.test(code));
 
+  console.log('\n=== 2026-11-10：「已下载」+「未安装」可同时开 / 已下载卡片与详情也带 👍👎 ===');
+  // 真身跑一遍 libVisibleItems（关键词 + 黑名单隐藏）
+  ctx.state = { browse: { search: '', blocked: new Set(), blockMode: 'hide' } };
+  ctx.libMetaFor = (id) => (Number(id) === 4117 ? { name: 'Crimson Wings CNS', author: 'SrPoolStrange' } : null);
+  const libItems = [
+    { modId: 4117, name: 'CrimsonWingsV1', filename: '4117_CrimsonWingsV1_1.0.rar', size: 100 },
+    { modId: 4106, name: 'Other', filename: '4106_Other_2.0.zip', size: 200 }
+  ];
+  vm.runInContext(extract('libVisibleItems'), ctx);
+  t('没有关键词/黑名单时原样返回', () => ctx.libVisibleItems(libItems).length === 2);
+  ctx.state.browse.search = 'crimson';
+  t('关键词命中安装包文件名', () => ctx.libVisibleItems(libItems).map(x => x.modId).join() === '4117');
+  t('关键词命中本地档案里的名字/作者（不用联网）', () => {
+    ctx.state.browse.search = 'srpool';
+    return ctx.libVisibleItems(libItems).length === 1;
+  });
+  t('关键词能按 #modId 搜', () => {
+    ctx.state.browse.search = '#4106';
+    return ctx.libVisibleItems(libItems).map(x => x.modId).join() === '4106';
+  });
+  t('搜不到就是空列表，不抛', () => {
+    ctx.state.browse.search = 'zzzz';
+    return ctx.libVisibleItems(libItems).length === 0;
+  });
+  t('黑名单隐藏模式会剔掉已拉黑的 mod', () => {
+    ctx.state.browse.search = '';
+    ctx.state.browse.blocked = new Set(['4117']);
+    return ctx.libVisibleItems(libItems).map(x => x.modId).join() === '4106';
+  });
+  t('黑名单显示全部模式不剔', () => {
+    ctx.state.browse.blockMode = 'all';
+    const n = ctx.libVisibleItems(libItems).length;
+    ctx.state.browse.blockMode = 'hide';
+    return n === 2;
+  });
+
+  t('两个筛选不再互相清除', () =>
+    !/onlyDownloaded = \!state\.browse\.onlyDownloaded;[\s\S]{0,200}onlyUninstalled = false;/.test(code) &&
+    !/onlyUninstalled = \!state\.browse\.onlyUninstalled;[\s\S]{0,200}onlyDownloaded = false;/.test(code));
+  t('syncOnlyTabs 各自反映自己的开关', () =>
+    /if \(x\.hasAttribute\('data-onlydl'\)\) x\.classList\.toggle\('on', !!b\.onlyDownloaded\);\r?\n\s*else x\.classList\.toggle\('on', !!b\.onlyUninstalled\);/.test(code));
+  t('「已下载」视图开着时切「未安装」只本地重画，不回 Nexus 重拉', () =>
+    /if \(state\.browse\.onlyDownloaded\) \{ renderBrowse\(\); return; \}/.test(code));
+  t('「已下载」清单走 libVisibleItems 过滤', () =>
+    /const items = libVisibleItems\(all\);/.test(code) &&
+    /function browseVisibleItems[\s\S]{0,200}libVisibleItems\(\(state\.library && state\.library\.items\) \|\| \[\]\)/.test(code));
+  t('两种「空」分开提示（本来没有 vs 被筛掉）', () => /const filtered = all\.length > 0;/.test(code));
+  t('统计行能显示筛选前的总数', () =>
+    /function downloadedStatsHtml\(count, listed, total\)/.test(code) && /已下载 共 /.test(code));
+  t('已下载卡片也带 👍 / 👎（有 modId 才显示）', () =>
+    /<div class="acts">\r?\n\s*\$\{it\.modId \? voteHtml\(it\) : ''\}/.test(code));
+  t('详情抽屉操作行也带 👍 / 👎', () => /\$\{voteHtml\(m\)\}/.test(code));
+  t('applyDrawerLocalState 重写操作行时不吞掉 👍👎', () =>
+    /const vote = state\.drawer\.kind === 'nexus' \? voteHtml\(cur\) : '';/.test(code) &&
+    /const openBtn = `\$\{vote\}<button class="btn" data-openurl=/.test(code));
+  t('三个本地状态分支都带着 vote 一起写', () =>
+    /if \(st\.act === 'install'\)[\s\S]{0,400}\$\{vote\}/.test(code) === false &&
+    /foot\.innerHTML = openBtn \+/.test(code));
+  t('详情抽屉里本地有安装包时给「装进游戏」', () =>
+    /const libOne = libItemOf\(m\.modId\);/.test(code) && /data-lib-install="\$\{m\.modId\}"/.test(code));
   console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
   if (fail) process.exit(1);
 })().catch(e => { console.error('异步断言崩了：' + (e && e.stack || e)); process.exit(1); });
