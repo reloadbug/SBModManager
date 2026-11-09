@@ -1235,5 +1235,7 @@
     '已下载 共 %s 个': 'Descargados en total %s',
     '这条件下没有已下载但没装的 Mod': 'Ningún mod descargado pero no instalado coincide con este filtro',
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': 'Hay %s descargados, pero el filtro de palabra clave o la lista negra los ocultaron todos. Borra los filtros y vuelve a mirar.',
+    '打开游戏目录': 'Abrir la carpeta del juego',
+    '打开 Mod 目录': 'Abrir la carpeta de mods',
   });
 })();

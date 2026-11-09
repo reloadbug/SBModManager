@@ -58,7 +58,10 @@ contextBridge.exposeInMainWorld('api', {
     relocateApply: () => invoke('game:relocateApply'),
     ledger: () => invoke('game:ledger'),
     ledgerExport: () => invoke('game:ledgerExport'),
-    ledgerImport: () => invoke('game:ledgerImport')
+    ledgerImport: () => invoke('game:ledgerImport'),
+    /** 在资源管理器里打开游戏目录 / Mod 目录（Mod 目录自动挑 ~Mods、LogicMods、ue4ss\\Mods 里存在的那个） */
+    openRoot: () => invoke('game:openRoot'),
+    openModsDir: () => invoke('game:openModsDir')
   },
 
   mods: {

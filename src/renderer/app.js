@@ -5421,6 +5421,11 @@ function renderSettings() {
         <label></label>
         <button class="btn sm" id="btnDetect">自动探测</button>
       </div>
+      <div class="f">
+        <label></label>
+        <button class="btn sm" id="btnOpenGameRoot">打开游戏目录</button>
+        <button class="btn sm" id="btnOpenModsDir">打开 Mod 目录</button>
+      </div>
     </div>
 
     <div class="frm">
@@ -7417,6 +7422,11 @@ function bindEvents() {
         if (!r.candidates.length) toast('没有探测到剑星目录，请手动填写', 'err');
         else toast('探测到：' + r.candidates.join('  |  '));
       } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnOpenGameRoot') {
+      // 成功不弹提示：资源管理器自己就是反馈；失败由 call() 把主进程的人话弹出来
+      try { await call(window.api.game.openRoot()); } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnOpenModsDir') {
+      try { await call(window.api.game.openModsDir()); } catch { /* 已提示 */ }
     } else if (e.target.id === 'btnLedgerCheck') {
       await checkRelocation();
     } else if (e.target.id === 'btnLedgerExport') {

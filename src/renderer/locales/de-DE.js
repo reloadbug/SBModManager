@@ -1235,5 +1235,7 @@
     '已下载 共 %s 个': 'Heruntergeladen gesamt %s',
     '这条件下没有已下载但没装的 Mod': 'Keine heruntergeladenen, aber nicht installierten Mods für diesen Filter',
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': '%s sind heruntergeladen, wurden aber durch Suchbegriff oder Blacklist alle ausgefiltert. Filter zurücksetzen.',
+    '打开游戏目录': 'Spielordner öffnen',
+    '打开 Mod 目录': 'Mod-Ordner öffnen',
   });
 })();

@@ -1235,5 +1235,7 @@
     '已下载 共 %s 个': 'Downloaded total %s',
     '这条件下没有已下载但没装的 Mod': 'No downloaded-but-not-installed mods match this filter',
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': '%s are downloaded, but the keyword or blacklist filtered them all out. Clear the filters and try again.',
+    '打开游戏目录': 'Open game folder',
+    '打开 Mod 目录': 'Open mods folder',
   });
 })();

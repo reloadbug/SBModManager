@@ -1417,6 +1417,39 @@ const TABLE = [
     '%s indirilmiş var, ama hepsi anahtar sözcük veya kara liste tarafından elendi. Filtreleri temizleyip tekrar bakın.',
     'ดาวน์โหลดแล้ว %s รายการ แต่ถูกคำค้นหรือบัญชีดำกรองออกทั้งหมด ล้างตัวกรองแล้วดูอีกครั้ง']],
 
+  // ── ⑳ 0.4.14：设置页「打开游戏目录 / 打开 Mod 目录」（2 条）────────────────
+  // 这两个按钮文案在 app.js 的模板串里，抽取器本该自动捞；登记一遍更保险
+  // （脚本是幂等的：keys.json 里已有就跳过，不会重复加）。
+  ['打开游戏目录', [
+    '打開遊戲目錄',
+    'Open game folder',
+    'ゲームフォルダーを開く',
+    '게임 폴더 열기',
+    'Открыть папку игры',
+    'Spielordner öffnen',
+    'Ouvrir le dossier du jeu',
+    'Abrir la carpeta del juego',
+    'Abrir a pasta do jogo',
+    'Apri la cartella del gioco',
+    'Otwórz folder gry',
+    'Oyun klasörünü aç',
+    'เปิดโฟลเดอร์เกม'
+  ]],
+  ['打开 Mod 目录', [
+    '打開 Mod 目錄',
+    'Open mods folder',
+    'Mod フォルダーを開く',
+    '모드 폴더 열기',
+    'Открыть папку модов',
+    'Mod-Ordner öffnen',
+    'Ouvrir le dossier des mods',
+    'Abrir la carpeta de mods',
+    'Abrir a pasta de mods',
+    'Apri la cartella dei mod',
+    'Otwórz folder modów',
+    'Mod klasörünü aç',
+    'เปิดโฟลเดอร์มอด'
+  ]],
 ];
 
 /**

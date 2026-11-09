@@ -1630,6 +1630,34 @@ function register() {
   handle('app:openExternal', (url) => { shell.openExternal(url); return true; });
   handle('app:openPath', (p) => { shell.openPath(p); return true; });
   handle('app:revealPath', (p) => { shell.showItemInFolder(p); return true; });
+
+  /* 打开游戏目录 / 打开 Mod 目录
+   *
+   * 为什么给专门两个通道，而不是让界面自己拼路径丢给 app:openPath：
+   *   1) 「游戏根在哪」是三处信息合起来算的（用户设置 + 便携指针文件 + 自动探测），
+   *      界面手里只有 inspect() 回来的那一份，容易和搬移/账本逻辑走成两套判断；
+   *   2) Mod 目录有三种形态（~Mods / LogicMods / ue4ss\Mods），按哪个开得挑「真存在」的那个，
+   *      挑错的后果是弹一个空窗口或者干脆打不开；
+   *   3) 路径不在时要说人话，而不是静默什么都不发生 —— 所以这里宁可抛错。
+   */
+  handle('game:openRoot', () => {
+    const root = currentRoot() || '';
+    if (!root) throw new Error('还没识别到游戏目录，先在设置里指定一下。');
+    if (!fs.existsSync(root)) throw new Error('游戏目录已经不在了：' + root);
+    shell.openPath(root);
+    return root;
+  });
+
+  handle('game:openModsDir', () => {
+    const root = currentRoot() || '';
+    if (!root) throw new Error('还没识别到游戏目录，先在设置里指定一下。');
+    // 三个候选目录与优先级统一放在 paths.modDirsOf()，界面上别处也用它
+    const dirs = paths.modDirsOf(root);
+    const hit = dirs.find(d => { try { return fs.statSync(d).isDirectory(); } catch { return false; } });
+    if (!hit) throw new Error('游戏目录里还没有 Mod 目录（可能还没装过 Mod）：' + dirs[0]);
+    shell.openPath(hit);
+    return hit;
+  });
   handle('app:dataDir', () => paths.DATA);
 
   /* ---------------- 数据目录（设置页里可改位置） ----------------

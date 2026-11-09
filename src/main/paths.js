@@ -307,7 +307,24 @@ function ensure() {
   }
 }
 
+/**
+ * 游戏里可能放 Mod 的三个位置，**顺序即优先级**。
+ *
+ * 抽出来是因为两个地方要用同一份判断：打开 Mod 目录（界面按钮），
+ * 以及将来任何「先看 ~Mods、没有再退到 LogicMods」的动作 —— 各写一遍迟早走岔。
+ */
+function modDirsOf(root) {
+  const r = String(root || '');
+  if (!r) return [];
+  return [
+    path.join(r, 'SB', 'Content', 'Paks', '~Mods'),
+    path.join(r, 'SB', 'Content', 'Paks', 'LogicMods'),
+    path.join(r, 'SB', 'Binaries', 'Win64', 'ue4ss', 'Mods')
+  ];
+}
+
 module.exports = {
+  modDirsOf,
   ROOT, DATA, CACHE, IMAGES, GALLERY, META, LIBRARY, TMP, BACKUP, LOGS,
   ensure,
 

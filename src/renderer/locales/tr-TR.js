@@ -1235,5 +1235,7 @@
     '已下载 共 %s 个': 'Toplam indirilen %s',
     '这条件下没有已下载但没装的 Mod': 'Bu filtreye uyan, indirilmiş ama kurulmamış mod yok',
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': '%s indirilmiş var, ama hepsi anahtar sözcük veya kara liste tarafından elendi. Filtreleri temizleyip tekrar bakın.',
+    '打开游戏目录': 'Oyun klasörünü aç',
+    '打开 Mod 目录': 'Mod klasörünü aç',
   });
 })();
