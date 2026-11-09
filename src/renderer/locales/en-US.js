@@ -1198,5 +1198,9 @@
     '从管理器里删掉这份安装包（不影响已经装进游戏的文件）': 'Delete this package from the manager (installed game files are not touched)',
     '这个安装包已经不在清单里了，刷新一下看看': 'That package is no longer in the list — try refreshing',
     '已删除安装包：%s': 'Package deleted: %s',
+    '启动游戏': 'Launch game',
+    '直接启动游戏（不走 Steam，绿色版 / Steam / Epic 都行）': 'Launch the game directly (no Steam needed — works for portable, Steam and Epic installs)',
+    '还没设置游戏目录，先到设置里选一下': 'No game folder set yet — pick one in Settings first',
+    '正在启动游戏…': 'Launching the game…',
   });
 })();

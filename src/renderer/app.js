@@ -6092,6 +6092,21 @@ function bindEvents() {
 
   $('#btnRefresh').addEventListener('click', () => refreshAll(true));
 
+  // 顶栏「启动游戏」：直接拉起游戏主程序，不等它退出
+  $('#btnLaunch').addEventListener('click', async () => {
+    const btn = $('#btnLaunch');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const r = await call(window.api.game.launch());
+      toast('正在启动游戏…', 'ok');
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      syncLaunchBtn();
+    }
+  });
+
   $('#btnNexusAccount').addEventListener('click', () => {
     switchPage('p-settings');
     setTimeout(() => { const el = $('#authLine'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
@@ -7364,6 +7379,17 @@ async function doUninstall(id, { keepDrawer = false } = {}) {
 
 /* ---------------- 刷新 ---------------- */
 
+/** 顶栏「启动游戏」按钮的可用状态：没游戏目录就置灰并说明原因 */
+function syncLaunchBtn() {
+  const btn = $('#btnLaunch');
+  if (!btn) return;
+  const ok = !!(state.game && state.game.found);
+  btn.disabled = !ok;
+  btn.title = ok
+    ? '直接启动游戏（不走 Steam，绿色版 / Steam / Epic 都行）'
+    : '还没设置游戏目录，先到设置里选一下';
+}
+
 async function refreshAll(showToast) {
   try {
     const data = await call(window.api.bootstrap());
@@ -7377,6 +7403,7 @@ async function refreshAll(showToast) {
     if (data.watch) state.watch = data.watch;
     state.relocation = data.relocation || null;
   state.dataHome = data.dataHome || null;
+    syncLaunchBtn();
     $('#verLine').textContent = 'v' + data.version + (data.packaged ? '' : ' · dev');
     // 启动后第一次拿到配置：把上次的筛选条件套回来（设置页开关关掉时 `applyLastFilters()` 自己返回）。
     // 只做一次 —— 之后 refreshAll 再被调用（手动刷新 / 装完 Mod）都不会重套，

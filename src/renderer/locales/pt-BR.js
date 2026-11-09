@@ -1198,5 +1198,9 @@
     '从管理器里删掉这份安装包（不影响已经装进游戏的文件）': 'Excluir este pacote do gerenciador (os arquivos instalados no jogo não são tocados)',
     '这个安装包已经不在清单里了，刷新一下看看': 'Esse pacote não está mais na lista — atualize',
     '已删除安装包：%s': 'Pacote excluído: %s',
+    '启动游戏': 'Iniciar jogo',
+    '直接启动游戏（不走 Steam，绿色版 / Steam / Epic 都行）': 'Iniciar o jogo diretamente (sem Steam — funciona para versões portátil, Steam e Epic)',
+    '还没设置游戏目录，先到设置里选一下': 'Nenhuma pasta do jogo definida — escolha nos ajustes',
+    '正在启动游戏…': 'Iniciando o jogo…',
   });
 })();

@@ -6,6 +6,7 @@ const path = require('path');
 const paths = require('./paths');
 const logger = require('./logger');
 const game = require('./game');
+const gameLaunch = require('./gameLaunch');
 const scanner = require('./scanner');
 const { createConfigStore } = require('./store');
 const { createRegistry } = require('./registry');
@@ -1570,6 +1571,23 @@ function register() {
   /* 游戏 */
   handle('game:inspect', () => inspectGame());
   handle('game:detect', () => ({ candidates: game.detectCandidates([config.get('gameRoot')]) }));
+  /**
+   * 顶栏「启动游戏」：直接拉起游戏主程序（不走 Steam，绿色版/Steam/Epic 都行）。
+   * 起不来就抛带人话的错误（没设目录 / exe 不在 / 没权限），前端直接 toast 出来。
+   */
+  handle('game:launch', () => {
+    const root = currentRoot();
+    const info = gameLaunch.plan(root);
+    if (!info.ok) throw new Error(info.reason);
+    try {
+      const r = gameLaunch.launch(root);
+      logger.event('game:launch', { exe: r.exe, pid: r.pid });
+      return r;
+    } catch (e) {
+      logger.warn('[启动游戏] ' + e.message);
+      throw new Error('启动失败：' + e.message);
+    }
+  });
   handle('game:setRoot', (root) => {
     if (!game.isGameRoot(root)) throw new Error('该目录不是有效的剑星根目录（未找到 SB\\Binaries\\Win64\\SB-Win64-Shipping.exe）');
     config.set({ gameRoot: root });

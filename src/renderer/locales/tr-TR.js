@@ -1198,5 +1198,9 @@
     '从管理器里删掉这份安装包（不影响已经装进游戏的文件）': 'Bu paketi yöneticiden sil (oyuna kurulan dosyalara dokunulmaz)',
     '这个安装包已经不在清单里了，刷新一下看看': 'Bu paket artık listede değil — yenile',
     '已删除安装包：%s': 'Paket silindi: %s',
+    '启动游戏': 'Oyunu başlat',
+    '直接启动游戏（不走 Steam，绿色版 / Steam / Epic 都行）': 'Oyunu doğrudan başlat (Steam gerekmez — taşınabilir, Steam ve Epic kurulumları için)',
+    '还没设置游戏目录，先到设置里选一下': 'Oyun klasörü ayarlı değil — önce ayarlardan seçin',
+    '正在启动游戏…': 'Oyun başlatılıyor…',
   });
 })();

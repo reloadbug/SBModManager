@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('api', {
   game: {
     inspect: () => invoke('game:inspect'),
     detect: () => invoke('game:detect'),
+    /** 顶栏「启动游戏」：直接拉起游戏主程序（不走 Steam） */
+    launch: () => invoke('game:launch'),
     setRoot: (root) => invoke('game:setRoot', root),
     ensureModsDir: () => invoke('game:ensureModsDir'),
     ensureLogicModsDir: () => invoke('game:ensureLogicModsDir'),
