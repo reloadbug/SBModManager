@@ -188,6 +188,9 @@ nav{padding:9px 8px;flex:1;overflow:auto}
    `flex:1 1 320px` 让它独占一行（标签很多，挤在排序条右边会撑爆工具栏）。 */
 .sortgrp.ifilter{flex:1 1 320px;min-width:0}
 .sortgrp.ifilter .search{width:auto;flex:1 1 210px;min-width:170px}
+/* 已安装页的关键词筛选是**就地**做的：不重建 DOM，只给卡片挂这个类。
+   用 !important 是因为卡片本身是 flex 项，`[hidden]` 之类的默认规则压不住。 */
+.card.inst-hid{display:none !important}
 .sortgrp.ifilter select{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0 8px;height:29px;color:var(--text);font-size:11.5px;font-family:inherit;outline:none;cursor:pointer;flex:none}
 .sortgrp.ifilter select:focus{border-color:var(--accent)}
 .tabs button .dir{margin-left:5px;font-size:11px}

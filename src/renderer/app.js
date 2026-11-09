@@ -890,11 +890,24 @@ function installedGroupMatches(g) {
     if (q) {
       const meta = g.meta || {};
       const src = meta.source || {};
+      // 除了卡片名 / Mod ID / 作者，还把**磁盘上的文件名**算进来 —— 用户经常只记得
+      // 「那个 .pak 叫什么」或者包里带着 `[nx4102]` 这样的标识，光搜卡片名搜不到。
+      const extra = [];
+      for (const m of g.items || []) {
+        for (const v of [m.name, m.rel, m.file, m.tag ? 'nx' + m.tag : '']) {
+          if (v) extra.push(String(v));
+        }
+      }
+      // 只用 `g.kind` 这个原始值：这个函数被探针整段抠出来单跑（见 instbatch-test），
+      // 不引用外部的 KIND_LABEL，免得复制出去就抛 ReferenceError。
+      if (g.kind) extra.push(g.kind);
       const hay = [
         g.name || '',
         g.modId ? String(g.modId) : '',
         g.modId ? '#' + g.modId : '',
-        meta.author || src.author || ''
+        meta.author || src.author || '',
+        meta.name || src.modName || '',
+        extra.join(' ')
       ].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
@@ -1133,11 +1146,10 @@ function renderInstalled() {
   // 先把「同一个 Nexus Mod 的多个文件」并成一张卡，再排序。
   // 用户 2026-10-14：合并显示 + 默认按安装时间倒序 + 可切换排序。
   state.installedGroups = groupInstalled(visible);
-  // 筛选作用在**分组之后**：一行卡片是一个 Mod，不是磁盘上的一个文件，
-  // 所以「未登记 / 已关联 / 已启用」这些判断都按整组算（见 installedGroupMatches）。
-  const shown = state.installedGroups.filter(installedGroupMatches);
-  state.installedShown = shown;
-  const sorted = shown
+  // ⚠️ 筛选**不在这里**做（见 applyInstSearch）：一行卡片是一个 Mod，不是磁盘上的
+  // 一个文件，所以「未登记 / 已关联 / 已启用」这些判断都按整组算，但筛选结果只切
+  // 卡片 class，不重建 DOM。排序仍作用在全部分组上 —— 筛选只决定谁可见，不改相对顺序。
+  const sorted = state.installedGroups
     .slice()
     .sort((a, b) => compareInstalled(a, b, state.installedSort, state.installedSortDir));
 
@@ -1167,27 +1179,17 @@ function renderInstalled() {
       } UE4SS 自带的 ${builtinScripts.length} 个内置脚本模组</button>`
     : '';
 
-  // 筛选把结果清空时给一句人话 + 一键清空（不然只剩白屏，看着像加载失败）
-  if (!sorted.length) {
-    area.innerHTML = liveStrip()
-      + gameWriteBanner()
-      + `<div class="ibar">${installedFilterRowHtml()}${sortBar}${installedBatchRowHtml()}</div>`
-      + `<div class="empty">
+  // 筛选结果为空时的提示块**始终渲染**（默认 hidden），由 applyInstSearch 显隐。
+  // 早期版本是「筛空了就整块重画成空态」，那样每敲一个字都可能重建 DOM。
+  area.innerHTML = liveStrip()
+    + gameWriteBanner()
+    + `<div class="ibar">${installedFilterRowHtml()}${sortBar}${installedBatchRowHtml()}${toggleRow}</div>`
+    + `<div class="grid">${sorted.map(installedCard).join('')}</div>`
+    + `<div class="empty" id="instEmpty" hidden>
         <h3>没有符合筛选条件的 Mod</h3>
         <p>换个关键词，或者把筛选清掉看看。</p>
         <button class="btn sm" data-iclear="1">清空筛选</button>
       </div>`;
-    gselSyncAll();
-    gselUpdateBar();
-    $('#sub').textContent = `共 0 项 · 筛选自 ${state.installedGroups.length} 项`;
-    syncInstalledNav();
-    return;
-  }
-
-  area.innerHTML = liveStrip()
-    + gameWriteBanner()
-    + `<div class="ibar">${installedFilterRowHtml()}${sortBar}${installedBatchRowHtml()}${toggleRow}</div>`
-    + `<div class="grid">${sorted.map(installedCard).join('')}</div>`;
 
   // 重画后把勾选外观补上（筛选切换不会清空选择，勾过的卡片回来还是勾着的）
   gselSyncAll();
@@ -1195,11 +1197,40 @@ function renderInstalled() {
 
   // 计数口径：**合并后的卡片数**（= Mod 数），不是磁盘上的条目数。
   // 否则「侧栏 258 / 列表 240 张卡」这种对不上的数字会让人以为是漏显示了。
+  applyInstSearch();
+}
+
+/**
+ * 就地应用筛选（关键词 / 状态 / 类型）：只给卡片切 `inst-hid`，不重建 DOM。
+ *
+ * 为什么不重画：已安装页动辄四五百张卡，`area.innerHTML = …` 重建一次要一秒上下，
+ * 而**输入框本身就在被重建的那棵子树里** —— 用户敲第二个字时输入框已经换了新节点，
+ * 焦点和光标一起丢，表现就是「已安装页不支持文字搜索」。这里改成纯 class 切换：
+ * 输入框、封面、滚动位置全都不动，打字跟手，勾选外观也不用再同步回来。
+ */
+function applyInstSearch() {
+  const byKey = new Map((state.installedGroups || []).map(g => [g.key, g]));
+  const shown = [];
+  let enabled = 0;
+  for (const card of $$('#installedArea .card[data-gid]')) {
+    const g = byKey.get(card.dataset.gid);
+    const hit = !!(g && installedGroupMatches(g));
+    card.classList.toggle('inst-hid', !hit);
+    if (hit) {
+      shown.push(g);
+      if (g.enabled && !g.partial) enabled++;
+    }
+  }
+  // 全选 / 「是否已全选」以**可见项**为准（gselVisibleKeys 读这个）
+  state.installedShown = shown;
+  const empty = $('#instEmpty');
+  if (empty) empty.hidden = shown.length > 0;
+  const total = (state.installedGroups || []).length;
   // 有筛选时显示「筛选自 N 项」，免得人以为 Mod 丢了。
-  const filtered = shown.length !== state.installedGroups.length;
-  $('#sub').textContent = `共 ${shown.length} 项 · ${
-    shown.filter(g => g.enabled && !g.partial).length
-  } 个已启用${filtered ? `（筛选自 ${state.installedGroups.length} 项）` : ''}`;
+  $('#sub').textContent = `共 ${shown.length} 项 · ${enabled} 个已启用${
+    shown.length !== total ? `（筛选自 ${total} 项）` : ''
+  }`;
+  gselUpdateBar();
   syncInstalledNav();
 }
 
@@ -6316,22 +6347,15 @@ function bindEvents() {
     }, 450);
   });
 
-  // 已安装页的关键词筛选：输入框是每次重画时现生成的，所以用委托 + 重画后把焦点还回去
-  // （否则敲第二个字就丢焦点，等于只能输一个字符）。
-  let instSearchTimer = null;
+  // 已安装页的关键词筛选：输入框是每次重画时现生成的，所以用委托。
+  // 但**输入过程中绝不重画**，只调 applyInstSearch() 就地切 class —— 早期版本是
+  // 「防抖 220ms 后 renderInstalled()、再把焦点和光标还回去」，在四五百张卡的规模下
+  // 重画要一秒上下，焦点还回去时用户已经在打下一个字了，实测体验就是「像是只能输
+  // 一个字符 / 搜索框不好使」。改成就地过滤后输入框节点稳如磐石，也不用补光标。
   document.addEventListener('input', e => {
     if (!e.target || e.target.id !== 'instSearch') return;
     state.instFilters.q = e.target.value;
-    clearTimeout(instSearchTimer);
-    instSearchTimer = setTimeout(() => {
-      renderInstalled();
-      const el = $('#instSearch');
-      if (el) {
-        el.focus();
-        const n = el.value.length;
-        try { el.setSelectionRange(n, n); } catch { /* 某些 input 类型不支持 */ }
-      }
-    }, 220);
+    applyInstSearch();
   });
 
   // 全局委托

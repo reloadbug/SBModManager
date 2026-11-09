@@ -182,23 +182,41 @@ t('批量/筛选的委托分支都挂在主点击委托里', () => (['data-gbatc
   new RegExp(`t\\.closest\\('\\[${a}\\]'\\)`).test(app)) ? true : '有分支缺失'));
 t('清空筛选按钮把三个条件一起复位', () =>
   (/state\.instFilters = \{ q: '', state: '', kind: '' \};/.test(app) ? true : '清空不彻底'));
-t('关键词输入走委托 + 重画后把焦点与光标还回去', () =>
-  (/e\.target\.id !== 'instSearch'/.test(app) && /el\.setSelectionRange\(n, n\)/.test(app) ? true : '输入框会丢焦点'));
+t('关键词输入走委托，且输入过程中**不重画**（只就地过滤）', () => {
+  if (!/e\.target\.id !== 'instSearch'/.test(app)) return '没接委托';
+  const seg = app.slice(app.indexOf("e.target.id !== 'instSearch'"), app.indexOf("e.target.id !== 'instSearch'") + 320);
+  if (!/applyInstSearch\(\)/.test(seg)) return '输入后没调 applyInstSearch';
+  if (/renderInstalled\(\)/.test(seg)) return '输入过程中仍然整页重画（会丢输入框）';
+  return true;
+});
+t('输入处理里不再有「重画后补光标」那套（说明已经不靠重画了）', () =>
+  (/setSelectionRange\(n, n\)/.test(app) ? '旧的重画补光标代码还在' : true));
 t('类型下拉走 change 委托', () =>
   (/if \(e\.target\.id === 'instKind'\) \{/.test(app) ? true : '缺 instKind 的 change 分支'));
 
-// —— renderInstalled ——
-t('renderInstalled 先分组再筛选，并记下 installedShown', () =>
-  (/const shown = state\.installedGroups\.filter\(installedGroupMatches\);/.test(app)
-    && /state\.installedShown = shown;/.test(app) ? true : '没接上筛选'));
+// —— renderInstalled / 就地筛选 ——
+t('renderInstalled 排序作用在全部分组上（筛选不参与重画）', () =>
+  (/const sorted = state\.installedGroups\s*\n\s*\.slice\(\)\s*\n\s*\.sort\(/.test(app)
+    ? true : '没接上排序'));
+t('applyInstSearch 只切 class，不重建 DOM，并记下 installedShown', () =>
+  (/function applyInstSearch\(\) \{[\s\S]*?card\.classList\.toggle\('inst-hid', !hit\);[\s\S]*?state\.installedShown = shown;/.test(app)
+    ? true : '就地筛选没接上'));
+t('applyInstSearch 里不含 innerHTML（一旦重建就等于白改）', () => {
+  const i = app.indexOf('function applyInstSearch()');
+  const seg = app.slice(i, i + 1400);
+  return /innerHTML/.test(seg) ? 'applyInstSearch 里还在重建 DOM' : true;
+});
 t('工具栏同时挂上筛选条与多选条', () =>
   (/\$\{installedFilterRowHtml\(\)\}\$\{sortBar\}\$\{installedBatchRowHtml\(\)\}/.test(app) ? true : '工具栏没挂全'));
 t('筛选后重画会把勾选外观补回来（gselSyncAll）', () =>
   (/gselSyncAll\(\);/.test(app) ? true : '缺同步'));
-t('结果为空时给「没有符合筛选条件的 Mod」+ 清空筛选', () =>
-  (/没有符合筛选条件的 Mod/.test(app) && /data-iclear="1"/.test(app) ? true : '空结果没兜住'));
+t('空结果提示块始终存在、默认 hidden，由 applyInstSearch 显隐', () =>
+  (/id="instEmpty" hidden/.test(app) && /empty\.hidden = shown\.length > 0/.test(app)
+    && /没有符合筛选条件的 Mod/.test(app) && /data-iclear="1"/.test(app) ? true : '空结果没兜住'));
 t('副标题在筛选时注明「筛选自 N 项」', () =>
-  (/筛选自 \$\{state\.installedGroups\.length\} 项/.test(app) ? true : '副标题没说明'));
+  (/筛选自 \$\{total\} 项/.test(app) ? true : '副标题没说明'));
+t('关键词也搜磁盘文件名 / nx 标识 / 类型', () =>
+  (/m\.rel, m\.file, m\.tag \? 'nx' \+ m\.tag/.test(app) ? true : '搜索字段没扩展'));
 
 // —— CSS ——
 t('CSS 复用浏览页那套勾选框样式（body.sel .cover .ck）', () => (
@@ -207,6 +225,8 @@ t('筛选条有独立样式（.sortgrp.ifilter）', () => {
   if (!/\.sortgrp\.ifilter\{/.test(css)) return '缺 .sortgrp.ifilter';
   return /\.sortgrp\.ifilter select\{/.test(css) ? true : '缺下拉框样式';
 });
+t('CSS 有 .card.inst-hid 的隐藏规则（就地筛选要用）', () =>
+  (/\.card\.inst-hid\{display:none !important\}/.test(css) ? true : '缺 .card.inst-hid'));
 
 // —— i18n ——
 const NEW_KEYS = [
