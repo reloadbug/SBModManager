@@ -1742,6 +1742,37 @@ function register() {
     logger.event('data:libraryDir', { dir: r.dir, custom: r.custom });
     return { ...r, restart: true };
   });
+
+  /**
+   * 删掉管理器里的一份安装包（「已下载」卡片上的「删除」）。
+   * 只允许删安装包目录里的压缩包 —— 前端传来的路径一律不信，重新按目录判一次。
+   * 已经装进游戏的文件一律不碰（那是 uninstall 的活）。
+   */
+  handle('library:remove', (archivePath) => {
+    const raw = String(archivePath || '');
+    if (!raw) throw new Error('没有指定安装包路径');
+    const libRoot = path.resolve(paths.LIBRARY);
+    const abs = path.resolve(raw);
+    const lowAbs = abs.toLowerCase();
+    const lowRoot = libRoot.toLowerCase();
+    if (lowAbs !== lowRoot && !lowAbs.startsWith(lowRoot + path.sep)) {
+      throw new Error('只能删安装包目录里的文件（当前目录：' + paths.LIBRARY + '）');
+    }
+    if (!/\.(zip|7z|rar)$/i.test(abs)) throw new Error('只能删压缩包（zip / 7z / rar）');
+    if (!fs.existsSync(abs)) throw new Error('这个安装包已经不在了：' + path.basename(abs));
+    const st = fs.statSync(abs);
+    if (!st.isFile()) throw new Error('不是文件，没法删：' + path.basename(abs));
+    // 队列里还挂着指向它的任务（下载失败 / 取消那种）就一起清掉，别留悬空记录
+    for (const t of engine.list()) {
+      if (!t.archivePath) continue;
+      if (path.resolve(t.archivePath).toLowerCase() !== lowAbs) continue;
+      if (t.status === 'installed') continue;
+      try { engine.remove(t.id, { deleteArchive: false }); } catch { /* 清不掉也不影响删包 */ }
+    }
+    fs.unlinkSync(abs);
+    logger.event('library:removed', { file: path.basename(abs), size: st.size });
+    return { removed: true, file: path.basename(abs), size: st.size };
+  });
   handle('mods:reveal', (id) => {
     const mods = listMods().installed;
     const m = mods.find(x => x.id === id);

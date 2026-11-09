@@ -3926,8 +3926,13 @@ async function refreshLibrary() {
   return state.library;
 }
 
-function libraryCount() {
-  return (state.library && state.library.installable) || 0;
+function libraryCount() {  return (state.library && state.library.installable) || 0;
+}
+
+/** 从当前清单里按 modId 找一条（「定位」「删除」按钮要拿它的 archivePath） */
+function libItemOf(modId) {
+  const items = (state.library && state.library.items) || [];
+  return items.find(x => String(x.modId) === String(modId)) || null;
 }
 
 /**
@@ -4039,6 +4044,8 @@ function libCardHtml(it, opts) {
         <span>${fmtSize(it.size)}</span>
         <div class="acts">
           ${o.hideDetail ? '' : `<button class="btn sm" data-libdetail="${it.modId}" title="看这个 Mod 在 Nexus 上的详情">详情</button>`}
+          <button class="btn sm" data-libreveal="${it.modId}" title="在资源管理器里定位这份安装包">定位</button>
+          <button class="btn sm d" data-libdel="${it.modId}" title="从管理器里删掉这份安装包（不影响已经装进游戏的文件）">删除</button>
           <button class="btn sm p" data-lib-install="${it.modId}" title="把这份安装包装进当前游戏目录">装进游戏</button>
         </div>
       </div>
@@ -6638,6 +6645,31 @@ function bindEvents() {
   if (t.closest('[data-lib-more]')) { state.libShown = (state.libShown || 12) + 12; renderBrowse(); return; }
   const libDetail = t.closest('[data-libdetail]');
   if (libDetail) { openNexusDrawer(libDetail.dataset.libdetail); return; }
+  // 「定位」：在资源管理器里把那份安装包选中（只在管理器目录里，不会乱开别的地方）
+  const libReveal = t.closest('[data-libreveal]');
+  if (libReveal) {
+    const it = libItemOf(libReveal.dataset.libreveal);
+    if (!it) { toast('这个安装包已经不在清单里了，刷新一下看看'); return; }
+    try { await call(window.api.revealPath(it.archivePath), { silent: true }); }
+    catch (e) { toast(e.message, 'err'); }
+    return;
+  }
+  // 「删除」：只删管理器里的安装包文件，不动已装进游戏的内容
+  const libDel = t.closest('[data-libdel]');
+  if (libDel) {
+    const it = libItemOf(libDel.dataset.libdel);
+    if (!it) { toast('这个安装包已经不在清单里了，刷新一下看看'); return; }
+    const name = it.name || it.filename;
+    if (!confirm(`要从管理器里删掉这个安装包吗？\n\n${name}\n${fmtSize(it.size)}\n\n只删管理器里的这一份安装包，已经装进游戏的文件不受影响。`)) return;
+    try {
+      await call(window.api.download.removeArchive(it.archivePath));
+      await refreshLibrary();
+      await refreshDownloads();
+      if (state.browse.onlyDownloaded) renderBrowse(); else renderDownload();
+      toast('已删除安装包：' + fmtSize(it.size), 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+    return;
+  }
   // 下载页那条提示：跳到「浏览 Mod」并把「已下载」筛选打开
   if (t.closest('[data-lib-goto]')) {
     state.browse.onlyDownloaded = true;

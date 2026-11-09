@@ -1193,5 +1193,10 @@
     '到「已下载」里批量安装': 'Zainstaluj w „Pobrane"',
     '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Otwórz filtr „Pobrane" na stronie „Przeglądaj", aby zaznaczyć kilka i zainstalować je razem',
     '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Pokazuj tylko pakiety pobrane do menedżera, ale jeszcze niezainstalowane w bieżącym folderze gry (lista lokalna, instalacja wielu naraz)',
+    '删除': 'Usuń',
+    '在资源管理器里定位这份安装包': 'Pokaż ten pakiet w Eksploratorze',
+    '从管理器里删掉这份安装包（不影响已经装进游戏的文件）': 'Usuń ten pakiet z menedżera (pliki w grze pozostają)',
+    '这个安装包已经不在清单里了，刷新一下看看': 'Tego pakietu nie ma już na liście — odśwież',
+    '已删除安装包：%s': 'Usunięto pakiet: %s',
   });
 })();

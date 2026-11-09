@@ -1193,5 +1193,10 @@
     '到「已下载」里批量安装': 'Install them from "Downloaded"',
     '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Open the "Downloaded" filter on the Browse page to select several and install them together',
     '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Show only packages already downloaded into the manager but not yet installed into the current game folder (local list, multi-select install)',
+    '删除': 'Delete',
+    '在资源管理器里定位这份安装包': 'Show this package in File Explorer',
+    '从管理器里删掉这份安装包（不影响已经装进游戏的文件）': 'Delete this package from the manager (installed game files are not touched)',
+    '这个安装包已经不在清单里了，刷新一下看看': 'That package is no longer in the list — try refreshing',
+    '已删除安装包：%s': 'Package deleted: %s',
   });
 })();

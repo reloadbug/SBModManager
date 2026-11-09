@@ -1193,5 +1193,10 @@
     '到「已下载」里批量安装': 'Unter „Heruntergeladen" installieren',
     '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Öffne den Filter „Heruntergeladen" auf der Seite „Mods durchsuchen", um mehrere auszuwählen und gemeinsam zu installieren',
     '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Nur Pakete zeigen, die bereits im Manager heruntergeladen, aber noch nicht im aktuellen Spielordner installiert sind (lokale Liste, Mehrfachinstallation)',
+    '删除': 'Löschen',
+    '在资源管理器里定位这份安装包': 'Dieses Paket im Explorer anzeigen',
+    '从管理器里删掉这份安装包（不影响已经装进游戏的文件）': 'Dieses Paket aus dem Manager löschen (installierte Spieldateien bleiben unberührt)',
+    '这个安装包已经不在清单里了，刷新一下看看': 'Dieses Paket steht nicht mehr in der Liste – bitte aktualisieren',
+    '已删除安装包：%s': 'Paket gelöscht: %s',
   });
 })();

@@ -256,6 +256,36 @@ for (const k of ['正在盘点管理器里的安装包…', '没有已下载但�
   ok(keyList.includes(k), 'i18n 有键：' + k.slice(0, 20));
 }
 
+/* ============================ D1c. 「已下载」卡片的定位 / 删除（0.4.5） ============================ */
+console.log('\n=== D1c) 「已下载」卡片的定位 / 删除 ===');
+
+const ipcSrc2 = read('src/main/ipc.js');
+const preSrc2 = read('src/preload/index.js');
+
+ok(appSrc.includes('data-libreveal="${it.modId}"'), '卡片上有「定位」按钮');
+ok(appSrc.includes('data-libdel="${it.modId}"'), '卡片上有「删除」按钮');
+ok(appSrc.includes('function libItemOf(modId)'), 'app.js 有 libItemOf()（按 modId 取 archivePath）');
+ok(appSrc.includes("t.closest('[data-libreveal]')"), '「定位」有委托分支');
+ok(appSrc.includes('window.api.revealPath(it.archivePath)'), '「定位」把安装包路径交给资源管理器');
+ok(appSrc.includes("t.closest('[data-libdel]')"), '「删除」有委托分支');
+ok(appSrc.includes('window.api.download.removeArchive(it.archivePath)'), '「删除」走 removeArchive');
+ok(appSrc.includes('已经装进游戏的文件不受影响'), '删除前有 confirm 说明不影响已装进游戏的文件');
+
+ok(ipcSrc2.includes("handle('library:remove'"), 'ipc 有 library:remove 通道');
+ok(ipcSrc2.includes('只能删安装包目录里的文件'), 'library:remove 会校验路径必须在安装包目录里');
+ok(ipcSrc2.includes('只能删压缩包（zip / 7z / rar）'), 'library:remove 只认压缩包');
+ok(ipcSrc2.includes('engine.remove(t.id, { deleteArchive: false })'), '删包时顺手清掉队列里指向它的任务');
+ok(ipcSrc2.includes("logger.event('library:removed'"), '删包会写日志');
+
+ok(preSrc2.includes("removeArchive: (archivePath) => invoke('library:remove', archivePath)"),
+  'preload 有 removeArchive');
+
+for (const k of ['删除', '在资源管理器里定位这份安装包',
+  '从管理器里删掉这份安装包（不影响已经装进游戏的文件）',
+  '这个安装包已经不在清单里了，刷新一下看看', '已删除安装包：%s']) {
+  ok(keyList.includes(k), 'i18n 有键：' + k.slice(0, 20));
+}
+
 /* ============================ D2. 安装包目录可配置 ============================ */
 console.log('\n=== D2) 安装包目录：可指到别的盘（0.4.0）===');
 

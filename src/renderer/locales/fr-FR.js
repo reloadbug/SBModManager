@@ -1193,5 +1193,10 @@
     '到「已下载」里批量安装': 'Installer depuis « Téléchargés »',
     '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Ouvrez le filtre « Téléchargés » de la page « Parcourir » pour en sélectionner plusieurs et les installer ensemble',
     '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Afficher uniquement les paquets déjà téléchargés dans le gestionnaire mais pas encore installés dans le dossier de jeu actuel (liste locale, installation groupée)',
+    '删除': 'Supprimer',
+    '在资源管理器里定位这份安装包': 'Afficher ce paquet dans l’Explorateur',
+    '从管理器里删掉这份安装包（不影响已经装进游戏的文件）': 'Supprimer ce paquet du gestionnaire (les fichiers installés dans le jeu ne sont pas touchés)',
+    '这个安装包已经不在清单里了，刷新一下看看': 'Ce paquet n’est plus dans la liste — rafraîchissez',
+    '已删除安装包：%s': 'Paquet supprimé : %s',
   });
 })();

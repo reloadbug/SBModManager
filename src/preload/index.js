@@ -228,6 +228,8 @@ contextBridge.exposeInMainWorld('api', {
     librarySetDir: (dir) => invoke('library:setDir', dir),
     /** 把 library 里的某个包装进当前游戏目录 */
     installFromLibrary: (archivePath, meta, opts) => invoke('library:install', archivePath, meta, opts),
+    /** 删掉管理器里的一份安装包（只动安装包目录里的压缩包，不碰已装进游戏的文件） */
+    removeArchive: (archivePath) => invoke('library:remove', archivePath),
     /** 队列变化（新增 / 状态变更 / 进度写库），返回取消订阅函数 */
     onChanged: (cb) => {
       const h = (_e, info) => cb(info);

@@ -1193,5 +1193,10 @@
     '到「已下载」里批量安装': '«İndirilenler» içinden kur',
     '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': '«Modlara göz at» sayfasındaki «İndirilenler» filtresini açarak birkaçını seçip birlikte kurabilirsin',
     '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Yalnızca yöneticiye indirilmiş ama geçerli oyun klasörüne henüz kurulmamış paketleri göster (yerel liste, çoklu kurulum)',
+    '删除': 'Sil',
+    '在资源管理器里定位这份安装包': 'Bu paketi Gezgin’de göster',
+    '从管理器里删掉这份安装包（不影响已经装进游戏的文件）': 'Bu paketi yöneticiden sil (oyuna kurulan dosyalara dokunulmaz)',
+    '这个安装包已经不在清单里了，刷新一下看看': 'Bu paket artık listede değil — yenile',
+    '已删除安装包：%s': 'Paket silindi: %s',
   });
 })();
