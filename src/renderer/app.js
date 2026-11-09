@@ -417,27 +417,60 @@ async function fillGallery(modId, { force = false } = {}) {
   const box = $('#galleryBox');
   if (!box) return;
 
+  const token = String(modId);
+  box.dataset.modid = token;               // 记住这块图集属于哪个 Mod
+  // 抽屉里已经画着的东西（在线 Mod 那张主图 hero）先留着 ——
+  // 2026-11-09 用户反馈：已经有图的 Mod 点开详情，图集区一直转圈，
+  // 而原来的写法是「一上来就把这块清空、只放一个 spinner」，主图也跟着没了，
+  // 于是一边有图一边说在加载，看着就像卡死。现在改成「不清空，只在下面加一行进度」。
+  const keep = box.innerHTML.trim();
+  const stale = () => {
+    const b = $('#galleryBox');
+    return !b || b.dataset.modid !== token;   // 抽屉关了 / 换成别的 Mod 了
+  };
+
   if (!force) {
     let local = [];
     try { local = await call(window.api.modImagesDisk(modId), { silent: true }); } catch { local = []; }
-    const box0 = $('#galleryBox');
-    if (!box0) return;                     // 抽屉已关 / 内容已换，别再写
+    if (stale()) return;
     if (local && local.length) {
-      box0.innerHTML = `<div class="lbl">图集 · ${local.length} 张（已缓存到本地）</div>${imageGrid(local)}`;
+      $('#galleryBox').innerHTML = `<div class="lbl">图集 · ${local.length} 张（已缓存到本地）</div>${imageGrid(local)}`;
       return;                              // 本地就有，收工，不联网
     }
   }
 
-  box.innerHTML = '<div class="txt" style="color:var(--dim2)"><span class="spin"></span> 正在获取该 Mod 的图集…</div>';
+  // 本地没有：图先不动，底下挂一行进度；最多等 8 秒就换成「先看主图」的口径，
+  // 免得 spinner 一直转（真正的请求还在跑，回来了照样把图集补上）。
+  const note = document.createElement('div');
+  note.className = 'galnote';
+  note.style.cssText = 'color:var(--dim2);font-size:12px;margin-top:6px';
+  note.innerHTML = '<span class="spin"></span> 正在获取这个 Mod 的图集…';
+  box.appendChild(note);
+  const timer = setTimeout(() => {
+    if (stale() || note.dataset.done) return;
+    note.innerHTML = '图集还在抓，先看这张主图；抓到会自动补上。';
+  }, 8000);
+
   let imgs = [];
   try {
     imgs = await call(window.api.modImages(modId, null, force ? { force: true } : undefined), { silent: true });
   } catch { imgs = []; }
+  clearTimeout(timer);
+  note.dataset.done = '1';
+  if (stale()) return;                     // 抽屉已关 / 内容已换，别再写
   const box2 = $('#galleryBox');
-  if (!box2) return;                       // 抽屉已关 / 内容已换，别再写
-  box2.innerHTML = (imgs && imgs.length)
-    ? `<div class="lbl">图集 · ${imgs.length} 张（已缓存到本地）</div>${imageGrid(imgs)}`
-    : `<div class="lbl">图集</div><div class="txt" style="color:var(--dim2)">没能取到图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。</div>`;
+  if (!box2) return;
+  if (imgs && imgs.length) {
+    box2.innerHTML = `<div class="lbl">图集 · ${imgs.length} 张（已缓存到本地）</div>${imageGrid(imgs)}`;
+    return;
+  }
+  // 一张都没抓到：把原来的内容放回去，只在下面说一句，不把主图吃掉
+  box2.innerHTML = keep;
+  const tip = document.createElement('div');
+  tip.className = 'galnote';
+  tip.style.cssText = 'color:var(--dim2);font-size:12px;margin-top:6px';
+  tip.textContent = '没能取到更多图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。';
+  box2.appendChild(tip);
 }
 
 /* ---------------- 已安装 Mod：分组与排序 ---------------- */
@@ -555,7 +588,17 @@ function groupInstalled(list) {
   const byKey = new Map();
   for (const m of list || []) {
     const src = (m.meta && m.meta.source) || {};
-    const modId = Number(src.modId || (m.meta && m.meta.modId) || 0) || 0;
+    // 归组的 modId 有四个来源，优先级从「最可信」到「尽力认」：
+    //   1. 注册表里记的 source.modId —— 本程序装的，绝对准
+    //   2. 扫描条目自带的 meta.modId
+    //   3. 「批量解析」对上的关联（mod-links.json）
+    //   4. 文件名后缀的 [nx<modId>] 标识 —— 见 src/main/modTag.js
+    // 第 4 条是关键：一个 mod 解压出十几个 pak 时，只要文件名带同一个标识，
+    // 哪怕注册表里还没有它（刚拷进去 / 装到一半 / 记录被清过），也必须显示成同一张卡，
+    // 否则就是一屏「Addon_Nier_03_xxx」这种长得一模一样、谁也不认识谁的碎卡片。
+    const tagId = Number((m.tag && m.tag.modId) || 0) || 0;
+    const linkId = Number((m.link && m.link.modId) || 0) || 0;
+    const modId = Number(src.modId || (m.meta && m.meta.modId) || 0) || linkId || tagId || 0;
     const key = modId ? ('mod:' + modId) : ('one:' + m.id);
     let g = byKey.get(key);
     if (!g) { g = { key, modId, items: [] }; byKey.set(key, g); }
@@ -1991,7 +2034,11 @@ function browseCard(n) {
   if (!st) {
     action = `<button class="btn sm" data-dl-add="${n.modId}" title="加入下载队列（之后自动下载并安装）">⬇ 下载</button>`;
   } else if (st.act === 'install') {
-    action = `<button class="btn sm p" data-local-install="${esc(n.local.taskId)}" title="安装包已在本地，直接安装">${st.btn}</button>`;
+    // 队列里的任务有 taskId，走「确认安装」；安装包库里的包没有任务，走 library:install
+    // （2026-11-09：本地明明有包，卡片还显示「下载」，点一下又下一遍）
+    action = n.local.taskId
+      ? `<button class="btn sm p" data-local-install="${esc(n.local.taskId)}" title="安装包已在本地，直接安装">${st.btn}</button>`
+      : `<button class="btn sm p" data-lib-install="${n.modId}" title="安装包已经在管理器里（不用再下一次），直接装进游戏目录">${st.btn}</button>`;
   } else if (st.act === 'installed') {
     action = `<button class="btn sm st-ok" data-goto-page="p-installed" title="已装到本地，去「已安装 Mod」看看">${st.btn}</button>`;
   } else if (st.act === 'download') {
@@ -3101,7 +3148,10 @@ async function applyDrawerLocalState(modId) {
   if (!foot || !st) return;
   const openBtn = `<button class="btn" data-openurl="${esc(cur.url)}">在浏览器打开</button>`;
   if (st.act === 'install') {
-    foot.innerHTML = openBtn + `<button class="btn p" data-local-install="${esc(local.taskId)}">${st.btn}</button>`;
+    // 库里的包没有 taskId，走 library:install（否则按钮点了没反应）
+    foot.innerHTML = openBtn + (local.taskId
+      ? `<button class="btn p" data-local-install="${esc(local.taskId)}">${st.btn}</button>`
+      : `<button class="btn p" data-lib-install="${cur.modId}">${st.btn}</button>`);
   } else if (st.act === 'installed') {
     foot.innerHTML = openBtn + `<button class="btn st-ok" data-goto-page="p-installed">${st.btn}</button>`;
   } else if (st.act === 'download') {
@@ -4079,40 +4129,52 @@ let libMetaBusy = false;
 async function ensureLibMeta() {
   if (libMetaBusy) return;
   if (!state.library || !state.library.items || !state.library.items.length) return;
-  const nx = window.api && window.api.nexus;
-  if (!nx || typeof nx.detail !== 'function') return;
+  const api = (window.api && window.api.info) || null;
+  if (!api || typeof api.local !== 'function') return;
   if (!state.libMeta) state.libMeta = new Map();
   if (!state.libMetaTried) state.libMetaTried = new Set();
-  const shown = state.library.items.slice(0, state.libShown || 12);
-  const todo = shown
-    .filter(it => !state.libMeta.has(String(it.modId)) && !state.libMetaTried.has(String(it.modId)))
-    .slice(0, 6);
-  if (!todo.length) return;
+  const shown = state.library.items.slice(0, state.libShown || 12).filter(it => Number(it.modId));
+  const miss = shown
+    .map(it => Number(it.modId))
+    .filter(id => !state.libMeta.has(String(id)));
+  if (!miss.length) return;
   libMetaBusy = true;
   let got = 0;
+  const adopt = (obj) => {
+    for (const [id, r] of Object.entries(obj || {})) {
+      if (!r) continue;
+      state.libMeta.set(String(id), {
+        name: r.name || '',
+        author: r.author || '',
+        summary: r.summary || '',
+        version: r.version || '',
+        image: r.coverLocal || r.pictureUrl || r.image || ''
+      });
+      got++;
+    }
+  };
   try {
-    for (const it of todo) {
-      const id = String(it.modId);
-      state.libMetaTried.add(id);
-      try {
-        const d = await call(nx.detail(it.modId), { silent: true });
-        if (d && (d.name || d.image)) {
-          state.libMeta.set(id, {
-            name: d.name || '',
-            author: d.author || '',
-            summary: d.summary || '',
-            version: d.version || '',
-            image: d.image || d.pictureUrl || ''
-          });
-          got++;
-        }
-      } catch { /* 没网 / 没 API Key 就退回文件名，不打扰用户 */ }
+    /*
+     * ① 先问本地档案（档案 → Nexus 目录缓存）——一个网络请求都不发。
+     *    绝大多数包在这一步就有名字、作者、版本和封面了。
+     */
+    try { adopt(await call(api.local(miss), { silent: true })); } catch { /* 本地读失败就往下走 */ }
+
+    /*
+     * ② 本地真没有的，才一次补 6 条。主进程补到就落盘（含封面），
+     *    所以下一次打开列表这一步也不会再发请求。
+     */
+    const still = miss
+      .filter(id => !state.libMeta.has(String(id)) && !state.libMetaTried.has(String(id)))
+      .slice(0, 6);
+    if (still.length && typeof api.fill === 'function') {
+      for (const id of still) state.libMetaTried.add(String(id));
+      try { adopt(await call(api.fill(still), { silent: true })); } catch { /* 没网 / 没 API Key 就按文件名显示 */ }
     }
   } finally {
     libMetaBusy = false;
   }
-  // 补到东西就重画一次 —— 卡片可能长在下载页，也可能长在「浏览 Mod → 已下载」里，
-  // 所以要按当前所在的界面重画（重画时又会继续补下一批 6 个）。
+  // 补到东西就重画一次 —— 卡片可能长在下载页，也可能长在「浏览 Mod → 已下载」里。
   if (got) {
     if (state.browse.onlyDownloaded) renderBrowse();
     else renderDownload();
@@ -4127,11 +4189,11 @@ async function ensureLibMeta() {
 function libCardHtml(it, opts) {
   const o = opts || {};
   const selected = !!o.selectable && state.sel.ids.has(String(it.modId));
-  const meta = libMetaFor(it.modId) || {};
+  const meta = libMetaFor(it.modId) || it.info || {};
   const title = meta.name || it.name;
   const ver = it.version || meta.version || '';
   const ext = (String(it.filename).match(/\.([a-z0-9]{1,5})$/i) || [null, ''])[1].toUpperCase();
-  const img = meta.image || coverForMod(it.modId) || '';
+  const img = meta.coverLocal || meta.image || coverForMod(it.modId) || '';
   const summary = meta.summary || it.filename;
   return `
   <div class="card${selected ? ' sel' : ''}" data-modid="${it.modId}" data-libcard="${it.modId}">
@@ -4222,8 +4284,11 @@ function confirmBugMarked(items) {
 }
 
 async function libInstall(modId) {
-  const it = ((state.library && state.library.items) || []).find(x => String(x.modId) === String(modId));
-  if (!it) { await refreshLibrary(); renderDownload(); return; }
+  const find = () => ((state.library && state.library.items) || []).find(x => String(x.modId) === String(modId));
+  let it = find();
+  // 从浏览页点进来的：可能还没进过「下载」页，清单是空的 —— 现拉一次
+  if (!it) { await refreshLibrary(); it = find(); }
+  if (!it) { toast('安装包不在本地了（可能被删了），重新下载一次吧', 'warn'); return; }
   // 单个安装也问一句：标过「有 bug」的包，别手滑又装进去
   const ok = await confirmBugMarked([it]);
   if (!ok || !ok.length) return;
@@ -4232,6 +4297,7 @@ async function libInstall(modId) {
     toast('已加入安装队列');
     await refreshDownloads();
     await refreshLibrary();
+    await refreshCardStates();   // 浏览页那张卡的「安装」立刻变成「安装中」
     // 在「已下载」筛选里点的，就重画浏览页（装进去的那张会从清单里消失）
     if (state.browse.onlyDownloaded) renderBrowse(); else renderDownload();
   } catch (e) { toast(e.message, 'err'); }

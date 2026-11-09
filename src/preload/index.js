@@ -280,6 +280,17 @@ contextBridge.exposeInMainWorld('api', {
   modImagesDisk: modId => invoke('mod:imagesDisk', modId),
 
   /**
+   * Mod 基本信息的本地档案（名字 / 作者 / 版本 / 摘要 / 封面）。
+   *   local —— 只读本地：档案 → Nexus 目录缓存，一个网络请求都不发；
+   *   fill  —— 只补本地缺的那几条（主进程一次最多 6 个），补到就落盘，
+   *            以后列表、详情、离线时都直接用本地的。
+   */
+  info: {
+    local: (modIds) => invoke('info:local', modIds),
+    fill: (modIds) => invoke('info:fill', modIds)
+  },
+
+  /**
    * 下载目录监听 —— 「手动下载」这条路的兜底。
    * 盯着下载文件夹，出现新的 mod 压缩包就自动导入队列。
    */

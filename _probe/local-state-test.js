@@ -255,7 +255,83 @@ t('decorateMods：非数组 → 空数组', () => {
     eq(decorateMods(undefined, idx), [], 'undefined') === true ? true : '不是空数组';
 });
 
-console.log('\n=== E. 常量自洽 ===');
+console.log('\n=== E. 安装包库 → 已下载（2026-11-09：清过下载记录后不该再显示「下载」）===');
+
+/** 造一条安装包库条目（localLibrary.scan().items 的形状） */
+function libItem(modId, extra = {}) {
+  return {
+    modId, name: 'Mod ' + modId, version: '1.0',
+    filename: modId + '_Mod_' + modId + '_1.0.zip',
+    archivePath: 'D:/lib/' + modId + '_Mod_' + modId + '_1.0.zip',
+    size: 1024, mtime: '2026-11-09T00:00:00.000Z', ...extra
+  };
+}
+
+t('库里有包 → 算「已下载」，并带 fromLibrary 标记', () => {
+  const idx = buildLocalIndex({ library: [libItem(4110)] });
+  const e = idx.pending.get(4110);
+  if (!e) return '没进 pending';
+  return e.state === 'pending' && e.fromLibrary === true && e.taskId === null
+    ? true : JSON.stringify(e);
+});
+
+t('库里的包带上文件名与路径（界面上能显示「哪份包」）', () => {
+  const e = buildLocalIndex({ library: [libItem(4110)] }).pending.get(4110);
+  return e.fileName === '4110_Mod_4110_1.0.zip' && /4110_Mod_4110_1\.0\.zip$/.test(e.archivePath)
+    ? true : JSON.stringify(e);
+});
+
+t('已安装的 modId 不会被库里的包改回「已下载」', () => {
+  const idx = buildLocalIndex({ scanned: [scanned(4110)], library: [libItem(4110)] });
+  return idx.installed.has(4110) && !idx.pending.has(4110) ? true : '被库覆盖了';
+});
+
+t('队列里已有「待安装」任务 → 保留任务的 taskId（按钮走确认安装那条路）', () => {
+  const idx = buildLocalIndex({ tasks: [task('t1', 4110, 'downloaded')], library: [libItem(4110)] });
+  const e = idx.pending.get(4110);
+  return e && e.taskId === 't1' && !e.fromLibrary ? true : JSON.stringify(e);
+});
+
+t('队列里只有「下载中」 → 也保留队列状态，不降级成库里的已下载', () => {
+  const idx = buildLocalIndex({ tasks: [task('t2', 4110, 'downloading')], library: [libItem(4110)] });
+  return idx.pending.get(4110).state === 'downloading' ? true : idx.pending.get(4110).state;
+});
+
+t('库里没有 modId 的条目一律忽略', () => {
+  const idx = buildLocalIndex({ library: [libItem(0), { filename: 'x.zip' }, null] });
+  return idx.pending.size === 0 ? true : '混进了 ' + idx.pending.size + ' 条';
+});
+
+t('library 传 null / undefined 不炸', () => {
+  const a = buildLocalIndex({ library: null });
+  const b = buildLocalIndex({ library: undefined });
+  return a.pending.size === 0 && b.pending.size === 0 ? true : '不是空的';
+});
+
+console.log('\n=== E2. 接线：主进程把安装包库并进索引、渲染层改走 library:install ===');
+
+const ipcSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'ipc.js'), 'utf8');
+const appSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+
+t('ipc.localIndex() 会扫安装包库并传给 buildLocalIndex', () => {
+  const at = ipcSrc.indexOf('function localIndex(');
+  if (at < 0) return '找不到 localIndex';
+  const body = ipcSrc.slice(at, at + 1600);
+  if (!/localLibrary\.scan\(\{[\s\S]*?dir: paths\.LIBRARY/.test(body)) return '没有扫 library';
+  return /buildLocalIndex\(\{ scanned, tasks, library \}\)/.test(body) ? true : '没把 library 传进去';
+});
+
+t('浏览页卡片：库里来的包走 data-lib-install，不再落到「⬇ 下载」', () => {
+  return /n\.local\.taskId\s*\n?\s*\?\s*`<button class="btn sm p" data-local-install=/.test(appSrc) &&
+    /data-lib-install="\$\{n\.modId\}"/.test(appSrc) ? true : '渲染层没分流';
+});
+
+t('详情抽屉：库里来的包也走 data-lib-install', () => {
+  return /local\.taskId\s*\n?\s*\?\s*`<button class="btn p" data-local-install=/.test(appSrc)
+    ? true : '抽屉没分流';
+});
+
+console.log('\n=== E3. 常量自洽 ===');
 
 t('TASK_STATE 的值都在 STATES 里', () => {
   const bad = Object.entries(TASK_STATE).filter(([, v]) => !STATES.includes(v));

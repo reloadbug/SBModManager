@@ -142,6 +142,36 @@ console.log('\n[1] groupInstalled：同 modId 合并成一张卡');
   eq(groupInstalled(undefined).length, 0, 'undefined → 空组（不抛）');
 }
 
+console.log('\n[1b] 文件名带 [nx<id>] 标识 / 批量解析关联 → 也要合并成一张卡');
+{
+  // 2026-11-09 用户实测：一个 mod 解压出十几个 pak（Addon_Nier_03_* 那种），
+  // 注册表里还没有记录时，界面会碎成一屏「未登记」卡片，谁也不认识谁。
+  // 归组不能只看注册表，还要认文件名后缀的标识和「批量解析」对上的关联。
+  const list = [
+    item({ id: 'one:a', name: 'Addon_Nier_03_HideSleeves_P', kind: 'pak', fileCount: 1, files: ['Addon_Nier_03_HideSleeves_P.pak'], meta: {}, tag: { modId: 550 } }),
+    item({ id: 'one:b', name: 'Addon_Nier_03_HideTie_P', kind: 'pak', fileCount: 1, files: ['Addon_Nier_03_HideTie_P.pak'], meta: {}, tag: { modId: 550 } }),
+    item({ id: 'one:c', name: 'Addon_Nier_03_HideChest_P', kind: 'pak', fileCount: 1, files: ['Addon_Nier_03_HideChest_P.pak'], meta: {}, tag: { modId: 550 } }),
+    item({ id: 'one:d', name: 'NoTag_P', kind: 'pak', fileCount: 1, files: ['NoTag_P.pak'], meta: {}, tag: null }),
+  ];
+  const gs = groupInstalled(list);
+  eq(gs.length, 2, '3 个同标识 + 1 个无标识 → 2 张卡');
+  const g = gs.find(x => x.modId === 550);
+  eq(!!g, true, '标识 550 那组存在');
+  eq(g.items.length, 3, '同标识的 3 个 pak 合成一组');
+  eq(g.fileCount, 3, '文件数按合并后累计');
+  eq(g.registered, false, '注册表没有它，仍旧标「未登记」');
+  eq(g.key, 'mod:550', '组键用 mod:550');
+
+  const linked = groupInstalled([
+    item({ id: 'one:e', name: 'x1', tag: null, link: { modId: 777 } }),
+    item({ id: 'one:f', name: 'x2', tag: null, link: { modId: 777 } }),
+  ]);
+  eq(linked.length, 1, '批量解析关联到同一 modId 的两条也合并');
+  eq(linked[0].modId, 777, '关联里的 modId 被采用');
+
+  eq(groupInstalled([]).length, 0, '空列表不炸');
+}
+
 console.log('\n[2] groupMtime：取组内最「新」的安装时间');
 {
   eq(groupMtime([{ mtime: '2026-10-01T00:00:00Z' }, { mtime: '2026-10-14T00:00:00Z' }]),

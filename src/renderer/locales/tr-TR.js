@@ -1226,5 +1226,10 @@
     '仍然全部安装': 'Yine de tümünü kur',
     '勾选的包都标过「有 bug」，已全部跳过': 'Seçilen tüm paketler hatalı işaretli — hepsi atlandı',
     '待安装的包都标过「有 bug」，已全部跳过': 'Bekleyen tüm paketler hatalı işaretli — hepsi atlandı',
+    '安装包已经在管理器里（不用再下一次），直接装进游戏目录': 'Kurulum paketi zaten yöneticide (yeniden indirmeye gerek yok) - doğrudan oyun klasörüne kur',
+    '安装包不在本地了（可能被删了），重新下载一次吧': 'Kurulum paketi artık diskte yok (silinmiş olabilir). Lütfen yeniden indir',
+    '正在获取这个 Mod 的图集…': 'Bu modun galerisi yükleniyor…',
+    '图集还在抓，先看这张主图；抓到会自动补上。': 'Galeri hâlâ alınıyor - şimdilik ana görseli gösteriyoruz; geldiğinde kendiliğinden tamamlanacak.',
+    '没能取到更多图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。': 'Daha fazla galeri görseli alınamadı (Cloudflare engelliyor olabilir veya bu modun ek görseli yok).',
   });
 })();

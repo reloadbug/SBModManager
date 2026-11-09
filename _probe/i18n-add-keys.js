@@ -1310,6 +1310,82 @@ const TABLE = [
   ['仍然全部安装', ['仍然全部安裝', 'Install all anyway', 'それでもすべてインストール', '그래도 모두 설치', 'Всё равно установить всё', 'Trotzdem alle installieren', 'Tout installer quand même', 'Instalar todo igualmente', 'Instalar tudo mesmo assim', 'Installa comunque tutto', 'Mimo to zainstaluj wszystko', 'Yine de tümünü kur', 'ติดตั้งทั้งหมดต่อไป']],
   ['勾选的包都标过「有 bug」，已全部跳过', ['勾選的包都標過「有 bug」，已全部跳過', 'All selected packages are marked as buggy — skipped them all', '選択したパッケージはすべて「不具合あり」のため、すべてスキップしました', "선택한 패키지가 모두 '버그 있음'이라 전부 건너뛰었습니다", 'Все выбранные пакеты помечены как проблемные — пропущены', 'Alle ausgewählten Pakete sind als fehlerhaft markiert — alle übersprungen', 'Tous les paquets sélectionnés sont marqués comme bugués — tous ignorés', 'Todos los paquetes seleccionados están marcados con fallos: omitidos', 'Todos os pacotes selecionados estão marcados com bugs — todos ignorados', 'Tutti i pacchetti selezionati sono segnati con bug: saltati', 'Wszystkie wybrane paczki są oznaczone jako błędne — pominięto', 'Seçilen tüm paketler hatalı işaretli — hepsi atlandı', 'แพ็กเกจที่เลือกทำเครื่องหมายว่ามีบั๊กทั้งหมด — ข้ามทั้งหมดแล้ว']],
   ['待安装的包都标过「有 bug」，已全部跳过', ['待安裝的包都標過「有 bug」，已全部跳過', 'Every pending package is marked as buggy — skipped them all', 'インストール待ちのパッケージはすべて「不具合あり」のため、すべてスキップしました', "설치 대기 중인 패키지가 모두 '버그 있음'이라 전부 건너뛰었습니다", 'Все ожидающие пакеты помечены как проблемные — пропущены', 'Alle ausstehenden Pakete sind als fehlerhaft markiert — alle übersprungen', 'Tous les paquets en attente sont marqués comme bugués — tous ignorés', 'Todos los paquetes pendientes están marcados con fallos: omitidos', 'Todos os pacotes pendentes estão marcados com bugs — todos ignorados', 'Tutti i pacchetti in attesa sono segnati con bug: saltati', 'Wszystkie oczekujące paczki są oznaczone jako błędne — pominięto', 'Bekleyen tüm paketler hatalı işaretli — hepsi atlandı', 'แพ็กเกจที่รอติดตั้งทำเครื่องหมายว่ามีบั๊กทั้งหมด — ข้ามทั้งหมดแล้ว']],
+  // ── ⑱ 0.4.12：安装包已在本地的按钮/提示 + 图集加载进度（5 条）──────────────
+  ['安装包已经在管理器里（不用再下一次），直接装进游戏目录', [
+    '安裝包已經在管理器裡（不用再下一次），直接裝進遊戲目錄',
+    'The installer is already in the manager (no need to download again) - install it straight into the game folder',
+    'インストーラーはすでにマネージャー内にあります（再ダウンロード不要）。そのままゲームフォルダーへインストールします',
+    '설치 파일이 이미 관리자에 있습니다(다시 받을 필요 없음). 게임 폴더에 바로 설치합니다',
+    'Установочный архив уже в менеджере (скачивать заново не нужно) — установим сразу в папку игры',
+    'Das Installationspaket liegt bereits im Manager (kein erneuter Download nötig) – direkt in den Spielordner installieren',
+    "L'archive d'installation est déjà dans le gestionnaire (pas besoin de la retélécharger) - installer directement dans le dossier du jeu",
+    'El paquete de instalación ya está en el gestor (no hace falta descargarlo otra vez): instálalo directamente en la carpeta del juego',
+    'O pacote de instalação já está no gerenciador (não precisa baixar de novo) - instale direto na pasta do jogo',
+    "Il pacchetto di installazione è già nel gestore (non serve riscaricarlo): installalo direttamente nella cartella del gioco",
+    'Paczka instalacyjna jest już w menedżerze (nie trzeba pobierać ponownie) — zainstaluj ją od razu w folderze gry',
+    'Kurulum paketi zaten yöneticide (yeniden indirmeye gerek yok) - doğrudan oyun klasörüne kur',
+    'มีแพ็กเกจติดตั้งอยู่ในตัวจัดการแล้ว (ไม่ต้องดาวน์โหลดซ้ำ) - ติดตั้งลงโฟลเดอร์เกมได้เลย'
+  ]],
+  ['安装包不在本地了（可能被删了），重新下载一次吧', [
+    '安裝包不在本地了（可能被刪了），重新下載一次吧',
+    'The installer is no longer on disk (it may have been deleted). Please download it again',
+    'インストーラーがローカルにありません（削除された可能性があります）。もう一度ダウンロードしてください',
+    '설치 파일이 로컬에 없습니다(삭제되었을 수 있음). 다시 다운로드해 주세요',
+    'Установочного архива больше нет на диске (возможно, удалён). Скачайте заново',
+    'Das Installationspaket ist nicht mehr vorhanden (vielleicht gelöscht). Bitte erneut herunterladen',
+    "L'archive d'installation n'est plus présente (peut-être supprimée). Retéléchargez-la",
+    'El paquete de instalación ya no está en disco (puede que se haya borrado). Descárgalo otra vez',
+    'O pacote de instalação não está mais no disco (talvez tenha sido excluído). Baixe novamente',
+    "Il pacchetto di installazione non è più sul disco (forse è stato eliminato). Scaricalo di nuovo",
+    'Paczki instalacyjnej nie ma już na dysku (może została usunięta). Pobierz ją ponownie',
+    'Kurulum paketi artık diskte yok (silinmiş olabilir). Lütfen yeniden indir',
+    'ไม่มีแพ็กเกจติดตั้งในเครื่องแล้ว (อาจถูกลบไป) กรุณาดาวน์โหลดใหม่'
+  ]],
+  ['正在获取这个 Mod 的图集…', [
+    '正在取得這個 Mod 的圖集…',
+    'Loading this mod’s gallery…',
+    'この Mod のギャラリーを取得中…',
+    '이 Mod의 갤러리를 가져오는 중…',
+    'Загружаем галерею этого мода…',
+    'Galerie dieses Mods wird geladen…',
+    'Chargement de la galerie de ce mod…',
+    'Cargando la galería de este mod…',
+    'Carregando a galeria deste mod…',
+    'Caricamento della galleria di questo mod…',
+    'Wczytywanie galerii tego moda…',
+    'Bu modun galerisi yükleniyor…',
+    'กำลังโหลดแกลเลอรีของมอดนี้…'
+  ]],
+  ['图集还在抓，先看这张主图；抓到会自动补上。', [
+    '圖集還在抓，先看這張主圖；抓到會自動補上。',
+    'Still fetching the gallery - here is the main image for now; it will fill in automatically.',
+    'ギャラリーを取得中です。まずはメイン画像をご覧ください。取得でき次第自動で反映されます。',
+    '갤러리를 아직 가져오는 중입니다. 우선 대표 이미지를 보여드리며, 가져오면 자동으로 채워집니다.',
+    'Галерея ещё загружается — пока показываем главное изображение. Как только загрузится, оно появится само.',
+    'Die Galerie wird noch geladen – hier ist vorerst das Hauptbild. Es wird automatisch ergänzt.',
+    'Galerie en cours de récupération - voici l’image principale en attendant ; elle se complétera automatiquement.',
+    'Aún se está obteniendo la galería: por ahora mostramos la imagen principal; se completará automáticamente.',
+    'A galeria ainda está sendo buscada - mostrando a imagem principal por enquanto; ela será completada automaticamente.',
+    'La galleria è ancora in recupero: per ora mostriamo l’immagine principale; si completerà da sola.',
+    'Galeria wciąż się wczytuje — na razie pokazujemy obraz główny; uzupełni się automatycznie.',
+    'Galeri hâlâ alınıyor - şimdilik ana görseli gösteriyoruz; geldiğinde kendiliğinden tamamlanacak.',
+    'กำลังดึงแกลเลอรีอยู่ ระหว่างนี้แสดงภาพหลักก่อน เมื่อได้แล้วจะเติมให้อัตโนมัติ'
+  ]],
+  ['没能取到更多图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。', [
+    '沒能取得更多圖集（可能被 Cloudflare 攔住，或該 Mod 沒有額外圖片）。',
+    'Could not fetch more gallery images (Cloudflare may be blocking, or this mod has no extra images).',
+    'これ以上のギャラリーを取得できませんでした（Cloudflare に遮られているか、この Mod に追加画像がない可能性があります）。',
+    '갤러리를 더 가져오지 못했습니다(Cloudflare에 막혔거나 이 Mod에 추가 이미지가 없을 수 있습니다).',
+    'Не удалось получить больше изображений галереи (возможно, блокирует Cloudflare или у мода нет дополнительных изображений).',
+    'Es konnten keine weiteren Galeriebilder geladen werden (evtl. blockiert Cloudflare, oder der Mod hat keine weiteren Bilder).',
+    "Impossible de récupérer plus d'images (Cloudflare bloque peut-être, ou ce mod n'a pas d'images supplémentaires).",
+    'No se pudieron obtener más imágenes (puede que Cloudflare lo bloquee o que este mod no tenga imágenes adicionales).',
+    'Não foi possível obter mais imagens (o Cloudflare pode estar bloqueando ou este mod não tem imagens extras).',
+    'Non è stato possibile recuperare altre immagini (forse Cloudflare blocca o questo mod non ha immagini extra).',
+    'Nie udało się pobrać kolejnych obrazów (być może blokuje Cloudflare lub mod nie ma dodatkowych obrazów).',
+    'Daha fazla galeri görseli alınamadı (Cloudflare engelliyor olabilir veya bu modun ek görseli yok).',
+    'ดึงภาพแกลเลอรีเพิ่มไม่ได้ (อาจถูก Cloudflare บล็อก หรือมอดนี้ไม่มีภาพเพิ่มเติม)'
+  ]]
 ];
 
 /**

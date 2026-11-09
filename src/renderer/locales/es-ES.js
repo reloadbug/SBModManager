@@ -1226,5 +1226,10 @@
     '仍然全部安装': 'Instalar todo igualmente',
     '勾选的包都标过「有 bug」，已全部跳过': 'Todos los paquetes seleccionados están marcados con fallos: omitidos',
     '待安装的包都标过「有 bug」，已全部跳过': 'Todos los paquetes pendientes están marcados con fallos: omitidos',
+    '安装包已经在管理器里（不用再下一次），直接装进游戏目录': 'El paquete de instalación ya está en el gestor (no hace falta descargarlo otra vez): instálalo directamente en la carpeta del juego',
+    '安装包不在本地了（可能被删了），重新下载一次吧': 'El paquete de instalación ya no está en disco (puede que se haya borrado). Descárgalo otra vez',
+    '正在获取这个 Mod 的图集…': 'Cargando la galería de este mod…',
+    '图集还在抓，先看这张主图；抓到会自动补上。': 'Aún se está obteniendo la galería: por ahora mostramos la imagen principal; se completará automáticamente.',
+    '没能取到更多图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。': 'No se pudieron obtener más imágenes (puede que Cloudflare lo bloquee o que este mod no tenga imágenes adicionales).',
   });
 })();

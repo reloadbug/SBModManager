@@ -39,6 +39,7 @@ const { createImageCache } = require('./imageCache');
 const variantCover = require('./variantCover');
 const dataMigrate = require('./dataMigrate');
 const gameHome = require('./gameHome');
+const { createModInfo, fromCatalog } = require('./modInfo');
 const { readJson, writeJson, setMirror } = require('./store');
 
 let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites, bugFlags;
@@ -52,6 +53,133 @@ function imageCache() {
   if (!imageCacheSingleton) imageCacheSingleton = createImageCache({ imagesDir: paths.IMAGES });
   return imageCacheSingleton;
 }
+
+/** Mod 基本信息档案的单例（一条一个 JSON，见 modInfo.js） */
+let modInfoSingleton = null;
+function modInfoStore() {
+  if (!modInfoSingleton) modInfoSingleton = createModInfo();
+  return modInfoSingleton;
+}
+
+/**
+ * 封面预热：档案里有图地址、但本地还没存过图的，慢慢存一份。
+ *
+ * 为什么要专做一件事：档案里的 pictureUrl 指向 Nexus 的 CDN，
+ * 卡片拿去用就等于每次打开列表都从网上下一次 —— 用户的诉求是
+ * 「关联过就全在本地」，所以这里把封面也搬下来，搬完档案里记下路径。
+ * 一次最多 3 张、同一张不重复尝试，失败就下次再说（不打扰用户）。
+ */
+const coverWarmTried = new Set();
+/** 本进程里已经排过队去补信息的包（避免每次列目录都重问同一批） */
+const libraryWarmTried = new Set();
+function warmCovers(recs) {
+  const todo = (recs || [])
+    .filter(r => r && r.modId && r.pictureUrl && !r.coverFile && !coverWarmTried.has(Number(r.modId)))
+    .slice(0, 3);
+  for (const rec of todo) {
+    const id = Number(rec.modId);
+    coverWarmTried.add(id);
+    (async () => {
+      try {
+        const cached = await imageCache().cacheModImages(id, [rec.pictureUrl], { limit: 1 });
+        const hit = (cached || []).find(x => x && x.path);
+        if (hit) modInfoStore().put({ modId: id, coverFile: hit.path });
+      } catch { /* 抓不到就下次 */ }
+    })();
+  }
+}
+
+/**
+ * 目录缓存的 modId → 条目倒排表。
+ * 「已下载 / 已安装」卡片要的名字、作者、版本、摘要、封面全在目录里，
+ * 有了这张表就不用为了显示一张卡去问 Nexus（问一次要几百毫秒 + 一个配额）。
+ */
+let catalogByIdCache = { key: -1, map: null };
+function catalogById() {
+  let fetchedAt = 0;
+  let mods = [];
+  try {
+    const c = linker.readCatalog(paths.nexusCatalog);
+    if (c) {
+      fetchedAt = Number(c.fetchedAt) || 0;
+      mods = c.mods || [];
+    }
+  } catch { /* 目录没抓过就只能是空表 */ }
+  if (catalogByIdCache.map && catalogByIdCache.key === fetchedAt) return catalogByIdCache.map;
+  const map = new Map(mods.map(m => [Number(m.modId), m]));
+  catalogByIdCache = { key: fetchedAt, map };
+  return map;
+}
+
+/**
+ * 取若干 Mod 的基本信息 —— **只读本地，一个网络请求都不发**。
+ * 顺序：先看档案（cache/mod-info/<modId>.json）→ 再看 Nexus 目录缓存（3169 条，
+ * 早就抓下来了）→ 顺手把目录里那条落成档案，下次连目录都不用翻。
+ */
+async function infoLocal(ids) {
+  const want = (Array.isArray(ids) ? ids : []).map(Number).filter(n => n > 0);
+  const out = {};
+  if (!want.length) return out;
+  const store = modInfoStore();
+  const cat = catalogById();
+  for (const id of want.slice(0, 500)) {
+    let rec = store.get(id);
+    if (!rec) {
+      const entry = cat.get(id);
+      if (entry) rec = store.put(fromCatalog(entry));
+    }
+    if (!rec) continue;
+    out[id] = { ...rec, coverLocal: store.coverUrlOf(rec) };
+  }
+  // 顺手把「有图地址、本地还没存」的封面搬下来（只挑 3 张，不挡这一轮返回）
+  try { warmCovers(Object.values(out)); } catch { /* 预热失败不影响返回 */ }
+  return out;
+}
+
+/**
+ * 补档案：只对「本地还没有」的 id 去问 Nexus，问到立刻落盘、封面存进图片缓存。
+ * 一次最多 6 个（界面是滚到哪补到哪），避免一屏几百个包把接口打爆。
+ * 已经齐了的 id 直接回档案，不发请求。
+ */
+async function infoFill(ids) {
+  const want = (Array.isArray(ids) ? ids : []).map(Number).filter(n => n > 0).slice(0, 6);
+  const out = {};
+  const store = modInfoStore();
+  for (const id of want) {
+    const old = store.get(id);
+    if (old && old.name && old.pictureUrl) {
+      out[id] = { ...old, coverLocal: store.coverUrlOf(old) };
+      continue;
+    }
+    let d = null;
+    try { d = await nexus.getMod(id); } catch { d = null; }
+    if (!d) continue;
+    const pictureUrl = String(d.pictureUrl || d.image || '').trim();
+    let coverFile = (old && old.coverFile) || '';
+    if (pictureUrl) {
+      try {
+        const cached = await imageCache().cacheModImages(id, [pictureUrl], { limit: 1 });
+        const hit = (cached || []).find(x => x && x.path);
+        if (hit) coverFile = hit.path;
+      } catch { /* 图挂了就只存文字信息，卡片回落 https 直连 */ }
+    }
+    const rec = store.put({
+      modId: id,
+      name: d.name || '',
+      author: d.author || '',
+      version: d.version || '',
+      summary: d.summary || '',
+      pictureUrl,
+      url: d.url || '',
+      adult: !!d.adult,
+      coverFile,
+      source: 'nexus'
+    });
+    if (rec) out[id] = { ...rec, coverLocal: store.coverUrlOf(rec) };
+  }
+  return out;
+}
+
 
 /**
  * 取某个 Mod 的展示图（最多 5 张不同图片）。
@@ -84,15 +212,22 @@ async function imagesForMod(modId, opts = {}) {
   if (local.length && !opts.force) return shape(local);
   if (opts.diskOnly) return shape(local);
 
+  /*
+   * 先问 Mod 记录，再问图集抓取器（2026-11-09 调整顺序）。
+   *
+   * `nexus.getMod()` 是一次 GraphQL 请求，几百毫秒，图片地址本来就在记录里；
+   * 图集抓取器要开隐藏窗口翻 mod 页面，慢的时候十几秒。原来把它放在前面，
+   * 于是「本地没缓存过」的 Mod 点开详情，图集区会一直转圈（用户反馈的
+   * 「已经有图的 mod 点开详情还是在不停加载」）。现在先用记录里的图落盘，
+   * 抓取器只在记录里一张图都没有时才兜底。
+   */
   let urls = [];
-  if (gallery) {
+  try { urls = ((await nexus.getMod(id)) || {}).images || []; } catch { urls = []; }
+  if (!urls.length && gallery) {
     try {
       const list = await gallery.getImages(id, opts);
       urls = (list || []).map(x => (typeof x === 'string' ? x : x && x.url)).filter(Boolean);
     } catch { urls = []; }
-  }
-  if (!urls.length) {
-    try { urls = ((await nexus.getMod(id)) || {}).images || []; } catch { urls = []; }
   }
   if (!urls.length) return [];
   let cached = [];
@@ -728,7 +863,19 @@ function localIndex(force = false) {
   let tasks = [];
   try { tasks = engine.list(); } catch { /* 队列读不出来就只按已安装算 */ }
 
-  const index = localState.buildLocalIndex({ scanned, tasks });
+  // 安装包库也要算进来：下载记录能删，包不能凭空消失
+  // （2026-11-09：用户清过「已完成记录」，浏览页又把本地已有的包显示成「⬇ 下载」）
+  let library = [];
+  try {
+    library = localLibrary.scan({
+      dir: paths.LIBRARY,
+      root,
+      entries: registry.all(),
+      tasks
+    }).items;
+  } catch { /* 库目录读不出来就当没有 */ }
+
+  const index = localState.buildLocalIndex({ scanned, tasks, library });
   localIdxCache = { at: now, index };
   return index;
 }
@@ -1040,13 +1187,34 @@ async function applyLinks(entries) {
 
     // 封面存一份到本地图片缓存：失败不影响关联本身
     let image = '';
+    let coverFile = '';
     if (pictureUrl) {
       try {
         const cached = await imageCache().cacheModImages(modId, [pictureUrl], { limit: 1 });
         const hit = (cached || []).find(x => x && x.localUrl);
-        if (hit) image = hit.localUrl;
+        if (hit) { image = hit.localUrl; coverFile = hit.path || ''; }
       } catch { /* 图挂了就挂着，卡片会回落到 https 直连 */ }
     }
+
+    /*
+     * 关联成功就把这条信息落成档案：以后列表、详情、离线时全用本地的，
+     * 不必为了「显示一下名字和封面」再问一遍 Nexus。
+     */
+    try {
+      const rec = modInfoStore().put({
+        modId,
+        name: String(e.name || info.name || '').trim(),
+        author: info.author || '',
+        version: info.version || '',
+        summary: info.summary || '',
+        pictureUrl,
+        url: info.url || ('https://www.nexusmods.com/stellarblade/mods/' + modId),
+        adult: !!info.adult,
+        coverFile,
+        source: byId.has(modId) ? 'catalog' : 'nexus'
+      });
+      if (rec && !image) image = modInfoStore().coverUrlOf(rec);
+    } catch { /* 档案写不进去不影响关联本身 */ }
 
     const link = {
       modId,
@@ -1726,12 +1894,62 @@ function register() {
    * 可安装包一直在 library 里（0.3.4 起这个目录不跟着游戏走）。这一条通道直接看磁盘，
    * 让「下好了没装」在清空队列、换游戏目录、甚至换机器之后都还看得见。
    */
-  handle('library:list', () => localLibrary.scan({
-    dir: paths.LIBRARY,
-    root: currentRoot(),
-    entries: registry.all(),
-    tasks: engine.list()
-  }));
+  handle('library:list', () => {
+    const r = localLibrary.scan({
+      dir: paths.LIBRARY,
+      root: currentRoot(),
+      entries: registry.all(),
+      tasks: engine.list()
+    });
+    /*
+     * 顺手把本地已有的信息挂到每个包上：卡片一开就有名字/作者/封面，
+     * 不用等 ensureLibMeta 去联网补（那一条只在真缺信息时才发请求）。
+     */
+    try {
+      const store = modInfoStore();
+      const cat = catalogById();
+      for (const it of (r.items || [])) {
+        const id = Number(it.modId);
+        if (!id) continue;
+        let rec = store.get(id);
+        if (!rec) {
+          const entry = cat.get(id);
+          if (entry) rec = store.put(fromCatalog(entry));
+        }
+        if (!rec) continue;
+        it.info = {
+          name: rec.name || '',
+          author: rec.author || '',
+          version: rec.version || '',
+          summary: rec.summary || '',
+          image: rec.pictureUrl || '',
+          coverLocal: store.coverUrlOf(rec) || '',
+          fromCache: true
+        };
+      }
+    } catch { /* 挂不上就按老样子显示文件名 */ }
+
+    /*
+     * 两件「后台慢慢变本地」的事，都不挡这次返回：
+     *   ① 有信息但封面还在 CDN 上的，把封面存下来；
+     *   ② 连信息都没有的包，一次补 6 个（补到就落盘，下次纯本地）。
+     * 队列被清过、换过目录也不会重复补：补到的那条已经有档案了。
+     */
+    try { warmCovers((r.items || [])
+      .filter(it => it.info && it.info.image)
+      .map(it => ({ modId: Number(it.modId), pictureUrl: it.info.image, coverFile: '' }))); } catch {}
+    try {
+      const lacking = (r.items || [])
+        .filter(it => Number(it.modId) && !it.info && !libraryWarmTried.has(Number(it.modId)))
+        .map(it => Number(it.modId))
+        .slice(0, 6);
+      if (lacking.length) {
+        for (const id of lacking) libraryWarmTried.add(id);
+        setTimeout(() => { infoFill(lacking).catch(() => {}); }, 60);
+      }
+    } catch { /* 补不到就按文件名显示 */ }
+    return r;
+  });
   /** 把 library 里的某个包装进当前游戏目录（复用「本地压缩包进队列」那条路） */
   handle('library:install', (archivePath, meta, opts) => {
     const r = engine.enqueueLocal(archivePath, meta || {}, { auto: true, from: 'library', ...(opts || {}) });
@@ -2621,6 +2839,13 @@ function register() {
   handle('favorites:add', (modId, meta) => favorites.add(modId, meta || {}));
   handle('favorites:remove', (modId) => favorites.remove(modId));
   handle('nexus:detail', (modId) => nexus.getMod(modId));
+  /**
+   * Mod 基本信息的本地档案：
+   *   info:local 永不联网（档案 → Nexus 目录缓存），用来喂列表和详情；
+   *   info:fill  只补本地缺的那几条（≤6 条），补到就落盘，封面一并存进图片缓存。
+   */
+  handle('info:local', (modIds) => infoLocal(modIds));
+  handle('info:fill', (modIds) => infoFill(modIds));
   handle('nexus:files', (modId) => nexus.getModFiles(modId));
   handle('nexus:parseUrl', (url) => parseNexusUrl(url));
   handle('nexus:clearCache', () => { nexus.clearCache(); return true; });

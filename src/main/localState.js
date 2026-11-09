@@ -8,6 +8,10 @@
  *      ⚠️ 用 scanner 结果而不是原始注册表：这样「文件已被手动删掉」的注册表条目
  *         不会误报成「已安装」。
  *   2. 下载队列 —— `meta.modId` 命中，且状态属于「进行中 / 待安装」。
+ *   3. 安装包库（`paths.LIBRARY`）—— 磁盘上的 `<modId>_<名>_<版本>.zip`，算「已下载」。
+ *      ⚠️ 2026-11-09 用户实测：下载记录被「清理已完成记录」删掉之后，浏览页
+ *      明明包就在本地，卡片却又显示「⬇ 下载」，点一下是**又下一遍**。
+ *      所以「本地有没有这个包」必须以磁盘为准，不能只看任务账本。
  *
  * ⚠️ **手动丢进 `~Mods` 的 pak 没有 modId，关联不上** —— 这里刻意不做名字模糊匹配。
  *    误标（显示已装其实没装）比不标更糟：用户会以为装好了，进游戏发现没生效。
@@ -49,9 +53,10 @@ const STATE_LABEL = {
  * @param {object}   p
  * @param {Array}    p.scanned   scanner.scan() 的结果
  * @param {Array}    p.tasks     downloadEngine.list() 的结果
+ * @param {Array}   [p.library]  localLibrary.scan().items（安装包库里的包）
  * @returns {{installed: Map<number, object>, pending: Map<number, object>}}
  */
-function buildLocalIndex({ scanned = [], tasks = [] } = {}) {
+function buildLocalIndex({ scanned = [], tasks = [], library = [] } = {}) {
   const installed = new Map();
 
   for (const m of Array.isArray(scanned) ? scanned : []) {
@@ -93,6 +98,30 @@ function buildLocalIndex({ scanned = [], tasks = [] } = {}) {
       name: (meta && meta.name) || '',
       fileName: (meta && meta.fileName) || '',
       fileId: Number(meta && meta.fileId) || 0
+    });
+  }
+
+  // ③ 安装包库：包躺在 `paths.LIBRARY` 里，但下载记录可能早被清掉了。
+  //    只是**兜底** —— 队列里已经有这个 modId 的任何状态（下载中 / 待安装 / 安装中）
+  //    就整条让给队列：队列那条带 taskId，按钮能问到确认信息，且「正在下载」
+  //    这件事比「库里有一份旧包」更该显示。
+  for (const it of Array.isArray(library) ? library : []) {
+    const modId = Number(it && it.modId);
+    if (!modId) continue;
+    if (installed.has(modId)) continue;
+    if (pending.has(modId)) continue;
+
+    pending.set(modId, {
+      state: 'pending',
+      modId,
+      taskId: null,
+      status: 'library',
+      name: (it && it.name) || '',
+      fileName: (it && it.filename) || '',
+      fileId: 0,
+      // 渲染层据此改走 `library:install`（安装包在管理器里，不用再下一次）
+      fromLibrary: true,
+      archivePath: (it && it.archivePath) || ''
     });
   }
 

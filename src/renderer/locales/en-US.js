@@ -1226,5 +1226,10 @@
     '仍然全部安装': 'Install all anyway',
     '勾选的包都标过「有 bug」，已全部跳过': 'All selected packages are marked as buggy — skipped them all',
     '待安装的包都标过「有 bug」，已全部跳过': 'Every pending package is marked as buggy — skipped them all',
+    '安装包已经在管理器里（不用再下一次），直接装进游戏目录': 'The installer is already in the manager (no need to download again) - install it straight into the game folder',
+    '安装包不在本地了（可能被删了），重新下载一次吧': 'The installer is no longer on disk (it may have been deleted). Please download it again',
+    '正在获取这个 Mod 的图集…': 'Loading this mod’s gallery…',
+    '图集还在抓，先看这张主图；抓到会自动补上。': 'Still fetching the gallery - here is the main image for now; it will fill in automatically.',
+    '没能取到更多图集（可能被 Cloudflare 拦住，或该 Mod 没有额外图片）。': 'Could not fetch more gallery images (Cloudflare may be blocking, or this mod has no extra images).',
   });
 })();

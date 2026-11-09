@@ -231,7 +231,7 @@ ok(appSrc.includes('onlyDownloaded: false'), 'state.browse 里有 onlyDownloaded
 ok(appSrc.includes('function browseVisibleItems()'), 'app.js 有 browseVisibleItems()（多选/全选按当前可见项算）');
 ok(appSrc.includes('function syncOnlyTabs()'), 'app.js 有 syncOnlyTabs()（两个按钮高亮互斥）');
 ok(appSrc.includes('function renderBrowseDownloaded()'), 'app.js 有 renderBrowseDownloaded()');
-ok(appSrc.includes("if (b.onlyDownloaded) {\r\n    renderBrowseDownloaded();"), 'renderBrowse() 在「已下载」时走本地清单');
+ok(/if \(b\.onlyDownloaded\) \{\r?\n    renderBrowseDownloaded\(\);/.test(appSrc), 'renderBrowse() 在「已下载」时走本地清单');
 ok(appSrc.includes('libCardHtml(it, { selectable: true, hideDetail: true })'),
   '「已下载」里复用浏览页卡片，并打开勾选');
 ok(appSrc.includes('async function libBatchInstall()'), 'app.js 有 libBatchInstall()');
