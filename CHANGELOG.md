@@ -6,7 +6,32 @@
 
 ## [0.4.13] - 2026-11-10
 
-看「已下载」的时候可以顺手把「未安装」也点亮，两个筛选不再互相顶掉；已下载的 Mod 也带上 👍 / 👎，详情页同样有。
+新增「崩溃诊断」页：直接读游戏崩溃快照和 UE4SS 日志，判断是哪个 Mod 让游戏在启动时就崩掉；看「已下载」的时候也可以顺手把「未安装」也点亮，两个筛选不再互相顶掉；已下载的 Mod 也带上 👍 / 👎，详情页同样有。
+
+### 新增
+
+- **新增「崩溃诊断」页**（`src/main/crashLog.js`，通道 `crash:report` / `crash:read` / `crash:openDir` / `crash:openFile`）。
+  以前「哪个 Mod 让游戏崩了」只能靠人肉翻 `%LOCALAPPDATA%\SB\Saved\Crashes` 里那一堆
+  `CrashContext.runtime-xml`，再对着 `ue4ss\UE4SS.log` 猜；现在这一页把两边同时读出来自己对齐：
+  `UE4SS.log` 读尾部 512 KB（超长时补读开头拿版本号与启动时间），崩溃快照取最近 20 份，
+  再清点 `~Mods` / `LogicMods` 的容器三件套、`mods.txt` 开关、`UE4SS-settings.ini` 关键项。
+- **结论按「证据强度」给，不是猜一个名字**。日志停在 `Loading mod: X` 且没走到 `Event loop start` 时
+  X 记 45 分（走到过记 30 分）；崩溃是启动期、而那几次启动确实在挂载蓝图 Mod 时集体记 22 分；
+  文件写入时间离最近一次启动 ≤2 小时 / ≤24 小时 / ≤7 天分别记 25 / 15 / 6 分；注入型（带 `main.dll`）
+  且崩溃栈里出现 `UE4SS.dll` 时记 12 分。同一份证据不重复计分，最后按分数给「高度可疑 / 比较可疑 /
+  证据不足按步骤排除 / 暂无结论」四档，并列出照着做就行的排除顺序（先移哪个文件、再改哪一行 `mods.txt`）。
+- **崩溃栈永远落在游戏本体里这件事，页面里直接写明**。蓝图 Mod 的 `ModActor` 是挂进世界之后才执行，
+  崩在异步加载线程（`FAsyncLoadingThread`）时栈里只有 `SB-Win64-Shipping`，所以不能从栈里读出 Mod 名字 ——
+  页面把「最近 N 次崩溃里有 M 次死在异步加载线程」「`MaxMemoryUsageDuringAssetLoading` 可以降到 50」这类
+  能动手的地方单列成提示，而不是让用户盯着空栈发呆。
+- **每条发现都能看原文**。`UE4SS.log`、任意一份 `CrashContext.runtime-xml` 都能在抽屉里直接打开（读 256 KB），
+  路径先按「崩溃目录 / 游戏日志目录 / UE4SS 目录」白名单校验（`readSource()`），目录外的路径一律拒绝，
+  不能当作读任意文件的通道；另有「打开崩溃目录 / 在资源管理器中定位」两颗按钮。
+- **侧栏徽章显示崩溃次数**（`#navCountCrash`），进页面才加载（`switchPage('p-crash')` 里懒加载），
+  没崩过就显示「还没抓到崩溃记录」并清空嫌疑与步骤 —— 没有现场时不给结论，避免为了给答案而瞎指认。
+- **只读，不动用户文件**。游戏本体是 Shipping 版、默认不写 `SB.log`，所以只认 `UE4SS.log` 与崩溃快照
+  这两处现场；不解析 pak 内容（判「两个 Mod 改了同一资源」要读 IoStore 索引，代价和风险都不值），
+  也不替用户搬文件 —— 页面只把「先移哪个、再改哪一行」写清楚，动手仍然是用户自己来。
 
 ### 修改
 
@@ -32,18 +57,15 @@
   以及「`applyDrawerLocalState` 重写操作行时不吞掉 vote」这条硬约束 → 42 通过。
 - i18n 第 ⑲ 组 4 条 × 13 语（同时开着的说明、`已下载 共 %s 个`、被筛掉的空态两条）→ 键表 1228 → 1232，
   13 个语言包全部 1232/1232。
-- 全量 54 个探针全绿。真机（dev + 独立 user-data-dir，真实数据 300 个安装包）：两个 chip 同时 `on`、
+- `_probe/crashlog-test.js` 83 项：`parseCrashXml` / `parseUe4ssLog` / `buildReport` 纯函数真身跑
+  （含 `{ installed }` 外壳、同一 Mod 多组文件只算最新那组）+ 接线断言。
+- 全量 55 个探针全绿。真机（dev + 独立 user-data-dir，真实数据 300 个安装包）：两个 chip 同时 `on`、
   卡片数不变、统计行带「同时开着」、搜 `#2844` → 300 里只剩 1 张、12 张卡各有 👍👎、
   抽屉里 `#dActions .vote .vbtn` 两颗 + `[data-lib-install]` 在。
-
-### 新增：崩溃诊断页
-
-- 左侧新增「崩溃诊断」：读 `ue4ss\UE4SS.log` 尾部与 `%LOCALAPPDATA%\SB\Saved\Crashes\UE4CC-*\CrashContext.runtime-xml`，
-  把「什么时候崩、停在哪个加载阶段、那之后哪个 Mod 的文件才写进去」摆在一页里。结论分等级
-  （不一定是 Mod 的锅），嫌疑 Mod 按证据打分，每条都能点开原文自己核对。
-- 游戏本体是 Shipping 版、默认不写 `SB.log`，所以只认这两处现场；不解析 pak 内容
-  （判「两个 Mod 改了同一资源」要读 IoStore 索引，代价和风险都不值），也不替用户搬文件。
-- 测试：`_probe/crashlog-test.js` 83 项（`parseCrashXml` / `parseUe4ssLog` / `buildReport` 纯函数真身跑 + 接线断言）。
+- `_probe/crashlog-test.js` 新增 83 项：`parseCrashXml` / `parseUe4ssLog` / `crashPhase` / `buildReport`
+  四个纯函数真身跑（含日志停在 `Loading mod` 45 分、无硬证据走对撞、没崩溃不指认、缺 `.utoc` 报 error、
+  异步线程占比 20% 不提而 60% 提、停用步骤挑 `NGNL1Mod` 而非 UE4SS 自带脚本），`readSource` 的白名单
+  用临时目录 + `C:\Windows\win.ini` 双向验证（进得去 / 出不去），最后加真机只读冒烟。
 
 ## [0.4.12] - 2026-11-10
 
