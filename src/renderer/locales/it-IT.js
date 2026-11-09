@@ -1206,5 +1206,9 @@
     '未知来源（非管理器安装，也没有 Mod ID 可以拼 Nexus 地址）': 'Origine sconosciuta (non installato dal gestore e nessun Mod ID per creare un link Nexus)',
     '🌐 打开 Mod 网页': '🌐 Apri la pagina del mod',
     '在浏览器里打开这个 Mod 的 Nexus 页面': 'Apri la pagina Nexus di questo mod nel browser',
+    '游戏版本': 'Versione del gioco',
+    '读自主程序版本信息': 'Letto dalle informazioni di versione dell’eseguibile',
+    '这个 exe 里读不到版本号': 'Nessuna informazione di versione in questo exe',
+    '找不到游戏主程序': 'Eseguibile del gioco non trovato',
   });
 })();

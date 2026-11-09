@@ -553,3 +553,22 @@ body.sel .cover .tag{left:38px}
   border:1px solid var(--border);border-radius:10px;background:var(--panel2);font-size:11.5px;color:var(--dim)}
 .lib-hint b{color:var(--accent);font-weight:600}
 .lib-hint .btn{margin-left:auto;flex:none}
+
+/* 顶栏「启动游戏」右边那枚版本号（0.4.8）
+   只读信息，别抢按钮的注意力：小字、等宽、淡底色。 */
+.verchip {
+  flex: none;
+  padding: 0 8px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel2);
+  color: var(--dim);
+  font-size: 11px;
+  font-family: Consolas, monospace;
+  letter-spacing: .2px;
+  white-space: nowrap;
+  user-select: text;
+}

@@ -54,3 +54,6 @@ launch-log.txt
 # _probe 里的一次性临时脚本与备份（历史残渣，不入库）
 _probe/_*
 _probe/*.bak*
+_shot/
+_tmp/
+_tmp-*.js

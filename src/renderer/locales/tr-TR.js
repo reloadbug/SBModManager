@@ -1206,5 +1206,9 @@
     '未知来源（非管理器安装，也没有 Mod ID 可以拼 Nexus 地址）': 'Kaynak bilinmiyor (yöneticiyle kurulmadı ve Nexus bağlantısı için Mod ID yok)',
     '🌐 打开 Mod 网页': '🌐 Mod sayfasını aç',
     '在浏览器里打开这个 Mod 的 Nexus 页面': 'Bu modun Nexus sayfasını tarayıcıda aç',
+    '游戏版本': 'Oyun sürümü',
+    '读自主程序版本信息': 'Oyun çalıştırılabilir dosyasının sürüm bilgisinden',
+    '这个 exe 里读不到版本号': 'Bu exe içinde sürüm bilgisi bulunamadı',
+    '找不到游戏主程序': 'Oyun çalıştırılabilir dosyası bulunamadı',
   });
 })();

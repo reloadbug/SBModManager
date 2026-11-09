@@ -1288,7 +1288,10 @@ const TABLE = [
       "เปิดหน้า Nexus ของ Mod นี้ในเบราว์เซอร์",
     ],
   ],
-
+  ["游戏版本", ["遊戲版本", "Game version", "ゲームのバージョン", "게임 버전", "Версия игры", "Spielversion", "Version du jeu", "Versión del juego", "Versão do jogo", "Versione del gioco", "Wersja gry", "Oyun sürümü", "เวอร์ชันเกม"]],
+  ["读自主程序版本信息", ["讀自主程式版本資訊", "Read from the game executable", "ゲーム本体のバージョン情報から取得", "게임 실행 파일의 버전 정보에서 읽음", "Из версии исполняемого файла игры", "Aus den Versionsinformationen der Spiel-EXE", "Lu depuis les informations de version de l’exécutable", "Leído de la información de versión del ejecutable", "Lido das informações de versão do executável", "Letto dalle informazioni di versione dell’eseguibile", "Odczytano z informacji o wersji pliku gry", "Oyun çalıştırılabilir dosyasının sürüm bilgisinden", "อ่านจากข้อมูลเวอร์ชันของไฟล์เกม"]],
+  ["这个 exe 里读不到版本号", ["這個 exe 裡讀不到版本號", "No version info found in this exe", "この exe からバージョン情報を読み取れません", "이 exe에서 버전 정보를 읽을 수 없음", "В этом exe не найдена информация о версии", "In dieser EXE wurde keine Versionsinfo gefunden", "Aucune information de version dans cet exe", "No se encontró información de versión en este exe", "Nenhuma informação de versão neste exe", "Nessuna informazione di versione in questo exe", "Nie znaleziono informacji o wersji w tym exe", "Bu exe içinde sürüm bilgisi bulunamadı", "ไม่พบข้อมูลเวอร์ชันใน exe นี้"]],
+  ["找不到游戏主程序", ["找不到遊戲主程式", "Game executable not found", "ゲーム本体が見つかりません", "게임 실행 파일을 찾을 수 없음", "Не найден исполняемый файл игры", "Spiel-EXE nicht gefunden", "Exécutable du jeu introuvable", "No se encontró el ejecutable del juego", "Executável do jogo não encontrado", "Eseguibile del gioco non trovato", "Nie znaleziono pliku gry", "Oyun çalıştırılabilir dosyası bulunamadı", "ไม่พบไฟล์เกม"]],
 ];
 
 /**

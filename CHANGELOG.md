@@ -4,6 +4,31 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.8] - 2026-11-09
+
+界面上一眼能看到「当前游戏是哪个版本」。
+
+### 新增
+
+- 顶栏「启动游戏」右边多了一枚版本号（`v1.000` 这种），鼠标悬停的提示里也会带上版本。
+- 设置 → 游戏 → 「游戏版本」一行，写明版本号以及它是从哪读来的。
+- 侧栏底部那行状态也带上版本：`c:\Star Blade` / `v1.000 · UE4SS  OK  · CNS  OK`。
+
+### 实现要点
+
+- 版本号直接从 `SB\Binaries\Win64\SB-Win64-Shipping.exe` 的 PE 版本资源里读：
+  按 DOS 头 → PE 头 → 数据目录[2] → 资源目录三层（RT_VERSION → 资源名 → 语言）定位，
+  只读几 KB，**不**整读 317MB 的主程序（试过，杀毒软件挨扇区扫，几十秒还没完）。
+- 数值取 VS_FIXEDFILEINFO 的 dwFileVersionMS/LS；展示优先用 StringFileInfo 里的
+  `FileVersion` 字符串（厂商写法不统一），再退回 `ProductVersion`，最后退回数值。
+- 读不到就说读不到（「这个 exe 里读不到版本号」），不编造一个 v1.0 出来。
+- 结果按 exe 的 mtime + 大小缓存，游戏更新后自动重读。
+
+### 测试
+
+- 新增 `_probe/gameversion-test.js`（21 条）：合成最小 PE（DOS 头 / 可选头 / 资源目录 /
+  VS_VERSIONINFO 全按真的摆）验证解析；再断言 detect 的四种说法、缓存、以及
+  ipc / 渲染层 / index.html / CSS / i18n 的接线；装了游戏时顺带读一次真 exe。
 ## [0.4.7] - 2026-11-09
 
 - **已安装 Mod 的详情里给出原网址**：「来源」那一栏现在是可点的链接（`https://www.nexusmods.com/stellarblade/mods/<id>`），

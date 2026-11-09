@@ -327,14 +327,38 @@ function switchPage(id) {
 
 /* ---------------- 侧栏状态 ---------------- */
 
+/**
+ * 游戏版本的一句话说法。
+ * 读的是主程序 exe 的版本资源，读不到就老实说读不到 —— 别拿空字符串糊过去，
+ * 也别编个「v1.0」出来。
+ */
+function gameVerOf(g) {
+  const v = (g && g.version) || null;
+  if (!v || !v.ok || !v.version) return '';
+  return String(v.version);
+}
+
+function gameVerText(g) {
+  if (!g || !g.found) return '<span style="color:var(--dim2)">还没设置游戏目录</span>';
+  const v = gameVerOf(g);
+  if (v) {
+    return `<b style="color:var(--text);font-size:13px" data-i18n-skip>v${esc(v)}</b>` +
+      '<span style="color:var(--dim2)"> · 读自主程序版本信息</span>';
+  }
+  const why = ((g.version && g.version.reason) || '这个 exe 里读不到版本号');
+  return `<span style="color:var(--dim2)">${esc(why)}</span>`;
+}
+
 function renderSidebar() {
   const g = state.game;
   const ok = g && g.found;
+  const ver = ok ? gameVerOf(g) : '';
   $('#gameDot').className = 'dot' + (ok ? '' : ' bad');
   $('#gameStat').textContent = ok ? '游戏已就绪' : '未找到游戏目录';
   $('#gamePath').textContent = ok
-    ? `${g.root}\nUE4SS ${g.ue4ss.installed ? '✓' : '✗'} · CNS ${g.cns.installed ? '✓' : '✗'}`
+    ? `${g.root}\n${ver ? 'v' + ver + ' · ' : ''}UE4SS ${g.ue4ss.installed ? '✓' : '✗'} · CNS ${g.cns.installed ? '✓' : '✗'}`
     : (g && g.configured) || '—';
+  syncGameVerChip(ver);
   syncInstalledNav();
 
   const active = (state.downloads || []).filter(t => DL_ACTIVE.has(t.status)).length;
@@ -4879,6 +4903,10 @@ function renderSettings() {
         ? `<div class="f"><label></label><div class="hint" style="color:var(--red);line-height:1.75">⚠️ ${esc(g.writable.message || '')}</div></div>`
         : ''}
       <div class="f">
+        <label>游戏版本</label>
+        <div class="hint" id="setGameVer" style="line-height:1.7">${gameVerText(g)}</div>
+      </div>
+      <div class="f">
         <label></label>
         <button class="btn sm" id="btnDetect">自动探测</button>
       </div>
@@ -7399,9 +7427,19 @@ function syncLaunchBtn() {
   if (!btn) return;
   const ok = !!(state.game && state.game.found);
   btn.disabled = !ok;
+  // 版本号不放 title 里：i18n 会重写 title 属性，写进去也留不住；顶栏有专门那枚 chip
   btn.title = ok
     ? '直接启动游戏（不走 Steam，绿色版 / Steam / Epic 都行）'
     : '还没设置游戏目录，先到设置里选一下';
+}
+
+/** 顶栏按钮右边那枚小版本号：没有版本就整块藏起来，不留一个空壳 */
+function syncGameVerChip(ver) {
+  const el = $('#gameVer');
+  if (!el) return;
+  const v = String(ver || '');
+  el.textContent = v ? 'v' + v : '';
+  el.style.display = v ? '' : 'none';
 }
 
 async function refreshAll(showToast) {

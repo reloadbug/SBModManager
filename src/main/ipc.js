@@ -24,6 +24,7 @@ const localLibrary = require('./localLibrary');
 const fsMove = require('./fsMove');
 const relocate = require('./relocate');
 const fsError = require('./fsError');
+const gameVersion = require('./gameVersion');
 const { createBlacklist } = require('./blacklist');
 const { createFavorites } = require('./favorites');
 const archive = require('./archive');
@@ -1105,11 +1106,18 @@ function inspectGame() {
   const root = currentRoot();
   if (!root) {
     const candidates = game.detectCandidates([config.get('gameRoot')]);
-    return { found: false, configured: config.get('gameRoot'), candidates };
+    return { found: false, configured: config.get('gameRoot'), candidates, version: { ok: false, version: '' } };
   }
   const info = game.inspect(root);
   delete info.layout; // 路径细节通过 layoutOf 单独给
   const layout = game.layout(root);
+  // 游戏版本：读主程序的 PE 版本资源（只认得出就说，认不出留空，别编）
+  let version;
+  try {
+    version = gameVersion.detect(root);
+  } catch (e) {
+    version = { ok: false, version: '', reason: '读版本号失败：' + e.message };
+  }
   // 装文件之前先探一下「这个目录到底能不能写」。
   // 本机踩过：程序目录带 Low 完整性标签 → 进程被降权 → 往游戏目录写全 EPERM，
   // 用户装到一半才失败还只看到裸错误码。这里提前探测，设置页/已安装页就能先说清楚。
@@ -1121,7 +1129,7 @@ function inspectGame() {
   } catch (e) {
     writable = { dir: root, ok: false, code: fsError.codeOf(e) || null, message: '游戏目录不可写：' + fsError.describe(e, { target: root }) };
   }
-  return { found: true, ...info, layout, writable };
+  return { found: true, ...info, layout, writable, version };
 }
 
 /* ---------------- 已安装 Mod ---------------- */
