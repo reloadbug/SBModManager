@@ -192,6 +192,31 @@ console.log('\n=== installedIdsOf：本地状态 IPC ===');
     /foot\.innerHTML = openBtn \+/.test(code));
   t('详情抽屉里本地有安装包时给「装进游戏」', () =>
     /const libOne = libItemOf\(m\.modId\);/.test(code) && /data-lib-install="\$\{m\.modId\}"/.test(code));
+  /* ---------- 已下载的详情页要显示「安装到游戏」（2026-11-10） ---------- */
+  t('已下载的主按钮文案是「安装到游戏」而不是「⬇ 安装」', () =>
+    code.includes("btn: '安装到游戏', act: 'install'"));
+  t('文件行会查本地安装包', () => code.includes('const libOne = (listModIdIsLib && typeof libItemOf === ') && code.includes("function') ? libItemOf(modId) : null;"));
+  t('版本按「去掉开头 v」再比', () =>
+    code.includes('const sameVer = f => !!libVer') && code.includes(".replace(/^v/i, '') === libVer"));
+  t('版本对得上的文件行换成「安装到游戏」（走 data-lib-install）', () =>
+    code.includes('data-lib-install="${esc(modId)}"') &&
+    code.includes('不用再下一次">安装到游戏</button>'));
+  t('版本对不上的文件行仍保留「⬇ 下载」（能换版本）', () =>
+    code.includes('data-dl-file="${f.fileId}"') && code.includes(">⬇ 下载</button>"));
+  t('文件列表顶部有一句「本地已有安装包」的说明', () =>
+    code.includes('不用再下一次 —— 版本对得上的文件可以直接「安装到游戏」'));
+  t('底部按钮在本地已有整包时不写成「下载主文件」', () =>
+    code.includes("footBtn.innerHTML = '安装到游戏';") &&
+    code.includes("footBtn.removeAttribute('data-dl-add')") &&
+    code.includes('footBtn.dataset.libInstall = String(modId);'));
+  t('库没加载过时抽屉会自己补一次再重画', () =>
+    code.includes('if (listModIdIsLib && !state.library && !state.drawer.libAsked && typeof refreshLibrary') &&
+    code.includes('renderFiles(showArchived, modId);'));
+  t('i18n 里有「安装到游戏」这条键', () => {
+    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'i18n-keys.json'), 'utf8'));
+    const list = Array.isArray(raw) ? raw : Object.keys(raw);
+    return list.includes('安装到游戏');
+  });
   console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
   if (fail) process.exit(1);
 })().catch(e => { console.error('异步断言崩了：' + (e && e.stack || e)); process.exit(1); });

@@ -1633,7 +1633,7 @@ const BROWSE_PAGE = 24;
 const LOCAL_UI = {
   installed: { badge: '✓ 已安装', cls: 'ok', btn: '已安装', act: 'installed' },
   installing: { badge: '● 安装中', cls: 'busy', btn: '安装中…', act: 'busy' },
-  pending: { badge: '↓ 已下载', cls: 'dl', btn: '⬇ 安装', act: 'install' },
+  pending: { badge: '↓ 已下载', cls: 'dl', btn: '安装到游戏', act: 'install' },
   downloading: { badge: '● 下载中', cls: 'busy', btn: '查看进度', act: 'download' }
 };
 
@@ -3246,18 +3246,49 @@ function renderFiles(showArchived, modId) {
   const all = state.drawer.files || [];
   if (!all.length) { box.textContent = '没有文件信息'; return; }
 
+  // 安装包库没加载过就拿不到「本地有没有这个包」，这里顺手补一次再重画（只补一次，失败就算了）。
+  const listModIdIsLib = Number(modId) > 0;
+  if (listModIdIsLib && !state.library && !state.drawer.libAsked && typeof refreshLibrary === 'function') {
+    state.drawer.libAsked = true;
+    refreshLibrary()
+      .then(() => {
+        if (state.drawer && state.drawer.mod && Number(state.drawer.mod.modId) === Number(modId)) renderFiles(showArchived, modId);
+      })
+      .catch(() => {});
+  }
+
   const archivedCount = all.filter(f => f.categoryRaw === 'ARCHIVED' || f.categoryRaw === 'OLD_VERSION').length;
   const list = showArchived ? all : all.filter(f => f.categoryRaw !== 'ARCHIVED' && f.categoryRaw !== 'OLD_VERSION');
 
-  box.innerHTML = list.map(f => `
+  /**
+   * 本地已经有这个 Mod 的安装包时，文件行不该再让人「下载」（用户 2026-11-10：
+   * 「对于已下载的详情页面要显示为安装到游戏」）——下过的再下一次纯属浪费流量，
+   * 装完还得再走一遍安装流程。
+   *
+   * 为什么按「整包」而不是按文件：安装包库的条目里没有 fileId（见 localLibrary.parseArchiveName，
+   * 文件名只带 modId 与版本），所以说不清「这个包是哪个文件的」。因此只在版本对得上的
+   * 文件行上换成「安装到游戏」，版本不一样的仍保留「⬇ 下载」，让用户还能换版本。
+   */
+  const libOne = (listModIdIsLib && typeof libItemOf === 'function') ? libItemOf(modId) : null;
+  const libVer = libOne ? String(libOne.version || '').replace(/^v/i, '') : '';
+  const sameVer = f => !!libVer && String(f.version || '').replace(/^v/i, '') === libVer;
+  const rowBtn = f => ((libOne && (sameVer(f) || list.length === 1))
+    ? `<button class="btn sm" style="margin-left:auto" data-lib-install="${esc(modId)}"
+          title="管理器里已经有这个 Mod 的安装包（${esc(libOne.filename)}），直接装进游戏 —— 不用再下一次">安装到游戏</button>`
+    : `<button class="btn sm p" style="margin-left:auto" data-dl-file="${f.fileId}"
+          title="只下载这个文件：${esc(f.name)}（v${esc(f.version)}）">⬇ 下载</button>`);
+  const libHint = libOne
+    ? `<div style="color:var(--ok);font-size:11px;margin-bottom:8px;line-height:1.6">管理器里已经有这个 Mod 的安装包（${esc(libOne.filename)}），不用再下一次 —— 版本对得上的文件可以直接「安装到游戏」。</div>`
+    : '';
+
+  box.innerHTML = libHint + list.map(f => `
     <div style="border-bottom:1px dashed #262B33;padding:8px 0">
       <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
         ${f.primary ? '<span class="chip" style="color:var(--ok);border-color:rgba(63,185,80,.4)">主文件</span>' : ''}
         <span class="chip">${esc(f.category)}</span>
         <b style="color:var(--text);font-size:12px">${esc(f.name)}</b>
         <span style="color:var(--dim2);font-size:11px">v${esc(f.version)} · ${fmtSize(f.sizeInBytes)}</span>
-        <button class="btn sm p" style="margin-left:auto" data-dl-file="${f.fileId}"
-          title="只下载这个文件：${esc(f.name)}（v${esc(f.version)}）">⬇ 下载</button>
+        ${rowBtn(f)}
       </div>
       ${f.description ? `<div style="color:var(--dim2);font-size:11px;margin-top:4px;line-height:1.6">${esc(f.description).slice(0, 200)}</div>` : ''}
     </div>`).join('') +
@@ -3271,8 +3302,17 @@ function renderFiles(showArchived, modId) {
   const main = list.find(f => f.primary) || list[0];
   const footBtn = document.querySelector('#dActions [data-dl-add], #dFoot [data-dl-add]');
   if (main && footBtn && state.drawer.mod && Number(state.drawer.mod.modId) === Number(modId)) {
-    footBtn.innerHTML = '⬇ 下载主文件';
-    footBtn.title = main.name + '（v' + main.version + '）';
+    if (libOne) {
+      // 本地已有整包 —— 别再把按钮写成「下载主文件」，那会把人引回下载队列。
+      footBtn.innerHTML = '安装到游戏';
+      footBtn.title = '管理器里已经有这个 Mod 的安装包（' + libOne.filename + '），直接装进游戏';
+      footBtn.removeAttribute('data-dl-add');
+      footBtn.dataset.libInstall = String(modId);
+      footBtn.className = 'btn p';
+    } else {
+      footBtn.innerHTML = '⬇ 下载主文件';
+      footBtn.title = main.name + '（v' + main.version + '）';
+    }
   }
 }
 
