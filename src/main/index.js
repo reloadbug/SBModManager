@@ -1,7 +1,7 @@
 'use strict';
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 
 const paths = require('./paths');
 const logger = require('./logger');
@@ -202,6 +202,21 @@ function createWindow() {
   win.mainApp = true; // 标记主窗口，便于其它模块定位（登录窗口等）
 
   win.once('ready-to-show', () => win.show());
+
+  /* 兜底显示：正常情况下 `ready-to-show` 会来，但实测有机器（GPU 初始化失败、
+   * 远程桌面、安全软件插手）这个事件永远不来 —— 窗口一直 `show:false` 藏着，
+   * 主进程活着占住单实例锁，于是**双击图标毫无反应**（2026-11-10 用户报障：
+   * 一个 01:26 起的进程 MainWindowHandle=0，之后每次启动都只写一行
+   * 「单实例锁被占用」就退出）。这里 8 秒后强制显示一次，宁可白窗口也别当僵尸。 */
+  setTimeout(() => {
+    try {
+      if (win && !win.isDestroyed() && !win.isVisible()) {
+        console.error('[启动] ready-to-show 迟迟不来，强制显示主窗口');
+        win.show();
+      }
+    } catch { /* 窗口已销毁就算了 */ }
+  }, 8000).unref?.();
+
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
   // 外部链接一律交给系统浏览器，不在应用内打开
@@ -269,10 +284,69 @@ function setupScreenshotMode() {
   });
 }
 
+/* ============================================================
+ * 「后台还活着、窗口却不见了」的自救
+ *
+ * 2026-11-10 用户报障：「portable 双击没有任何效果」。查下来不是包的问题 ——
+ * 一个 01:26 起的实例主进程仍在（MainWindowHandle=0、渲染进程也在），
+ * 占着单实例锁；之后每次启动（安装版快捷方式、portable）都只写一行
+ * 「单实例锁被占用，本次启动直接退出」就没了，用户看到的就是「双击没反应」。
+ *
+ * 所以这里做三件事：
+ *   1. 主窗口 8 秒还没显示就强制 show（createWindow 里）
+ *   2. 第二个实例进来时，除了 restore/focus，还要 show —— 光 focus 一个隐藏窗口是没用的
+ *   3. 抢不到锁时不再静默退出：等对方心跳，迟迟不来就当僵尸，自动「杀掉 + 重启」
+ *
+ * ⚠️ 第 3 条**刻意不用弹窗**：万一对话框所在的环境根本显示不出来（远程桌面、别的
+ *    桌面上、被安全软件拦），showMessageBoxSync 会把这个新进程也一起挂死 ——
+ *    用户看到的就是「点了没反应，任务管理器里还越点越多」。宁可自动重启一次。
+ * ============================================================ */
+const ALIVE_FILE = path.join(app.getPath('userData'), 'instance-alive.txt');
+const ZOMBIE_WAIT_MS = 12000; // 这么久都没有心跳，就当对方卡住了
+
+function touchAlive(tag) {
+  try { require('fs').writeFileSync(ALIVE_FILE, String(Date.now()) + ' ' + (tag || '') + '\n'); } catch { /* 写不进去不影响运行 */ }
+}
+
+function aliveMtime() {
+  try { return require('fs').statSync(ALIVE_FILE).mtimeMs; } catch { return 0; }
+}
+
+/** 把主窗口弄到前面：隐藏的 show、最小化的 restore、已销毁的重新建。 */
+function showMainWindow() {
+  if (!win || win.isDestroyed()) {
+    try { createWindow(); } catch (e) { console.error('[启动] 重建主窗口失败：' + e.message); }
+    return;
+  }
+  try { if (win.isMinimized()) win.restore(); } catch { /* 忽略 */ }
+  try { if (!win.isVisible()) win.show(); } catch { /* 忽略 */ }
+  try { win.setSkipTaskbar(false); } catch { /* 忽略 */ }
+  try { win.moveTop(); } catch { /* 忽略 */ }
+  try { win.focus(); } catch { /* 忽略 */ }
+}
+
+/** 强制结束本应用的所有进程（除了自己）。装过 Mod 的文件一律不动，只杀进程。 */
+function killOtherInstances() {
+  const exeName = path.basename(process.execPath);
+  const names = [...new Set([exeName, '剑星 Mod 管理器.exe', 'SBModManager.exe'])];
+  const filter = names.map(n => "Name='" + n.replace(/'/g, "''") + "'").join(' or ');
+  const ps = 'Get-CimInstance Win32_Process -Filter "' + filter + '"'
+    + ' | Where-Object { $_.ProcessId -ne ' + process.pid + ' }'
+    + ' | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }';
+  try {
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps],
+      { windowsHide: true, timeout: 20000 });
+    console.log('[启动] 已强制结束旧实例');
+  } catch (e) {
+    console.error('[启动] 强制结束旧实例失败：' + e.message);
+  }
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-  // 已经有一个实例在跑。它会在自己的 second-instance 里收到我们带的 nxm:// 参数，
-  // 所以这里直接退出即可。
+  // 两条路：①正常 —— 另一个实例收到 second-instance 会把窗口顶到前面，我们退出；
+  //        ②僵尸 —— 那个实例活着但没窗口（或主线程卡死），于是「双击毫无反应」。
+  // 区分办法：对方在 second-instance 里会写一行心跳；迟迟没有心跳就是僵尸。
   //
   // ⚠️ 这条分支退出码是 **0**。自动化截图（--shot）静默失效的头号原因就是
   //    残留实例占着锁 —— 表现为「脚本说成功了，但 png 没生成、日志空、退出码 0」。
@@ -281,13 +355,34 @@ if (!gotLock) {
   //    建不出锁文件（native 层报 `Lock file can not be created: 拒绝访问 (0x5)`），
   //    这里同样会拿到 false。区分办法看上面有没有「默认用户数据目录不可写」，
   //    真正的锁被占用则会在日志里看到上一实例的启动块。
-  console.error('[启动] 单实例锁被占用，本次启动直接退出（如果你在跑自动化截图，先清掉残留 electron 进程）'
+  console.error('[启动] 单实例锁被占用，先看对方是否响应'
     + ' · userData=' + app.getPath('userData'));
-  app.quit();
+  const before = aliveMtime();
+  const startedAt = Date.now();
+  const timer = setInterval(() => {
+    if (aliveMtime() > before) {
+      clearInterval(timer);
+      console.log('[启动] 另一个实例已响应（窗口应该已经顶到前面），本次退出');
+      app.quit();
+      return;
+    }
+    if (Date.now() - startedAt < ZOMBIE_WAIT_MS) return;
+    clearInterval(timer);
+    console.error('[启动] 对方 ' + Math.round(ZOMBIE_WAIT_MS / 1000) + ' 秒没有心跳 —— 判定为卡住的僵尸实例，自动强制重启');
+    killOtherInstances();
+    setTimeout(() => {
+      // portable（NSIS 自解压）要走它自己的外层 exe，否则 relaunch 的是 %TEMP% 里那份临时副本
+      const target = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+      try { app.relaunch({ execPath: target }); } catch { try { app.relaunch(); } catch { /* 忽略 */ } }
+      app.exit(0);
+    }, 900);
+  }, 500);
+  if (timer.unref) timer.unref();
 } else {
   app.on('second-instance', (_event, argv) => {
     console.log('[启动] 收到第二实例调起，argv=' + JSON.stringify(argv));
-    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+    touchAlive('second-instance');
+    showMainWindow();
     const info = nxm.extractNxmFromArgv(argv);
     if (info) {
       console.log('[nxm] 从第二实例收到链接：' + info.game + ' mod=' + info.modId + ' file=' + info.fileId);
@@ -297,6 +392,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    touchAlive('ready'); // 心跳：让「抢不到锁的那个实例」知道我们活着（见上面 ALIVE_FILE 的说明）
     console.log('[启动] app ready · 兼容模式=' + USE_COMPAT
       + ' · 打包=' + app.isPackaged
       + ' · 数据目录=' + paths.DATA

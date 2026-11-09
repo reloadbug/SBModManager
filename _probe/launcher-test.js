@@ -116,6 +116,51 @@ t('兼容模式那组开关仍然在（不许被覆盖掉）', () => {
   ok(/--no-sandbox/.test(indexSrc), '缺 --no-sandbox');
 });
 
+console.log('\n[2b] 「后台还活着、窗口不见了」的自救（0.4.16）');
+t('createWindow 里有兜底 show（ready-to-show 不来也不至于当僵尸）', () => {
+  ok(/ready-to-show/.test(indexSrc), '缺 ready-to-show');
+  ok(/setTimeout\([\s\S]{0,400}?!win\.isVisible\(\)[\s\S]{0,200}?win\.show\(\)[\s\S]{0,200}?\}\s*,\s*8000\)/.test(indexSrc),
+    '没找到「8 秒后窗口还没显示就强制 show」的兜底');
+});
+t('second-instance 走 showMainWindow（光 focus 隐藏窗口没用）', () => {
+  ok(/function showMainWindow\s*\(/.test(indexSrc), '缺 showMainWindow()');
+  const at = indexSrc.indexOf("app.on('second-instance'");
+  ok(at > 0, '缺 second-instance 处理');
+  const body = indexSrc.slice(at, at + 600);
+  ok(/showMainWindow\(\)/.test(body), 'second-instance 里应调用 showMainWindow()');
+  ok(/touchAlive\(/.test(body), 'second-instance 里应写心跳');
+});
+t('showMainWindow 会 show 隐藏窗口、restore 最小化的、销毁了就重建', () => {
+  const at = indexSrc.indexOf('function showMainWindow');
+  const body = indexSrc.slice(at, at + 900);
+  ok(/isMinimized\(\)[\s\S]{0,60}restore\(\)/.test(body), '缺 restore()');
+  ok(/isVisible\(\)[\s\S]{0,60}show\(\)/.test(body), '缺 show()');
+  ok(/isDestroyed\(\)[\s\S]{0,120}createWindow\(\)/.test(body), '缺「窗口没了就重建」');
+});
+t('抢不到锁时先等对方心跳，不再静默退出', () => {
+  ok(/instance-alive\.txt/.test(indexSrc), '缺心跳文件 instance-alive.txt');
+  ok(/function aliveMtime\s*\(/.test(indexSrc), '缺 aliveMtime()');
+  const at = indexSrc.indexOf('if (!gotLock)');
+  const body = indexSrc.slice(at, at + 1800);
+  ok(/aliveMtime\(\)\s*>\s*before/.test(body), '应先比较心跳再决定退出');
+  ok(/setInterval\(/.test(body), '应该轮询等对方心跳，而不是等一次定时器');
+  ok(!/showMessageBoxSync/.test(body), '这里不许用同步弹窗 —— 对话框显示不出来时会把新进程也挂死');
+});
+t('等到超时就自动「杀旧进程 + 重启」，不靠弹窗', () => {
+  ok(/ZOMBIE_WAIT_MS/.test(indexSrc), '缺 ZOMBIE_WAIT_MS 超时阈值');
+  ok(/function killOtherInstances\s*\(/.test(indexSrc), '缺 killOtherInstances()');
+  ok(/Stop-Process -Id/.test(indexSrc), 'killOtherInstances 应该真的去结束进程');
+  ok(/app\.relaunch\(/.test(indexSrc), '缺 app.relaunch()');
+  ok(/PORTABLE_EXECUTABLE_FILE/.test(indexSrc),
+    'relaunch 要用 PORTABLE_EXECUTABLE_FILE，否则便携版会重启 %TEMP% 里那份临时副本');
+});
+t('杀进程靠 execFileSync + PowerShell 枚举，不再需要 dialog', () => {
+  ok(/require\('electron'\)/.test(indexSrc), '缺 electron require');
+  ok(/execFileSync/.test(indexSrc.slice(0, 500)), '顶层应引入 execFileSync');
+  ok(/Get-CimInstance Win32_Process/.test(indexSrc), 'killOtherInstances 应该按进程名枚举');
+  ok(!/\bdialog\b/.test(indexSrc.slice(0, 500)), '顶层不需要再解构 dialog');
+});
+
 console.log('\n[3] build/dist.js 的镜像与环境保护');
 t('设了 electron 与 builder-binaries 两个镜像', () => {
   ok(/ELECTRON_MIRROR\s*=/.test(distSrc), '缺 ELECTRON_MIRROR');
