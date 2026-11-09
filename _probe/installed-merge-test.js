@@ -430,6 +430,43 @@ console.log('\n[6] 抽屉文件行：显示磁盘实际文件名（不是被 Nex
 }
 
 // ================================================================
+// 来源网址（0.4.7）：抽屉里要给出这个 Mod 的 Nexus 页面，点一下能在浏览器打开
+// ================================================================
+{
+  console.log('\n--- 抽屉里的来源网址 ---');
+  const appSrc0 = fs.readFileSync(APP, 'utf8');
+  const cssSrc0 = fs.readFileSync(CSS, 'utf8');
+  const keysRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'i18n-keys.json'), 'utf8'));
+  const keyList0 = Array.isArray(keysRaw) ? keysRaw : Object.keys(keysRaw);
+
+  t('来源网址三级兜底：先 meta.url / meta.sourceUrl / link.url，再按 Mod ID 拼',
+    () => /const srcUrlRecorded = String\(meta\.url \|\| meta\.sourceUrl \|\| \(m\.link && m\.link\.url\) \|\| ''\)/.test(appSrc0)
+      || '兜底链条缺失');
+  t('按 Mod ID 拼的是 stellarblade 的 mods 页面',
+    () => appSrc0.includes('https://www.nexusmods.com/stellarblade/mods/${srcModId}')
+      || '拼 URL 缺失');
+  t('拼出来的网址会标注「安装时没记下原网址」',
+    () => appSrc0.includes('这个地址是按 Mod ID 拼出来的 Nexus 页面（安装时没记下原网址）。')
+      || '说明缺失');
+  t('来源网址渲染成可点的链接（data-openurl）',
+    () => appSrc0.includes('class="srclink" data-openurl="${esc(srcUrl)}"') || '链接缺失');
+  t('旁边还有一颗「打开」按钮',
+    () => /<button class="btn sm" data-openurl="\$\{esc\(srcUrl\)\}">打开<\/button>/.test(appSrc0)
+      || '按钮缺失');
+  t('底部栏也有「🌐 打开 Mod 网页」',
+    () => appSrc0.includes('🌐 打开 Mod 网页') || '底部按钮缺失');
+  t('连 Mod ID 都没有时才说「未知来源」',
+    () => appSrc0.includes('未知来源（非管理器安装，也没有 Mod ID 可以拼 Nexus 地址）') || '未知来源文案没更新');
+  t('CSS 里有 .srclink（长链接断行、hover 变色）',
+    () => cssSrc0.includes('.urlbox .srclink') || '样式缺失');
+  for (const k of ['这个地址是按 Mod ID 拼出来的 Nexus 页面（安装时没记下原网址）。',
+    '未知来源（非管理器安装，也没有 Mod ID 可以拼 Nexus 地址）',
+    '🌐 打开 Mod 网页', '在浏览器里打开这个 Mod 的 Nexus 页面']) {
+    t('i18n 有键：' + k.slice(0, 16), () => keyList0.includes(k) || '缺失');
+  }
+}
+
+// ================================================================
 
 console.log('');
 if (fail) {

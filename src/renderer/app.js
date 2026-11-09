@@ -1340,6 +1340,11 @@ function openInstalledDrawer(g) {
   const imgs = cachedImagesOf(meta);
   const img = meta.image || '';
   const srcModId = Number(g.modId || src.modId || meta.modId || 0) || 0;
+  // 来源网址：安装时记下的优先，其次链接记录里的，最后按 Mod ID 拼一个 Nexus 页面。
+  // 三条都试不出来（连 modId 都没有）才算「未知来源」。
+  const srcUrlRecorded = String(meta.url || meta.sourceUrl || (m.link && m.link.url) || '');
+  const srcUrl = srcUrlRecorded || (srcModId ? `https://www.nexusmods.com/stellarblade/mods/${srcModId}` : '');
+  const srcUrlGuessed = !srcUrlRecorded && !!srcModId;
   state.drawer = { open: true, kind: 'installed', mod: m, lang: 'zh', translated: null, translating: false, files: [] };
 
   $('#dTitle').textContent = m.name;
@@ -1365,14 +1370,20 @@ function openInstalledDrawer(g) {
       : `<div class="txt" style="color:var(--dim2)">该 Mod 没有登记说明文字。${m.registered || m.linked ? '' : '（这是磁盘上扫描到的模组，尚未通过管理器安装，因此没有来源信息）'}</div>`}
 
     <div class="lbl">来源</div>
-    ${meta.url
-      ? `<div class="urlbox"><span style="flex:1">${esc(meta.url)}</span><button class="btn sm" data-openurl="${esc(meta.url)}">打开</button></div>
+    ${srcUrl
+      ? `<div class="urlbox">
+           <a href="#" class="srclink" data-openurl="${esc(srcUrl)}" title="在浏览器里打开这个 Mod 的 Nexus 页面">${esc(srcUrl)}</a>
+           <button class="btn sm" data-openurl="${esc(srcUrl)}">打开</button>
+         </div>
+         ${srcUrlGuessed
+           ? '<div class="txt" style="color:var(--dim2)">这个地址是按 Mod ID 拼出来的 Nexus 页面（安装时没记下原网址）。</div>'
+           : ''}
          ${m.linked
            ? (m.link && m.link.matchedBy === 'tag'
              ? '<div class="txt" style="color:var(--dim2)">上面这个来源来自文件名里的标识 —— 安装时就写在名字上了，不是按名字猜的。</div>'
              : '<div class="txt" style="color:var(--dim2)">上面这个来源是「批量解析」按名字比对出来的，文件本身不是通过管理器安装的 —— 如果对错了，点下面的「解除关联」即可。</div>')
            : ''}`
-      : `<div class="txt" style="color:var(--dim2)">未知来源（非管理器安装）</div>`}
+      : `<div class="txt" style="color:var(--dim2)">未知来源（非管理器安装，也没有 Mod ID 可以拼 Nexus 地址）</div>`}
 
     <div class="lbl">信息</div>
     <div class="kv"><span>类型</span><span>${KIND_LABEL[m.kind] || m.kind}${m.builtin ? '（内置）' : ''}</span></div>
@@ -1401,6 +1412,9 @@ function openInstalledDrawer(g) {
   const footToggle = g.partial ? '全部启用' : (g.enabled ? '全部禁用' : '全部启用');
   $('#dFoot').innerHTML = `
     <button class="btn" data-reveal="${esc(m.id)}">打开所在文件夹</button>
+    ${srcUrl
+      ? `<button class="btn" data-openurl="${esc(srcUrl)}" title="在浏览器里打开这个 Mod 的 Nexus 页面">🌐 打开 Mod 网页</button>`
+      : ''}
     ${m.archive && m.archive.exists
       ? `<button class="btn" data-reveal-path="${esc(m.archive.path)}" title="在资源管理器中定位原压缩包：${esc(m.archive.path)}">📦 定位原压缩包</button>`
       : ''}

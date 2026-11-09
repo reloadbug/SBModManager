@@ -4,6 +4,15 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.7] - 2026-11-09
+
+- **已安装 Mod 的详情里给出原网址**：「来源」那一栏现在是可点的链接（`https://www.nexusmods.com/stellarblade/mods/<id>`），
+  点一下就交给系统浏览器打开；旁边还有一颗「打开」，底部栏也多了一颗「🌐 打开 Mod 网页」。
+- 网址三级兜底：安装时记下的（`meta.url` / 任务来源）→ 批量解析记下的 → 按 Mod ID 拼——拼出来的会标注
+  「这个地址是按 Mod ID 拼出来的 Nexus 页面（安装时没记下原网址）」。连 Mod ID 都没有才说「未知来源」。
+- 顺手修掉一处误导：以前只要有登记、但没存 `url` 的条目也显示「未知来源（非管理器安装）」，
+  现在只要知道 Mod ID 就给链接。
+
 ## [0.4.6] - 2026-11-09
 
 - **顶栏多了「启动游戏」**：点一下直接拉起 `SB\Binaries\Win64\SB-Win64-Shipping.exe`，

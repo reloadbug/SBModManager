@@ -1202,5 +1202,9 @@
     '直接启动游戏（不走 Steam，绿色版 / Steam / Epic 都行）': 'Uruchom grę bezpośrednio (bez Steam — działa dla wersji portable, Steam i Epic)',
     '还没设置游戏目录，先到设置里选一下': 'Nie ustawiono folderu gry — wybierz go w ustawieniach',
     '正在启动游戏…': 'Uruchamianie gry…',
+    '这个地址是按 Mod ID 拼出来的 Nexus 页面（安装时没记下原网址）。': 'Ten link złożono z identyfikatora moda — pierwotny adres nie został zapisany przy instalacji.',
+    '未知来源（非管理器安装，也没有 Mod ID 可以拼 Nexus 地址）': 'Źródło nieznane (nie zainstalowano przez menedżer i brak Mod ID do złożenia linku Nexus)',
+    '🌐 打开 Mod 网页': '🌐 Otwórz stronę moda',
+    '在浏览器里打开这个 Mod 的 Nexus 页面': 'Otwórz stronę tego moda na Nexusie w przeglądarce',
   });
 })();
