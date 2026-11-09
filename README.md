@@ -378,6 +378,18 @@ npm run dist:dir    # → dist/win-unpacked/（不生成安装包，快）
 
 几个注意点：
 
+- **每次改完功能都要打一次包，不能只提交源码。** 用户手里跑的是 `SBModManager-<版本>-portable.exe`
+  （放在仓库根目录），源码改动不打包 = 用户拿到的还是旧版。所以发版流程固定为：
+  改代码 → 跑探针（`npm run test:all`）→ 改 `package.json` 版本号与 `CHANGELOG.md` →
+  `npm run dist` → 把新生成的 `dist\SBModManager-<版本>-portable.exe` 复制到仓库根目录。
+
+- **复制到仓库根目录用 `node build/portable.js`，别用资源管理器拖。** 这个脚本除了复制，
+  还会把 exe 的完整性级别改成 Medium。工作区根目录若带「低完整性」标签，复制出来的 exe 会继承它，
+  双击时会弹 `NSIS Error: Error writing temporary file. Make sure your temp folder is valid.` ——
+  因为免安装版要靠 `%TEMP%` 解包，而低完整性进程无权往中完整性的 `%TEMP%` 写。
+  手动排查：`icacls "SBModManager-<版本>-portable.exe" | findstr Mandatory`，出现
+  `Low Mandatory Level` 就执行 `icacls "SBModManager-<版本>-portable.exe" /setintegritylevel M`。
+
 - **打包入口是 `build/dist.js`，不是直接调 electron-builder。** 它负责设好两个镜像：
   `ELECTRON_MIRROR` 与 `ELECTRON_BUILDER_BINARIES_MIRROR`（都指向 npmmirror）。
   本机 `github.com` 直连不通，不换镜像的话 nsis / winCodeSign 这些打包辅助二进制根本拉不下来。
