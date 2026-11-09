@@ -26,6 +26,7 @@ const relocate = require('./relocate');
 const fsError = require('./fsError');
 const gameVersion = require('./gameVersion');
 const { createBlacklist } = require('./blacklist');
+const { createBugFlags } = require('./bugFlag');
 const { createFavorites } = require('./favorites');
 const archive = require('./archive');
 const nexusBrowser = require('./nexusBrowser');
@@ -40,7 +41,7 @@ const dataMigrate = require('./dataMigrate');
 const gameHome = require('./gameHome');
 const { readJson, writeJson, setMirror } = require('./store');
 
-let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites;
+let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites, bugFlags;
 
 /** UE4SS 最新 Release 的短时缓存（避免每次进前置组件页都打 GitHub API） */
 let ue4ssReleaseCache = { at: 0, release: null };
@@ -108,6 +109,7 @@ function init() {
   gallery = createGalleryFetcher({ cacheDir: paths.GALLERY, logger });
   blacklist = createBlacklist(paths.blacklistFile);
   favorites = createFavorites(paths.favoritesFile);
+  bugFlags = createBugFlags(paths.bugsFile);
 
   engine = createDownloadEngine({
     file: paths.downloadQueueFile,
@@ -2606,6 +2608,12 @@ function register() {
   handle('blacklist:ids', () => blacklist.ids());
   handle('blacklist:add', (modId, meta) => blacklist.add(modId, meta || {}));
   handle('blacklist:remove', (modId) => blacklist.remove(modId));
+
+  // ---- 「这个 Mod 有 bug」标记（卸载时打记号，防止再装进去）----
+  handle('bugs:list', () => bugFlags.all());
+  handle('bugs:ids', () => bugFlags.ids());
+  handle('bugs:add', (modId, meta) => bugFlags.add(modId, meta || {}));
+  handle('bugs:remove', (modId) => bugFlags.remove(modId));
   /* 浏览页「喜欢」（👍）—— 与黑名单同形、同为纯本地。
      用户 2026-10-14：「mod 图标上增加喜欢按钮，与不喜欢对应」。 */
   handle('favorites:list', () => favorites.all());

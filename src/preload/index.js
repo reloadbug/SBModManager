@@ -135,6 +135,17 @@ contextBridge.exposeInMainWorld('api', {
     remove: (modId) => invoke('favorites:remove', modId)
   },
 
+  /**
+   * 「这个 Mod 有 bug」标记 —— 卸载时打的记号，防的是**再装一次**。
+   * 浏览页照常显示（也许作者哪天修了），只在安装路径上拦。
+   */
+  bugs: {
+    list: () => invoke('bugs:list'),
+    ids: () => invoke('bugs:ids'),
+    add: (modId, meta) => invoke('bugs:add', modId, meta),
+    remove: (modId) => invoke('bugs:remove', modId)
+  },
+
   nxm: {
     status: () => invoke('nxm:status'),
     register: () => invoke('nxm:register'),

@@ -205,7 +205,8 @@ if (DATA_SOURCE !== 'custom' && GAME_HOME_READY && canUseDir(GAME_HOME)) {
  */
 const STATE_NAMES = [
   'config.json', 'mods.json', 'mod-links.json', 'blacklist.json',
-  'favorites.json', 'downloads.json', 'watch-seen.json', 'ledger.json'
+  'favorites.json', 'downloads.json', 'watch-seen.json', 'ledger.json',
+  'bugs.json'
 ];
 
 /**
@@ -337,6 +338,8 @@ module.exports = {
   watchSeenFile: path.join(DATA, 'watch-seen.json'),
   blacklistFile: path.join(DATA, 'blacklist.json'),
   favoritesFile: path.join(DATA, 'favorites.json'),
+  /** 「这个 Mod 有 bug」标记（跟着游戏走的 `bugs.json`，见 bugFlag.js） */
+  bugsFile: path.join(DATA, 'bugs.json'),
   translateCache: path.join(CACHE, 'translate.json'),
   nexusCache: path.join(CACHE, 'nexus.json'),
   nexusCatalog: path.join(CACHE, 'nexus-catalog.json')

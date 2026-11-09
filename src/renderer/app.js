@@ -36,6 +36,9 @@ const state = {
   // 已安装页筛选条件：q = 关键词（名字 / Mod ID / 作者），state = 启用状态，kind = 类型
   instFilters: { q: '', state: '', kind: '' },
   installedShown: [],   // 本次渲染后**真正显示出来**的分组（筛选之后），全选用它
+  // 「这个 Mod 有 bug」标记（Nexus modId 字符串集合）。和黑名单不同：它**不影响**
+  // 浏览页显示，只在安装路径上拦一道（批量安装先问一句）。
+  bugIds: new Set(),
   modalTask: null,   // 「选择要安装哪些内容」对话框对应的下载任务 id
   pick: new Set(),   // 该对话框里已勾选的候选目录（归档内相对路径）
   pickGroups: null,  // dir → 同组目录数组（同一件东西的不同版本，组内单选）
@@ -621,6 +624,10 @@ function installedCard(g) {
   const multi = n > 1
     ? `<span class="tag nfile" title="这个 Mod 装了 ${n} 个文件，点开卡片可以逐个启用 / 禁用 / 卸载">${n} 个已装文件</span>`
     : '';
+  // 用户点过「标为有 bug」的 Mod：卡片上要一眼看见，别让人又装回去
+  const bug = (modId && state.bugIds.has(String(modId)))
+    ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>'
+    : '';
   const swTitle = g.partial ? '部分文件已启用 —— 点击全部启用' : (g.enabled ? '点击禁用' : '点击启用');
 
   return `
@@ -630,6 +637,7 @@ function installedCard(g) {
       <div class="ck${state.gsel.ids.has(g.key) ? ' on' : ''}" data-gck="${esc(g.key)}">✓</div>
       <span class="${tagCls}"${tagTitle ? ` title="${esc(tagTitle)}"` : ''}>${esc(tagTxt)}</span>
       ${multi}
+      ${bug}
       ${g.kind === 'prereq' ? '' : `<button class="sw${g.enabled ? '' : ' off'}${g.partial ? ' part' : ''}" data-gtoggle="${esc(g.key)}" title="${esc(swTitle)}"></button>`}
     </div>
     <div class="cbody">
@@ -1499,6 +1507,11 @@ function openInstalledDrawer(g) {
       <button class="btn d" data-guninstall="${esc(g.key)}" title="${
         multi ? '逐个移除这 ' + n + ' 个文件' : '移除这个文件'
       }">${multi ? '卸载这个 Mod' : '卸载'}</button>` : ''}
+    ${srcModId ? `<button class="btn bug" data-gbug="${esc(g.key)}" title="${
+      state.bugIds.has(String(srcModId))
+        ? '点一下取消标记（之后批量安装不会再提示）'
+        : '打个记号：这个 Mod 装了会出问题。浏览页照常显示，批量安装前会先问你跳过它'
+    }">${state.bugIds.has(String(srcModId)) ? '⚠ 已标有 bug' : '⚠ 标为有 bug'}</button>` : ''}
   `;
 
   showDrawer();
@@ -2576,6 +2589,17 @@ async function loadFavorites() {
     state.browse.liked = new Set((ids || []).map(String));
   } catch { /* 取不到就当没有 —— 宁可少置顶，也不能凭空把 mod 藏掉 */ }
   updateLikeTabs();
+}
+
+/**
+ * 拉一次「有 bug」标记集合。取不到就当**没有**：标记的用途是「提醒 / 默认跳过」，
+ * 万一读失败把整批安装都拦下来（还找不到原因），比漏一次提醒更糟。
+ */
+async function loadBugs() {
+  try {
+    const ids = await call(window.api.bugs.ids(), { silent: true });
+    state.bugIds = new Set((ids || []).map(String));
+  } catch { /* 同上：静默当作没有标记 */ }
 }
 
 /** 同步顶部「只看喜欢」按钮的选中态 */
@@ -4154,9 +4178,55 @@ async function libInstallOne(it) {
 }
 
 /** 装单个：把 library 里的这个包重新装进当前游戏目录 */
+/**
+ * 「有 bug」标记的挂起上下文（弹窗里的三个按钮各自 resolve 同一个 Promise）。
+ * 只在一处用，所以是个模块级单例而不是 state 字段。
+ */
+let bugSkipCtx = null;
+
+/**
+ * 安装前查一遍「有 bug」标记：命中了就先问一句要不要跳过（用户 2026-11-09）。
+ *
+ * @param {Array} items 打算装的安装包 / 任务（要有 `modId`，`name` 用来显示）
+ * @returns {Promise<Array|null>} 真正要装的那批；用户取消返回 `null`
+ *
+ * 之所以返回**列表**而不是布尔：批量安装中途剔除几个包是最自然的表意，
+ * 调用方拿到就能直接 `for (const it of list)`，不用再各自过滤一遍。
+ */
+function confirmBugMarked(items) {
+  const list = items || [];
+  const bad = list.filter(it => it && it.modId && state.bugIds.has(String(it.modId)));
+  if (!bad.length) return Promise.resolve(list);
+  const names = bad.slice(0, 5).map(it => it.name || ('#' + it.modId)).join('、')
+    + (bad.length > 5 ? ` 等 ${bad.length} 个` : '');
+  return new Promise(resolve => {
+    bugSkipCtx = {
+      onSkip: () => resolve(list.filter(it => !bad.includes(it))),
+      onAll: () => resolve(list),
+      onCancel: () => resolve(null)
+    };
+    openModal('这批里有标过「有 bug」的 Mod', `
+      <div class="callout warn">
+        里面这 ${bad.length} 个你之前标记过「有 bug」—— 装进去可能影响游戏：
+        <div style="margin-top:6px">${esc(names)}</div>
+      </div>
+      <div class="callout" style="color:var(--dim2)">
+        标记只是提醒，不会拦你。想改主意可以在「已安装 Mod」里点开那个 Mod，取消标记。
+      </div>
+    `, [
+      { id: 'bugSkipAll', label: `全部跳过这 ${bad.length} 个`, primary: true },
+      { id: 'bugKeepAll', label: '仍然全部安装' },
+      { id: 'bugCancel', label: '取消' }
+    ]);
+  });
+}
+
 async function libInstall(modId) {
   const it = ((state.library && state.library.items) || []).find(x => String(x.modId) === String(modId));
   if (!it) { await refreshLibrary(); renderDownload(); return; }
+  // 单个安装也问一句：标过「有 bug」的包，别手滑又装进去
+  const ok = await confirmBugMarked([it]);
+  if (!ok || !ok.length) return;
   try {
     await libInstallOne(it);
     toast('已加入安装队列');
@@ -4178,14 +4248,18 @@ async function libBatchInstall() {
   const items = (state.library && state.library.items) || [];
   const picked = items.filter(it => state.sel.ids.has(String(it.modId)));
   if (!picked.length) { toast('先勾选要安装的包'); return; }
+  // 先问「有 bug」标记（放在 running 标志之前 —— 用户取消时不该把按钮锁死）
+  const list = await confirmBugMarked(picked);
+  if (!list) return;
+  if (!list.length) { toast('勾选的包都标过「有 bug」，已全部跳过', 'warn'); return; }
   libBatchRunning = true;
   const btn = $('#btnBatchDownload');
   const keepLabel = btn ? btn.textContent : '';
   try {
     let ok = 0, failed = 0;
-    for (let i = 0; i < picked.length; i++) {
-      if (btn) { btn.disabled = true; btn.textContent = `安装中 ${i + 1}/${picked.length}…`; }
-      try { await libInstallOne(picked[i]); ok++; } catch { failed++; }
+    for (let i = 0; i < list.length; i++) {
+      if (btn) { btn.disabled = true; btn.textContent = `安装中 ${i + 1}/${list.length}…`; }
+      try { await libInstallOne(list[i]); ok++; } catch { failed++; }
     }
     state.sel.ids.clear();
     state.sel.all = false;
@@ -4207,6 +4281,12 @@ async function libBatchInstall() {
 /** 全部装：串行一个个来（同时装会抢同一个游戏目录） */
 async function libInstallAll() {
   if (libInstallRunning) { toast('正在安装中，稍等…'); return; }
+  const all = (state.library && state.library.items) || [];
+  if (!all.length) { toast('没有待安装的任务'); return; }
+  // 先问「有 bug」标记（放在 running 标志之前 —— 用户取消时不该把按钮锁死）
+  const list = await confirmBugMarked(all);
+  if (!list) return;
+  if (!list.length) { toast('待安装的包都标过「有 bug」，已全部跳过', 'warn'); return; }
   libInstallRunning = true;
   const setBtn = (txt, disabled) => {
     const b = document.querySelector('[data-lib-installall]');
@@ -4214,8 +4294,7 @@ async function libInstallAll() {
   };
   setBtn('安装中…', true);
   try {
-    const items = (state.library && state.library.items) || [];
-    if (!items.length) { toast('没有待安装的任务'); return; }
+    const items = list;
     let ok = 0, failed = 0;
     for (let i = 0; i < items.length; i++) {
       setBtn(`安装中 ${i + 1}/${items.length}…`, true);
@@ -6560,6 +6639,10 @@ function bindEvents() {
     const gu2 = t.closest('[data-guninstall]');
     if (gu2) { await doUninstallGroup(gu2.dataset.guninstall); return; }
 
+    // 「有 bug」标记（抽屉底部，卸载旁边）
+    const gbug = t.closest('[data-gbug]');
+    if (gbug) { await doBugToggleGroup(gbug.dataset.gbug); return; }
+
     // 解除关联（抽屉底部）—— 只删关联记录，文件一个都不动
     const gul = t.closest('[data-gunlink]');
     if (gul) { await doUnlinkGroup(gul.dataset.gunlink); return; }
@@ -6852,6 +6935,18 @@ function bindEvents() {
         if (taskId && dirs.length) await installWithPick(taskId, dirs);
       }
       else if (id === 'impGo') await parseAndInstall($('#impUrl') && $('#impUrl').value);
+
+      // ---- 「有 bug」标记的安装前提示 ----
+      else if (id === 'bugSkipAll' || id === 'bugKeepAll' || id === 'bugCancel') {
+        const c = bugSkipCtx;
+        bugSkipCtx = null;
+        closeModal();
+        if (c) {
+          if (id === 'bugSkipAll') c.onSkip();
+          else if (id === 'bugKeepAll') c.onAll();
+          else c.onCancel();
+        }
+      }
 
       // ---- 数据目录搬运向导 ----
       else if (id === 'ddCancel') { ddPending = null; closeModal(); }
@@ -7355,6 +7450,40 @@ async function doToggleGroup(key) {
   reopenInstalledDrawer(key);
 }
 
+/**
+ * 切换「这个 Mod 有 bug」标记（用户 2026-11-09：卸载旁边加一颗按钮，
+ * 「用于标记有问题的 mod 避免再次安装时影响游戏」）。
+ *
+ * 这**不是**黑名单：黑名单是「不想再看见」，浏览页直接隐藏；
+ * 有 bug 标记是「它也许哪天能修好，我还会看它，但别再装进游戏」——
+ * 所以浏览页照常显示，只在**安装路径**上拦一道（批量安装先问一句）。
+ *
+ * 认人只靠 Nexus modId（标记要在游戏目录里跟着走，不能存 pak 名 ——
+ * 用户换了文件名 / 重装一次就对不上了）。
+ */
+async function doBugToggleGroup(key) {
+  const g = groupOf(key);
+  if (!g) return;
+  const meta = g.meta || {};
+  const src = meta.source || {};
+  const modId = Number(g.modId || src.modId || meta.modId || 0) || 0;
+  if (!modId) {
+    toast('这个 Mod 没有 Nexus Mod ID，没法标记（标记靠 Mod ID 认人）', 'warn');
+    return;
+  }
+  const on = state.bugIds.has(String(modId));
+  try {
+    if (on) await call(window.api.bugs.remove(modId));
+    else await call(window.api.bugs.add(modId, { name: g.name }));
+  } catch { return; /* call() 已经提示过了 */ }
+  await loadBugs();
+  toast(on
+    ? `已取消「有 bug」标记：${g.name}`
+    : `已标记有 bug：${g.name} —— 批量安装前会先问你要不要跳过`, on ? 'ok' : 'warn');
+  await refreshAll();
+  reopenInstalledDrawer(key);
+}
+
 /** 逐个卸载整个 Mod —— 组里每一文件各调一次 `mods:uninstall`（主进程按单条 id 定位） */
 async function doUninstallGroup(key) {
   const g = groupOf(key);
@@ -7644,6 +7773,8 @@ window.__refreshAll = refreshAll;
   await loadBlacklist();
   // 「喜欢」同理：要先拿到，首屏的卡片才能画成已经点亮的 👍（否则点一下才变）
   await loadFavorites();
+  // 「有 bug」标记也要先拿到：卡片角标与批量安装的提示都靠它
+  await loadBugs();
 
   await refreshAll();
 

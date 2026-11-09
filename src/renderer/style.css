@@ -98,6 +98,13 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .cover .sw.part::after{right:9px}
 /* 「N 个已装文件」角标 —— 挪到左下角，避开左上角的类型 tag 和右上角的开关 */
 .cover .tag.nfile{top:auto;bottom:8px;left:8px;color:var(--blue);border-color:rgba(74,158,255,.45);background:rgba(74,158,255,.16)}
+/* 「有 bug」角标（2026-11-09 加）：位置与 nfile 相同（左下），有它时 nfile 让位到上一行 —— 
+   用橙色区别于蓝色的「N 个已装文件」、红色的卸载按钮：它是**提醒**，不是状态。 */
+.cover .tag.bug{top:auto;bottom:8px;left:8px;color:#E8A33D;border-color:rgba(232,163,61,.5);background:rgba(232,163,61,.18)}
+.cover .tag.nfile + .tag.bug{left:auto;right:8px}
+/* 抽屉底部「标为有 bug」按钮：与「卸载」并排，但不能抢它的红 —— 用细橙边 */
+.btn.bug{border-color:rgba(232,163,61,.5);color:#E8A33D;background:rgba(232,163,61,.1)}
+.btn.bug:hover{background:rgba(232,163,61,.18)}
 /* 卡片底部的操作区：👍 / 👎 与「下载 / 已安装」按钮并排，操作类按钮集中在一处。
    用户 2026-10-14：「喜欢和不喜欢按钮下移，与下载按钮放在一起，操作类的按钮尽量集中」——
    原来是绝对定位贴在封面右下角的，现随 `.meta` 排到行末（`margin-left:auto` 推右），
