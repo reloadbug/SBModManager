@@ -59,7 +59,7 @@
   13 个语言包全部 1232/1232。
 - `_probe/crashlog-test.js` 83 项：`parseCrashXml` / `parseUe4ssLog` / `buildReport` 纯函数真身跑
   （含 `{ installed }` 外壳、同一 Mod 多组文件只算最新那组）+ 接线断言。
-- 全量 55 个探针全绿。真机（dev + 独立 user-data-dir，真实数据 300 个安装包）：两个 chip 同时 `on`、
+- 全量探针（`npm run test:all`）全绿。真机（dev + 独立 user-data-dir，真实数据 300 个安装包）：两个 chip 同时 `on`、
   卡片数不变、统计行带「同时开着」、搜 `#2844` → 300 里只剩 1 张、12 张卡各有 👍👎、
   抽屉里 `#dActions .vote .vbtn` 两颗 + `[data-lib-install]` 在。
 - `_probe/crashlog-test.js` 新增 83 项：`parseCrashXml` / `parseUe4ssLog` / `crashPhase` / `buildReport`
