@@ -1765,7 +1765,11 @@ function register() {
       return { root: '', report: null, reason: '还没设置游戏目录，找不到日志和崩溃快照。' };
     }
     let mods = [];
-    try { mods = listMods(); } catch (e) { logger.event('crash:report mods-fail', { error: String(e && e.message || e) }); }
+    // ⚠️ `listMods()` 返回的是 `{ installed, root }`，不是数组 —— 直接丢给 analyze 会炸
+    try {
+      const lm = listMods();
+      mods = Array.isArray(lm) ? lm : ((lm && lm.installed) || []);
+    } catch (e) { logger.event('crash:report mods-fail', { error: String(e && e.message || e) }); }
     let version = null;
     try { version = gameVersion.detect(root); } catch { version = null; }
     const report = crashLog.analyze({ root, mods, gameVersion: version, now: Date.now() });

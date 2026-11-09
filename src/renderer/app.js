@@ -5253,7 +5253,7 @@ function paintCrash() {
     for (const f of fnd) {
       const cls = f.level === 'error' ? 'callout err' : (f.level === 'warn' ? 'callout warn' : 'callout');
       h.push(`<div class="${cls}" style="margin-top:8px"><b>${esc(f.title)}</b><br>${
-        esc(f.detail || '').replace(/\n/g, '<br>')}</div>`);
+        crashMd(f.detail || '').replace(/\n/g, '<br>')}</div>`);
     }
   }
 

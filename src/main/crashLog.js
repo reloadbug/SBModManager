@@ -436,10 +436,11 @@ function buildReport(input = {}) {
     now = Date.now(),
     ue4ss = {},
     crashes = [],
-    mods = [],
     files = {},
     env = {}
   } = input;
+  // mods 既可能是数组，也可能是 `{ installed, root }` 外壳 —— 统一成数组，避免 for…of 直接炸
+  const mods = Array.isArray(input.mods) ? input.mods : ((input.mods && input.mods.installed) || []);
 
   const findings = [];
   const add = (level, title, detail, extra = {}) => findings.push({ level, title, detail, ...extra });
@@ -552,16 +553,30 @@ function buildReport(input = {}) {
   }
 
   // ② 时间相关：最近一次启动之前新装 / 刚改过的 Mod
+  //    同一个 id 下可能挂着好几组文件（比如同一个 Mod 的套装 pak + 物理补丁），
+  //    逐组加分会把同一件事算两遍、还会印出两条几乎一样的理由 —— 只留最新的那组
   if (sessionStartMs) {
+    const recency = new Map();
     for (const m of mods) {
       const t = modNewestMs(m);
       if (!t) continue;
       const hours = (sessionStartMs - t) / HOUR;
       if (hours < 0 || hours > 7 * 24) continue;
-      if (hours <= 2) bump(m, 25, '文件写入时间 ' + fmtLocal(t) + '，就在最近一次启动前不到 2 小时');
-      else if (hours <= 24) bump(m, 15, '文件写入时间 ' + fmtLocal(t) + '（最近一次启动前 ' + Math.round(hours) + ' 小时）');
-      else if (startupish.length) bump(m, 6, '文件写入时间 ' + fmtLocal(t) + '（' + Math.round(hours / 24) + ' 天前，这期间一直崩）');
+      let pts = 0;
+      let reason = '';
+      if (hours <= 2) {
+        pts = 25; reason = '文件写入时间 ' + fmtLocal(t) + '，就在最近一次启动前不到 2 小时';
+      } else if (hours <= 24) {
+        pts = 15; reason = '文件写入时间 ' + fmtLocal(t) + '（最近一次启动前 ' + Math.round(hours) + ' 小时）';
+      } else if (startupish.length) {
+        pts = 6; reason = '文件写入时间 ' + fmtLocal(t) + '（' + Math.round(hours / 24) + ' 天前，这期间一直崩）';
+      }
+      if (!pts) continue;
+      const key = m.id || m.name;
+      const prev = recency.get(key);
+      if (!prev || t > prev.t) recency.set(key, { mod: m, t, pts, reason });
     }
+    for (const r of recency.values()) bump(r.mod, r.pts, r.reason);
   }
 
   // ③ 崩溃栈里出现了 UE4SS.dll → 崩在加载器注入的代码路径上，注入型 Mod（C++ / Lua）嫌疑上升
@@ -839,7 +854,10 @@ function listCrashDirs(crashesDir) {
  * @param {{root?:string, mods?:object[], gameVersion?:object, now?:number}} opts
  */
 function analyze(opts = {}) {
-  const { root = '', mods = [], gameVersion = null, now = Date.now() } = opts;
+  const { root = '', gameVersion = null, now = Date.now() } = opts;
+  // 允许上层把 `scanner.scan()` 的原始结果或 `{ installed }` 外壳直接传进来
+  const src = opts.mods;
+  const mods = Array.isArray(src) ? src : ((src && src.installed) || []);
   const L = locate(root);
 
   /* UE4SS 日志 */
