@@ -25,7 +25,7 @@ const state = {
   // 默认「全部内容」—— 不隐藏任何 mod（用户 2026-10-12 明确要求）
   // blocked = 点了「不喜欢」的 modId 集合（字符串）；blockMode = hide（默认不显示）/ all / only
   // liked = 点了「喜欢」的 modId 集合（字符串）；onlyLiked = 「只看喜欢」视图（走本地记录，不碰 Nexus）
-  browse: { sort: 'downloads', search: '', offset: 0, items: [], total: 0, loading: false, done: false, adultMode: 'all', category: '', tags: [], facets: null, gen: 0, onlyUninstalled: false, blocked: new Set(), blockMode: 'hide', liked: new Set(), onlyLiked: false },
+  browse: { sort: 'downloads', search: '', offset: 0, items: [], total: 0, loading: false, done: false, adultMode: 'all', category: '', tags: [], facets: null, gen: 0, onlyUninstalled: false, blocked: new Set(), blockMode: 'hide', liked: new Set(), onlyLiked: false, onlyDownloaded: false },
   // 浏览页多选 / 批量下载：ids 是 modId 字符串集合（跨滚动保留），
   // all = 「已全选当前列表」，之后追加加载的新卡片自动并入选择。
   sel: { on: false, all: false, busy: false, ids: new Set() },
@@ -1965,17 +1965,19 @@ function selToggle(modId) {
   state.sel.all = false;
   selSyncCard(k);
   selUpdateBar();
+  refreshDownloadedStats();
 }
 
 /** 全选 / 取消全选「当前已加载」的 Mod；全选后新追加的卡片自动并入 */
 function selSelectAll() {
-  const items = state.browse.items || [];
+  const items = browseVisibleItems();
   if (!items.length) return;   // 还没加载出东西，没什么可选（也别把 all 置上）
   const allOn = items.every(m => state.sel.ids.has(String(m.modId)));
   if (allOn) { state.sel.ids.clear(); state.sel.all = false; }
   else { for (const m of items) state.sel.ids.add(String(m.modId)); state.sel.all = true; }
   selSyncAll();
   selUpdateBar();
+  refreshDownloadedStats();
 }
 
 /** 单个卡片的选中外观（不重画卡片 —— 整页重画会让封面重新解码、滚动位置跳） */
@@ -2004,6 +2006,7 @@ function selClear() {
   state.sel.all = false;
   selSyncAll();
   selUpdateBar();
+  refreshDownloadedStats();
 }
 
 /** 进入 / 退出多选模式（只切 body 上的类，卡片不用重画）；退出时清空选择 */
@@ -2012,6 +2015,7 @@ function selSetMode(on) {
   syncSelBodyClass();
   if (!state.sel.on) { state.sel.ids.clear(); state.sel.all = false; selSyncAll(); }
   selUpdateBar();
+  refreshDownloadedStats();
 }
 
 /** 工具栏三个按钮的文案 / 显隐 / 计数 */
@@ -2020,11 +2024,12 @@ function selUpdateBar() {
   const allBtn = $('#btnSelectAll');
   const dl = $('#btnBatchDownload');
   if (!mode) return;
+  const downloading = !!state.browse.onlyDownloaded;   // 「已下载」筛选下这颗按钮变成批量安装
   mode.textContent = state.sel.on ? '完成' : '多选';
   mode.classList.toggle('on', state.sel.on);
   if (allBtn) {
     allBtn.style.display = state.sel.on ? '' : 'none';
-    const items = state.browse.items || [];
+    const items = browseVisibleItems();
     const allOn = items.length > 0 && items.every(m => state.sel.ids.has(String(m.modId)));
     allBtn.textContent = allOn ? '取消全选' : '全选';
   }
@@ -2032,7 +2037,9 @@ function selUpdateBar() {
     dl.style.display = state.sel.on ? '' : 'none';
     if (state.sel.busy) return;   // 跑批时文案由进度更新接管，别被覆盖
     const n = state.sel.ids.size;
-    dl.textContent = n ? `批量下载（${n}）` : '批量下载';
+    dl.textContent = downloading
+      ? (n ? `批量安装（${n}）` : '批量安装')
+      : (n ? `批量下载（${n}）` : '批量下载');
     dl.disabled = !n;
   }
 }
@@ -2211,10 +2218,85 @@ function browseRest(b) {
   return Math.max(0, (b.total || 0) - seen);
 }
 
+/**
+ * 当前浏览页「看得见的东西」。
+ * 平常是 Nexus 拉回来的 items；打开「已下载」筛选时换成本地安装包清单
+ * （`state.library.items`，只有 modId，但它才是「下好了没装」的真相）。
+ * 全选 / 计数都走这里，两套清单共用同一个多选状态。
+ */
+function browseVisibleItems() {
+  if (state.browse.onlyDownloaded) return (state.library && state.library.items) || [];
+  return state.browse.items || [];
+}
+
+/** 「只显示未安装」与「已下载」互斥，按钮高亮同步（两处调用：点筛选、从下载页跳过来） */
+function syncOnlyTabs() {
+  const b = state.browse;
+  $$('#newOnlyTabs button').forEach(x => {
+    if (x.hasAttribute('data-onlydl')) x.classList.toggle('on', !!b.onlyDownloaded);
+    else x.classList.toggle('on', !b.onlyDownloaded && !!b.onlyUninstalled);
+  });
+}
+
+/** 「已下载」筛选的统计行（勾选变化时只重写这一行，不重画卡片） */
+function downloadedStatsHtml(count, listed) {
+  return `已下载但没装 <b>${fmtNum(count)}</b> 个 · 已列出 ${fmtNum(listed)} 个 · 选中 <b>${fmtNum(state.sel.ids.size)}</b> 个` +
+    (state.sel.on ? '（勾选后点右上「批量安装」）' : '（点「多选」后勾卡片，可批量安装）');
+}
+
+function refreshDownloadedStats() {
+  if (!state.browse.onlyDownloaded) return;
+  const stats = $(`#browseStats`);
+  if (!stats) return;
+  const items = (state.library && state.library.items) || [];
+  const listed = Math.min(items.length, state.libShown || 12);
+  stats.innerHTML = downloadedStatsHtml(items.length, listed);
+}
+
+/**
+ * 「已下载」筛选：把管理器里下好但没装进当前游戏目录的安装包，
+ * 按浏览页同一套卡片列出来（封面 / 标题 / 作者 / 摘要 / 版本 / 大小），
+ * 多选后右上角「批量安装」一次性排进安装队列。
+ */
+function renderBrowseDownloaded() {
+  const area = $('#browseArea');
+  const stats = $('#browseStats');
+  const more = $('#btnLoadMore');
+  if (more) more.style.display = 'none';
+  const items = (state.library && state.library.items) || [];
+  if (!state.library) {
+    area.innerHTML = `<div class="grid">${Array.from({ length: 8 }, () => '<div class="skeleton"></div>').join('')}</div>`;
+    if (stats) stats.innerHTML = '正在盘点管理器里的安装包…';
+    return;
+  }
+  if (!items.length) {
+    area.innerHTML = `<div class="empty">
+      <h3>没有已下载但没装的 Mod</h3>
+      <p>管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。</p>
+    </div>`;
+    if (stats) stats.innerHTML = '已下载但没装 <b>0</b> 个';
+    selSyncAll();
+    selUpdateBar();
+    return;
+  }
+  const shown = items.slice(0, state.libShown || 12);
+  const rest = items.length - shown.length;
+  area.innerHTML = `<div class="grid">${shown.map(it => libCardHtml(it, { selectable: true, hideDetail: true })).join('')}</div>` +
+    (rest > 0 ? `<div class="lib-more"><button class="btn sm" data-lib-more="1">显示更多（还有 ${fmtNum(rest)} 个）</button></div>` : '');
+  if (stats) stats.innerHTML = downloadedStatsHtml(items.length, shown.length);
+  selSyncAll();
+  selUpdateBar();
+  ensureLibMeta();
+}
+
 function renderBrowse() {
   const b = state.browse;
   const area = $('#browseArea');
   renderBrowseFilters();
+  if (b.onlyDownloaded) {
+    renderBrowseDownloaded();
+    return;
+  }
   if (b.loading && !b.items.length) {
     area.innerHTML = `<div class="grid">${Array.from({ length: 8 }, () => '<div class="skeleton"></div>').join('')}</div>`;
     $('#browseStats').textContent = '正在从 Nexus 拉取…';
@@ -3915,11 +3997,22 @@ async function ensureLibMeta() {
   } finally {
     libMetaBusy = false;
   }
-  if (got) renderDownload();
+  // 补到东西就重画一次 —— 卡片可能长在下载页，也可能长在「浏览 Mod → 已下载」里，
+  // 所以要按当前所在的界面重画（重画时又会继续补下一批 6 个）。
+  if (got) {
+    if (state.browse.onlyDownloaded) renderBrowse();
+    else renderDownload();
+  }
 }
 
-/** 一张「管理器自带的安装包」卡片 —— 版式照抄浏览页（封面 + 标题 + 摘要 + 信息行 + 动作） */
-function libCardHtml(it) {
+/**
+ * 一张「管理器自带的安装包」卡片 —— 版式照抄浏览页（封面 + 标题 + 摘要 + 信息行 + 动作）。
+ * `opts.selectable`：放进浏览页的「已下载」筛选时带勾选框（复用浏览页那套多选）；
+ * `opts.hideDetail`：卡片本身点一下就是打开详情抽屉，就不用再放一颗「详情」按钮。
+ */
+function libCardHtml(it, opts) {
+  const o = opts || {};
+  const selected = !!o.selectable && state.sel.ids.has(String(it.modId));
   const meta = libMetaFor(it.modId) || {};
   const title = meta.name || it.name;
   const ver = it.version || meta.version || '';
@@ -3927,13 +4020,14 @@ function libCardHtml(it) {
   const img = meta.image || coverForMod(it.modId) || '';
   const summary = meta.summary || it.filename;
   return `
-  <div class="card" data-libcard="${it.modId}">
+  <div class="card${selected ? ' sel' : ''}" data-modid="${it.modId}" data-libcard="${it.modId}">
     <div class="cover">
       ${img
         ? `<img src="${esc(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'无封面图'}))">`
         : `<div class="ph">本地安装包<br>${esc(ext || '压缩包')}</div>`}
       ${ext ? `<span class="tag">${esc(ext)}</span>` : ''}
       <span class="lb dl">安装包</span>
+      ${o.selectable ? `<div class="ck${selected ? ' on' : ''}" data-ck="${it.modId}">✓</div>` : ''}
     </div>
     <div class="cbody">
       <h3 data-i18n-skip title="${esc(title)}">${esc(title)}</h3>
@@ -3944,7 +4038,7 @@ function libCardHtml(it) {
         ${meta.author ? `<span data-i18n-skip title="作者">${esc(clip(meta.author, 14))}</span>` : ''}
         <span>${fmtSize(it.size)}</span>
         <div class="acts">
-          <button class="btn sm" data-libdetail="${it.modId}" title="看这个 Mod 在 Nexus 上的详情">详情</button>
+          ${o.hideDetail ? '' : `<button class="btn sm" data-libdetail="${it.modId}" title="看这个 Mod 在 Nexus 上的详情">详情</button>`}
           <button class="btn sm p" data-lib-install="${it.modId}" title="把这份安装包装进当前游戏目录">装进游戏</button>
         </div>
       </div>
@@ -3955,18 +4049,9 @@ function libCardHtml(it) {
 function libraryBoxHtml() {
   const n = libraryCount();
   if (!n) return '';
-  const items = state.library.items || [];
-  const shown = Math.min(state.libShown || 12, items.length);
-  const more = Math.max(0, items.length - shown);
-  // 渲染完再回头补详情（异步，补到了会自己再重绘一次）
-  if (typeof queueMicrotask === 'function') queueMicrotask(() => { ensureLibMeta(); });
-  return `<div class="lib-box">
-    <div class="lib-head">
-      <span>管理器里还有 <b>${fmtNum(n)}</b> 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。</span>
-      <button class="btn p sm" data-lib-installall="1">全部装进去（${fmtNum(n)}）</button>
-    </div>
-    <div class="lib-grid">${items.slice(0, shown).map(libCardHtml).join('')}</div>
-    ${more > 0 ? `<div class="lib-more"><button class="btn sm" data-lib-more="1">显示更多（还有 ${fmtNum(more)} 个）</button></div>` : ''}
+  return `<div class="lib-hint">
+    <span>管理器里还有 <b>${fmtNum(n)}</b> 个安装包没有装进当前游戏目录（包一直在管理器目录里，不会跟着游戏走）。</span>
+    <button class="btn sm" data-lib-goto="1" title="打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装">到「已下载」里批量安装</button>
   </div>`;
 }
 
@@ -3985,8 +4070,46 @@ async function libInstall(modId) {
     toast('已加入安装队列');
     await refreshDownloads();
     await refreshLibrary();
-    renderDownload();
+    // 在「已下载」筛选里点的，就重画浏览页（装进去的那张会从清单里消失）
+    if (state.browse.onlyDownloaded) renderBrowse(); else renderDownload();
   } catch (e) { toast(e.message, 'err'); }
+}
+
+/**
+ * 「已下载」筛选里的批量安装：把勾选的安装包串行排进安装队列。
+ * 串行是刻意的 —— 同时装有可能会抢同一个游戏目录、冲突提示也会挤在一起。
+ */
+let libBatchRunning = false;
+
+async function libBatchInstall() {
+  if (libBatchRunning) { toast('正在安装中，稍等…'); return; }
+  const items = (state.library && state.library.items) || [];
+  const picked = items.filter(it => state.sel.ids.has(String(it.modId)));
+  if (!picked.length) { toast('先勾选要安装的包'); return; }
+  libBatchRunning = true;
+  const btn = $('#btnBatchDownload');
+  const keepLabel = btn ? btn.textContent : '';
+  try {
+    let ok = 0, failed = 0;
+    for (let i = 0; i < picked.length; i++) {
+      if (btn) { btn.disabled = true; btn.textContent = `安装中 ${i + 1}/${picked.length}…`; }
+      try { await libInstallOne(picked[i]); ok++; } catch { failed++; }
+    }
+    state.sel.ids.clear();
+    state.sel.all = false;
+    await refreshDownloads();
+    await refreshLibrary();
+    renderBrowse();
+    toast(failed
+      ? `已开始安装 ${fmtNum(ok)} 个包，${fmtNum(failed)} 个没能开始（在下载页看原因）`
+      : `已开始安装 ${fmtNum(ok)} 个包`, failed ? 'err' : 'ok');
+  } catch (e) {
+    toast(e.message, 'err');
+  } finally {
+    libBatchRunning = false;
+    if (btn) { btn.disabled = false; btn.textContent = keepLabel; }
+    selUpdateBar();
+  }
 }
 
 /** 全部装：串行一个个来（同时装会抢同一个游戏目录） */
@@ -4008,7 +4131,7 @@ async function libInstallAll() {
     }
     await refreshDownloads();
     await refreshLibrary();
-    renderDownload();
+    if (state.browse.onlyDownloaded) renderBrowse(); else renderDownload();
     toast(failed
       ? `已开始安装 ${fmtNum(ok)} 个包，${fmtNum(failed)} 个没能开始（在下载页看原因）`
       : `已开始安装 ${fmtNum(ok)} 个包`, failed ? 'err' : 'ok');
@@ -5991,11 +6114,23 @@ function bindEvents() {
   });
 
   // 只看未安装（本地判定，Nexus 没这个筛选条件）—— 开/关都要重新拉
-  $('#newOnlyTabs').addEventListener('click', (e) => {
+  $('#newOnlyTabs').addEventListener('click', async (e) => {
+    // 「已下载」：本地安装包清单（不走 Nexus 分页），可多选批量安装
+    if (e.target.closest('button[data-onlydl]')) {
+      state.browse.onlyDownloaded = !state.browse.onlyDownloaded;
+      if (state.browse.onlyDownloaded) state.browse.onlyUninstalled = false;
+      syncOnlyTabs();
+      selClear();
+      if (state.browse.onlyDownloaded) await refreshLibrary();
+      renderBrowse();
+      return;
+    }
     const b = e.target.closest('button[data-onlynew]');
     if (!b) return;
     state.browse.onlyUninstalled = !state.browse.onlyUninstalled;
-    $$('#newOnlyTabs button').forEach(x => x.classList.toggle('on', state.browse.onlyUninstalled));
+    if (state.browse.onlyUninstalled) state.browse.onlyDownloaded = false;
+    syncOnlyTabs();
+    selClear();
     loadBrowse(true);
   });
 
@@ -6038,7 +6173,11 @@ function bindEvents() {
   // 多选 / 全选 / 批量下载（默认下载各 Mod 的第一个主文件）
   $('#btnBatchMode').addEventListener('click', () => selSetMode(!state.sel.on));
   $('#btnSelectAll').addEventListener('click', () => selSelectAll());
-  $('#btnBatchDownload').addEventListener('click', () => { batchDownload().catch(() => {}); });
+  $('#btnBatchDownload').addEventListener('click', () => {
+    // 「已下载」筛选下这颗按钮是「批量安装」（装本地安装包），否则是「批量下载」
+    if (state.browse.onlyDownloaded) libBatchInstall().catch(() => {});
+    else batchDownload().catch(() => {});
+  });
 
   // 浏览页：滚到底部自动加载下一页（阈值 420px 提前预取，滚动更顺）。
   // 「加载更多」按钮保留作兜底 —— 键盘翻页、终端里没有平滑滚动的场景照样能加载。
@@ -6496,9 +6635,19 @@ function bindEvents() {
   const libOne = t.closest('[data-lib-install]');
   if (libOne) { await libInstall(libOne.dataset.libInstall); return; }
   // 卡片上的「显示更多」与「详情」（详情直接开 Nexus 抽屉，和浏览页一模一样）
-  if (t.closest('[data-lib-more]')) { state.libShown = (state.libShown || 12) + 12; renderDownload(); return; }
+  if (t.closest('[data-lib-more]')) { state.libShown = (state.libShown || 12) + 12; renderBrowse(); return; }
   const libDetail = t.closest('[data-libdetail]');
   if (libDetail) { openNexusDrawer(libDetail.dataset.libdetail); return; }
+  // 下载页那条提示：跳到「浏览 Mod」并把「已下载」筛选打开
+  if (t.closest('[data-lib-goto]')) {
+    state.browse.onlyDownloaded = true;
+    state.browse.onlyUninstalled = false;
+    switchPage('p-browse');
+    syncOnlyTabs();
+    await refreshLibrary();
+    renderBrowse();
+    return;
+  }
     const dlAuth = t.closest('[data-dl-auth]');
     if (dlAuth) { await dlAuthorize(dlAuth.dataset.dlAuth); return; }
     const dlStartBtn = t.closest('[data-dl-start]');

@@ -1180,5 +1180,18 @@
     '详情': 'Details',
     '本地安装包': 'Local package',
     '显示更多（还有 %s 个）': 'Show more (%s left)',
+    '正在盘点管理器里的安装包…': 'Checking the installer packages in the manager…',
+    '没有已下载但没装的 Mod': 'No downloaded-but-not-installed mods',
+    '管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。': 'Every package in the manager is already installed into the current game folder. Click "Downloaded" again to go back to the online list.',
+    '已下载但没装 %s 个': '%s downloaded, not installed',
+    '已下载但没装 %s 个 · 已列出 %s 个 · 选中 %s 个': '%s downloaded, not installed · %s listed · %s selected',
+    '（勾选后点右上「批量安装」）': '(tick the ones you want, then click "Install selected")',
+    '（点「多选」后勾卡片，可批量安装）': '(click "Select", tick the cards, then install them in one go)',
+    '批量安装（%s）': 'Install selected (%s)',
+    '批量安装': 'Install selected',
+    '先勾选要安装的包': 'Tick the packages you want to install first',
+    '到「已下载」里批量安装': 'Install them from "Downloaded"',
+    '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Open the "Downloaded" filter on the Browse page to select several and install them together',
+    '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Show only packages already downloaded into the manager but not yet installed into the current game folder (local list, multi-select install)',
   });
 })();

@@ -1180,5 +1180,18 @@
     '详情': 'Ayrıntılar',
     '本地安装包': 'Yerel paket',
     '显示更多（还有 %s 个）': 'Daha fazla göster (%s kaldı)',
+    '正在盘点管理器里的安装包…': 'Yöneticideki kurulum paketleri denetleniyor…',
+    '没有已下载但没装的 Mod': 'İndirilmiş ama kurulmamış mod yok',
+    '管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。': 'Yöneticideki tüm paketler geçerli oyun klasörüne kurulmuş. Çevrimiçi listeye dönmek için «İndirilenler»e tekrar bas.',
+    '已下载但没装 %s 个': '%s indirildi, kurulmadı',
+    '已下载但没装 %s 个 · 已列出 %s 个 · 选中 %s 个': '%s indirildi kurulmadı · %s listelendi · %s seçildi',
+    '（勾选后点右上「批量安装」）': '(işaretle, sonra sağ üstteki «Seçilenleri kur»)',
+    '（点「多选」后勾卡片，可批量安装）': '(«Çoklu seç»e bas, kartları işaretle, hepsini birden kur)',
+    '批量安装（%s）': 'Seçilenleri kur (%s)',
+    '批量安装': 'Seçilenleri kur',
+    '先勾选要安装的包': 'Önce kurmak istediğin paketleri işaretle',
+    '到「已下载」里批量安装': '«İndirilenler» içinden kur',
+    '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': '«Modlara göz at» sayfasındaki «İndirilenler» filtresini açarak birkaçını seçip birlikte kurabilirsin',
+    '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Yalnızca yöneticiye indirilmiş ama geçerli oyun klasörüne henüz kurulmamış paketleri göster (yerel liste, çoklu kurulum)',
   });
 })();

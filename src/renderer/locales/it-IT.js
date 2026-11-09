@@ -1180,5 +1180,18 @@
     '详情': 'Dettagli',
     '本地安装包': 'Pacchetto locale',
     '显示更多（还有 %s 个）': 'Mostra altri (%s rimasti)',
+    '正在盘点管理器里的安装包…': 'Verifica dei pacchetti di installazione nel gestore…',
+    '没有已下载但没装的 Mod': 'Nessuna mod scaricata ma non installata',
+    '管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。': 'Tutti i pacchetti del gestore sono già installati nella cartella di gioco attuale. Premi di nuovo «Scaricati» per tornare all\'elenco online.',
+    '已下载但没装 %s 个': '%s scaricati, non installati',
+    '已下载但没装 %s 个 · 已列出 %s 个 · 选中 %s 个': '%s scaricati non installati · %s mostrati · %s selezionati',
+    '（勾选后点右上「批量安装」）': '(seleziona e premi «Installa selezionati» in alto a destra)',
+    '（点「多选」后勾卡片，可批量安装）': '(premi «Selezione», segna le schede e installa in un colpo)',
+    '批量安装（%s）': 'Installa selezionati (%s)',
+    '批量安装': 'Installa selezionati',
+    '先勾选要安装的包': 'Prima segna i pacchetti da installare',
+    '到「已下载」里批量安装': 'Installa da «Scaricati»',
+    '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Apri il filtro «Scaricati» della pagina «Sfoglia» per selezionarne diversi e installarli insieme',
+    '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Mostra solo i pacchetti già scaricati nel gestore ma non ancora installati nella cartella di gioco attuale (elenco locale, installazione multipla)',
   });
 })();

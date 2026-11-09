@@ -1180,5 +1180,18 @@
     '详情': 'Detalles',
     '本地安装包': 'Paquete local',
     '显示更多（还有 %s 个）': 'Mostrar más (%s restantes)',
+    '正在盘点管理器里的安装包…': 'Comprobando los paquetes de instalación del gestor…',
+    '没有已下载但没装的 Mod': 'No hay mods descargados sin instalar',
+    '管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。': 'Todos los paquetes del gestor ya están instalados en la carpeta de juego actual. Vuelve a pulsar «Descargados» para volver a la lista en línea.',
+    '已下载但没装 %s 个': '%s descargados, sin instalar',
+    '已下载但没装 %s 个 · 已列出 %s 个 · 选中 %s 个': '%s descargados sin instalar · %s mostrados · %s seleccionados',
+    '（勾选后点右上「批量安装」）': '(marca y pulsa «Instalar seleccionados» arriba a la derecha)',
+    '（点「多选」后勾卡片，可批量安装）': '(pulsa «Selección», marca las tarjetas y instala de una vez)',
+    '批量安装（%s）': 'Instalar seleccionados (%s)',
+    '批量安装': 'Instalar seleccionados',
+    '先勾选要安装的包': 'Primero marca los paquetes que quieres instalar',
+    '到「已下载」里批量安装': 'Instalar desde «Descargados»',
+    '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Abre el filtro «Descargados» de la página «Explorar» para seleccionar varios e instalarlos juntos',
+    '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Mostrar solo los paquetes ya descargados en el gestor pero aún no instalados en la carpeta de juego actual (lista local, instalación múltiple)',
   });
 })();

@@ -172,9 +172,9 @@ ok(pre.includes("installFromLibrary: (archivePath, meta, opts) => invoke('librar
 const appSrc = read('src/renderer/app.js');
 ok(appSrc.includes('async function refreshLibrary()'), 'app.js 有 refreshLibrary()');
 ok(appSrc.includes('function libraryBoxHtml()'), 'app.js 有 libraryBoxHtml()');
-ok(appSrc.includes("data-lib-installall=\"1\""), '列表头有「全部装进去」按钮');
+ok(appSrc.includes('data-lib-goto="1"'), '下载页那条提示带「到已下载里批量安装」按钮');
 ok(appSrc.includes('data-lib-install="${it.modId}"'), '每行有「装进游戏」按钮');
-ok(appSrc.includes("t.closest('[data-lib-installall]')"), '全部装的点击分支');
+ok(appSrc.includes("t.closest('[data-lib-installall]')"), '全部装的点击分支（批量安装改到浏览页后仍保留）');
 ok(appSrc.includes("t.closest('[data-lib-install]')"), '单个装的点击分支');
 ok(appSrc.includes('await refreshLibrary();'), 'refreshAll / refreshDownloads 里会重新盘点');
 ok(appSrc.includes('state.library = await call(window.api.download.library()'), '走的是 download.library() 通道');
@@ -189,12 +189,12 @@ ok(css.includes('.lib-box'), 'style.css 有 .lib-box');
 ok(css.includes('.lib-item'), 'style.css 有 .lib-item');
 
 /* ---- 0.4.3：清单从「一行文字」改成与浏览页同款卡片 ---- */
-ok(appSrc.includes('function libCardHtml(it)'), 'app.js 有 libCardHtml()（卡片版）');
+ok(appSrc.includes('function libCardHtml(it, opts)'), 'app.js 有 libCardHtml(it, opts)（卡片版，可按筛选打开勾选）');
 ok(appSrc.includes('function libMetaFor('), 'app.js 有 libMetaFor()（先用队列 meta 兜底）');
 ok(appSrc.includes('async function ensureLibMeta()'), 'app.js 有 ensureLibMeta()（回头问 Nexus 补封面/作者）');
 ok(appSrc.includes('libShown: 12'), 'state 里有「一次列几张卡」的 libShown');
 ok(appSrc.includes('libMetaTried'), 'state 里有 libMetaTried（问不到的也不再反复问）');
-const cardSrc = appSrc.slice(appSrc.indexOf('function libCardHtml(it)'), appSrc.indexOf('function libraryBoxHtml()'));
+const cardSrc = appSrc.slice(appSrc.indexOf('function libCardHtml(it'), appSrc.indexOf('function libraryBoxHtml()'));
 ok(cardSrc.includes('class="cover"') && cardSrc.includes('class="cbody"'),
   '卡片用的是浏览页那套 .cover / .cbody 版式');
 ok(/<h3 data-i18n-skip/.test(cardSrc), '卡片里标题跳过 i18n（Mod 名不翻译）');
@@ -204,9 +204,10 @@ ok(cardSrc.includes('fmtSize(it.size)'), '卡片里显示安装包大小');
 ok(cardSrc.includes('meta.author'), '卡片里显示作者');
 ok(appSrc.includes("t.closest('[data-lib-more]')"), '「显示更多」的点击分支');
 ok(appSrc.includes("t.closest('[data-libdetail]')"), '「详情」的点击分支（开 Nexus 抽屉）');
-ok(/ensureLibMeta\(\)/.test(appSrc.slice(appSrc.indexOf('function libraryBoxHtml()'), appSrc.indexOf('async function libInstallOne'))),
-  '每次渲染清单都会顺手触发一次补详情');
+ok(/ensureLibMeta\(\)/.test(appSrc.slice(appSrc.indexOf('function renderBrowseDownloaded()'), appSrc.indexOf('\nfunction renderBrowse()'))),
+  '「已下载」列表渲染完会顺手触发一次补详情');
 ok(css.includes('.lib-grid'), 'style.css 有 .lib-grid（卡片网格）');
+ok(css.includes('.lib-hint'), 'style.css 有 .lib-hint（下载页那条细提示）');
 
 const keys = JSON.parse(read('_probe/i18n-keys.json'));
 const keyList = Array.isArray(keys) ? keys : Object.keys(keys);
@@ -219,6 +220,40 @@ for (const k of ['装进游戏', '把这份安装包装进当前游戏目录', '
 // 0.4.3 卡片版新增的文案
 for (const k of ['安装包', '详情', '作者', '本地安装包', '显示更多（还有 %s 个）']) {
   ok(keyList.includes(k), 'i18n 有键：' + k);
+}
+
+/* ============================ D1b. 「已下载」筛选（0.4.4） ============================ */
+console.log('\n=== D1b) 「已下载」筛选：并进浏览页 + 多选批量安装 ===');
+
+const htmlSrc = read('src/renderer/index.html');
+ok(htmlSrc.includes('data-onlydl="1"'), 'index.html 的「只看…」那一排里有「已下载」按钮');
+ok(appSrc.includes('onlyDownloaded: false'), 'state.browse 里有 onlyDownloaded 开关');
+ok(appSrc.includes('function browseVisibleItems()'), 'app.js 有 browseVisibleItems()（多选/全选按当前可见项算）');
+ok(appSrc.includes('function syncOnlyTabs()'), 'app.js 有 syncOnlyTabs()（两个按钮高亮互斥）');
+ok(appSrc.includes('function renderBrowseDownloaded()'), 'app.js 有 renderBrowseDownloaded()');
+ok(appSrc.includes("if (b.onlyDownloaded) {\r\n    renderBrowseDownloaded();"), 'renderBrowse() 在「已下载」时走本地清单');
+ok(appSrc.includes('libCardHtml(it, { selectable: true, hideDetail: true })'),
+  '「已下载」里复用浏览页卡片，并打开勾选');
+ok(appSrc.includes('async function libBatchInstall()'), 'app.js 有 libBatchInstall()');
+ok(appSrc.includes('if (state.browse.onlyDownloaded) libBatchInstall()'),
+  '工具栏那颗按钮在「已下载」下改调批量安装');
+ok(appSrc.includes("const downloading = !!state.browse.onlyDownloaded;"), 'selUpdateBar 里按筛选切换文案');
+ok(appSrc.includes('批量安装（${n}）'), '多选时按钮显示「批量安装（N）」');
+ok(appSrc.includes("t.closest('[data-lib-goto]')"), '下载页那条提示能跳到「已下载」');
+ok(appSrc.includes("if (state.browse.onlyDownloaded) renderBrowse(); else renderDownload();"),
+  '装完一个包会按当前筛选决定重画哪一页');
+
+const selStart = appSrc.indexOf('function selUpdateBar()');
+const selEnd = appSrc.indexOf('function batchDownload(');
+const selSrc = appSrc.slice(selStart, selEnd > selStart ? selEnd : selStart + 2000);
+ok(selSrc.includes('browseVisibleItems()'), 'selUpdateBar 用 browseVisibleItems() 判「全选」状态');
+ok(appSrc.slice(appSrc.indexOf('function selSelectAll()'), appSrc.indexOf('function selSyncCard(')).includes('browseVisibleItems()'),
+  'selSelectAll 用 browseVisibleItems()（只全选当前看得见的）');
+
+for (const k of ['正在盘点管理器里的安装包…', '没有已下载但没装的 Mod',
+  '已下载但没装 %s 个', '已下载但没装 %s 个 · 已列出 %s 个 · 选中 %s 个',
+  '批量安装（%s）', '批量安装', '先勾选要安装的包', '到「已下载」里批量安装']) {
+  ok(keyList.includes(k), 'i18n 有键：' + k.slice(0, 20));
 }
 
 /* ============================ D2. 安装包目录可配置 ============================ */

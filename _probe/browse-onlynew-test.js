@@ -113,8 +113,12 @@ console.log('\n=== installedIdsOf：本地状态 IPC ===');
     // 原来写死到行尾（`blockMode: 'hide' }`）的正则不再匹配 ——
     // 改成「在 browse 对象内部能找到 onlyUninstalled: false」，不依赖字段顺序。
     /browse: \{[\s\S]{0,460}onlyUninstalled: false/.test(code));
-  t('点击开关切换状态并重新拉列表', () => /\$\('#newOnlyTabs'\)\.addEventListener\('click'[\s\S]{0,260}state\.browse\.onlyUninstalled = !state\.browse\.onlyUninstalled;[\s\S]{0,180}loadBrowse\(true\);/.test(code));
-  t('开关按钮的高亮跟着状态走', () => /classList\.toggle\('on', state\.browse\.onlyUninstalled\)/.test(code));
+  // 2026-11-09：「只看…」那一排多了「已下载」按钮，处理函数先从 `data-onlydl` 分支返回，
+  // 原来的「260 字符内必须看到 toggle + loadBrowse」不再成立 —— 改成按语义分别断言。
+  t('点击开关切换状态并重新拉列表', () =>
+    /\$\('#newOnlyTabs'\)\.addEventListener\('click'[\s\S]{0,600}onlyUninstalled = !state\.browse\.onlyUninstalled;[\s\S]{0,200}loadBrowse\(true\);/.test(code));
+  // 高亮改由 syncOnlyTabs() 统一管（「已下载」与「只看未安装」互斥，两处调用）
+  t('开关按钮的高亮跟着状态走', () => /function syncOnlyTabs\(\)[\s\S]{0,400}onlyUninstalled/.test(code));
   t('reset 时清空 items/offset/done', () => /b\.items = \[\]; b\.offset = 0; b\.done = false;/.test(code));
   // ⚠️ 口径已收敛到 `applyLocalFilter`（黑名单 + 只看未安装共用），别再盯着 `if (b.onlyUninstalled)`
   t('筛选开启时整页拉回来再剔（走 applyLocalFilter）', () =>

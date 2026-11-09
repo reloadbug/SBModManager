@@ -132,14 +132,21 @@ const selCode = (() => {
 // 2026-11-07：`selSetMode()` 改成调 `syncSelBodyClass()`（浏览页与已安装页共用
 // 同一个 body.sel，两页各自 toggle 会互相熄灭）。那个函数定义在 selToggle 之前，
 // 切片段切不到，这里按名字单独捞出来一起喂进沙箱，让断言仍走真实实现。
+// 2026-11-09：`selSelectAll()` / `selUpdateBar()` 改成按 `browseVisibleItems()` 算「当前看得见的项」
+// （「已下载」筛选下那是本地安装包清单）。这个函数定义在切片段之外，同样单独捞出来喂进沙箱。
+const browseVisibleCode = (() => {
+  const m = code.match(/function browseVisibleItems\([^)]*\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(m, '应能找到 browseVisibleItems()');
+  return m[0];
+})();
+
 const syncSelCode = (() => {
   const m = code.match(/function syncSelBodyClass\([^)]*\)\s*\{[\s\S]*?\n\}/);
   assert.ok(m, '应能找到 syncSelBodyClass()');
   return m[0];
 })();
 
-/** 假卡片：记录 classList 变更，便于断言「选中外观跟着变」 */
-function fakeCard(modid, log) {
+/** 假卡片：记录 classList 变更，便于断言「选中外观跟着变」 */function fakeCard(modid, log) {
   return {
     dataset: { modid: String(modid) },
     classList: { toggle(cls, on) { log.push([String(modid), cls, !!on]); } },
@@ -158,11 +165,14 @@ const ctx = {
     return dom.els[s];
   },
   document: { querySelector: () => null, body: dom.body },
+  // 2026-11-09：「已下载」筛选的统计行刷新（只改一行文字，不影响选择状态）
+  fmtNum: (n) => String(n),
+  refreshDownloadedStats: () => { ctx.statsRefreshed = (ctx.statsRefreshed || 0) + 1; },
   Set
 };
 vm.createContext(ctx);
 vm.runInContext(
-  syncSelCode + '\n' + selCode + '\nthis.selToggle=selToggle; this.selSelectAll=selSelectAll; this.selClear=selClear;' +
+  syncSelCode + '\n' + browseVisibleCode + '\n' + selCode + '\nthis.selToggle=selToggle; this.selSelectAll=selSelectAll; this.selClear=selClear;' +
   'this.selSetMode=selSetMode; this.selUpdateBar=selUpdateBar;',
   ctx
 );

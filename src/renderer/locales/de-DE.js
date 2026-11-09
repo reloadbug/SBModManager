@@ -1180,5 +1180,18 @@
     '详情': 'Details',
     '本地安装包': 'Lokales Paket',
     '显示更多（还有 %s 个）': 'Mehr anzeigen (%s übrig)',
+    '正在盘点管理器里的安装包…': 'Installationspakete im Manager werden geprüft…',
+    '没有已下载但没装的 Mod': 'Keine heruntergeladenen, aber nicht installierten Mods',
+    '管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。': 'Alle Pakete im Manager sind bereits im aktuellen Spielordner installiert. Klicke erneut auf „Heruntergeladen", um zur Online-Liste zurückzukehren.',
+    '已下载但没装 %s 个': '%s heruntergeladen, nicht installiert',
+    '已下载但没装 %s 个 · 已列出 %s 个 · 选中 %s 个': '%s heruntergeladen, nicht installiert · %s angezeigt · %s ausgewählt',
+    '（勾选后点右上「批量安装」）': '(anhaken, dann oben rechts „Auswahl installieren")',
+    '（点「多选」后勾卡片，可批量安装）': '(auf „Mehrfachauswahl" klicken, Karten anhaken, dann alle installieren)',
+    '批量安装（%s）': 'Auswahl installieren (%s)',
+    '批量安装': 'Auswahl installieren',
+    '先勾选要安装的包': 'Bitte zuerst die gewünschten Pakete anhaken',
+    '到「已下载」里批量安装': 'Unter „Heruntergeladen" installieren',
+    '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Öffne den Filter „Heruntergeladen" auf der Seite „Mods durchsuchen", um mehrere auszuwählen und gemeinsam zu installieren',
+    '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Nur Pakete zeigen, die bereits im Manager heruntergeladen, aber noch nicht im aktuellen Spielordner installiert sind (lokale Liste, Mehrfachinstallation)',
   });
 })();

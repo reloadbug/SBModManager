@@ -1180,5 +1180,18 @@
     '详情': 'Szczegóły',
     '本地安装包': 'Pakiet lokalny',
     '显示更多（还有 %s 个）': 'Pokaż więcej (pozostało %s)',
+    '正在盘点管理器里的安装包…': 'Sprawdzanie pakietów instalacyjnych w menedżerze…',
+    '没有已下载但没装的 Mod': 'Brak pobranych, ale niezainstalowanych modów',
+    '管理器里的安装包都已经装进当前游戏目录了。再点一次「已下载」回到在线列表。': 'Wszystkie pakiety w menedżerze są już zainstalowane w bieżącym folderze gry. Kliknij ponownie „Pobrane", aby wrócić do listy online.',
+    '已下载但没装 %s 个': '%s pobranych, niezainstalowanych',
+    '已下载但没装 %s 个 · 已列出 %s 个 · 选中 %s 个': '%s pobranych niezainstalowanych · %s pokazanych · %s wybranych',
+    '（勾选后点右上「批量安装」）': '(zaznacz i kliknij „Zainstaluj zaznaczone" w prawym górnym rogu)',
+    '（点「多选」后勾卡片，可批量安装）': '(kliknij „Wielokrotny wybór", zaznacz karty i zainstaluj naraz)',
+    '批量安装（%s）': 'Zainstaluj zaznaczone (%s)',
+    '批量安装': 'Zainstaluj zaznaczone',
+    '先勾选要安装的包': 'Najpierw zaznacz pakiety do instalacji',
+    '到「已下载」里批量安装': 'Zainstaluj w „Pobrane"',
+    '打开「浏览 Mod」页的「已下载」筛选，可以多选批量安装': 'Otwórz filtr „Pobrane" na stronie „Przeglądaj", aby zaznaczyć kilka i zainstalować je razem',
+    '只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）': 'Pokazuj tylko pakiety pobrane do menedżera, ale jeszcze niezainstalowane w bieżącym folderze gry (lista lokalna, instalacja wielu naraz)',
   });
 })();
