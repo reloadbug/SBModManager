@@ -7,6 +7,7 @@ const paths = require('./paths');
 const logger = require('./logger');
 const game = require('./game');
 const gameLaunch = require('./gameLaunch');
+const crashLog = require('./crashLog');
 const scanner = require('./scanner');
 const { createConfigStore } = require('./store');
 const { createRegistry } = require('./registry');
@@ -1753,6 +1754,50 @@ function register() {
   handle('log:tail', (n, opts) => logger.tail(n, opts));
   handle('log:openDir', () => { shell.openPath(paths.LOGS); return true; });
   handle('log:open', (file) => { shell.openPath(file || logger.file()); return true; });
+
+  /* 崩溃 / 报错日志分析 —— 排查「装了 Mod 之后游戏一启动就崩」。
+     游戏本体是 Shipping 版，默认不写 SB.log，现场只有两处：
+     `ue4ss\UE4SS.log`（加载器日志，每次启动重写）+ `%LOCALAPPDATA%\SB\Saved\Crashes`
+     （引擎崩溃快照）。这里把两边对撞出结论，界面上再让人点开原文核对。 */
+  handle('crash:report', () => {
+    const root = currentRoot();
+    if (!root) {
+      return { root: '', report: null, reason: '还没设置游戏目录，找不到日志和崩溃快照。' };
+    }
+    let mods = [];
+    try { mods = listMods(); } catch (e) { logger.event('crash:report mods-fail', { error: String(e && e.message || e) }); }
+    let version = null;
+    try { version = gameVersion.detect(root); } catch { version = null; }
+    const report = crashLog.analyze({ root, mods, gameVersion: version, now: Date.now() });
+    logger.event('crash:report', {
+      crashes: report.stats.total,
+      suspects: report.analysis.suspects.length,
+      verdict: report.analysis.verdict.level
+    });
+    return { root, report, reason: '' };
+  });
+
+  handle('crash:read', (kind, file, maxBytes) => crashLog.readSource({ root: currentRoot() || '', kind, file, maxBytes }));
+
+  handle('crash:openDir', () => {
+    const L = crashLog.locate(currentRoot() || '');
+    const dir = L.crashes || L.saved || L.ue4ssDir;
+    if (!dir) return false;
+    shell.openPath(dir);
+    return true;
+  });
+
+  handle('crash:openFile', (file) => {
+    const p = String(file || '');
+    if (!p) return false;
+    const L = crashLog.locate(currentRoot() || '');
+    const roots = [L.crashes, L.logs, L.ue4ssDir].filter(Boolean)
+      .map(r => path.resolve(r).toLowerCase() + path.sep);
+    const t = path.resolve(p).toLowerCase();
+    if (!roots.some(r => t.startsWith(r))) return false; // 只允许打开已知目录里的文件
+    shell.showItemInFolder(p);
+    return true;
+  });
 
   /* 配置 */
   handle('config:get', () => config.all());

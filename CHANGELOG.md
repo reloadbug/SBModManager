@@ -36,6 +36,15 @@
   卡片数不变、统计行带「同时开着」、搜 `#2844` → 300 里只剩 1 张、12 张卡各有 👍👎、
   抽屉里 `#dActions .vote .vbtn` 两颗 + `[data-lib-install]` 在。
 
+### 新增：崩溃诊断页
+
+- 左侧新增「崩溃诊断」：读 `ue4ss\UE4SS.log` 尾部与 `%LOCALAPPDATA%\SB\Saved\Crashes\UE4CC-*\CrashContext.runtime-xml`，
+  把「什么时候崩、停在哪个加载阶段、那之后哪个 Mod 的文件才写进去」摆在一页里。结论分等级
+  （不一定是 Mod 的锅），嫌疑 Mod 按证据打分，每条都能点开原文自己核对。
+- 游戏本体是 Shipping 版、默认不写 `SB.log`，所以只认这两处现场；不解析 pak 内容
+  （判「两个 Mod 改了同一资源」要读 IoStore 索引，代价和风险都不值），也不替用户搬文件。
+- 测试：`_probe/crashlog-test.js` 83 项（`parseCrashXml` / `parseUe4ssLog` / `buildReport` 纯函数真身跑 + 接线断言）。
+
 ## [0.4.12] - 2026-11-10
 
 「已下载」的包在列表里不再叫「下载」，关联过一次的信息和图片都留在本地。

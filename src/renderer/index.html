@@ -34,6 +34,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
         前置组件
       </div>
+      <div class="nav-i" data-p="p-crash">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 4v5c0 5-3.8 8.6-9 9-5.2-.4-9-4-9-9V7z"/><path d="M12 8v5"/><path d="M12 16.5v.01"/></svg>
+        崩溃诊断 <span class="badge warn" id="navCountCrash" style="display:none">0</span>
+      </div>
       <div class="nav-i" data-p="p-settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2V21a2 2 0 11-4 0v-.1A1.7 1.7 0 006 19.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 13.7a2 2 0 110-4h.1A1.7 1.7 0 004.6 6L4.5 6a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010.3 3a2 2 0 114 0v.1a1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 001.2 2.9H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
         设置
@@ -123,6 +127,11 @@
       <!-- 前置组件 -->
       <div class="page" id="p-prereq">
         <div id="prereqArea"></div>
+      </div>
+
+      <!-- 崩溃诊断：读 UE4SS.log + 引擎崩溃快照，判断哪个 Mod 让游戏崩了 -->
+      <div class="page" id="p-crash">
+        <div id="crashArea"></div>
       </div>
 
       <!-- 设置 -->

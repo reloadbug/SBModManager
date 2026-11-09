@@ -582,3 +582,45 @@ body.sel .cover .tag{left:38px}
   white-space: nowrap;
   user-select: text;
 }
+/* ---------- 崩溃诊断页 ----------
+   一眼要看到三件事：结论 → 怎么排除 → 原始现场。
+   数据全部来自主进程 crashLog.js 的分析结果，这里只管排版，不做二次判断。 */
+.crash-verdict{
+  display:flex;gap:11px;align-items:flex-start;
+  padding:13px 15px;border-radius:11px;
+  background:var(--panel);border:1px solid var(--border);
+  border-left:3px solid var(--c,var(--border2));
+}
+.crash-verdict .dot{width:9px;height:9px;border-radius:50%;background:var(--c,var(--dim2));margin-top:6px;flex:none}
+.crash-verdict .vl{font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--c,var(--dim2));margin-bottom:3px}
+.crash-verdict h3{font-size:14px;font-weight:600;margin-bottom:5px;color:var(--text)}
+.crash-verdict p{font-size:12px;line-height:1.75;color:var(--dim)}
+
+.crash-stats{display:flex;gap:22px;flex-wrap:wrap;margin:14px 0 0}
+.crash-stats>div{font-size:10.5px;color:var(--dim2);letter-spacing:.4px}
+.crash-stats b{display:block;font-size:15px;color:var(--text);font-weight:600;margin-bottom:2px}
+
+ol.steps{margin:0;padding-left:20px;font-size:12.5px;line-height:1.85;color:#C8CEDA}
+ol.steps li{margin-bottom:7px}
+ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4px;padding:1px 5px;
+  font-family:Consolas,monospace;font-size:11px;color:#C8CEDA;word-break:break-all}
+
+.sus{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:9px}
+.sus-h{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text);flex-wrap:wrap}
+.sus-h b{font-weight:600}
+.sus-score{margin-left:auto;font-size:11px;color:var(--accent);font-family:Consolas,monospace;flex:none}
+.sus-bar{height:3px;background:var(--panel3);border-radius:2px;margin:8px 0;overflow:hidden}
+.sus-bar i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.sus-r{font-size:11.5px;color:var(--dim);line-height:1.7}
+.sus-f{margin-top:6px;display:flex;gap:5px;flex-wrap:wrap}
+
+.crash-kv{display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed #262B33;font-size:11.5px}
+.crash-kv>span:first-child{color:var(--dim2);width:88px;flex:none}
+.crash-kv>span:last-child{color:var(--text);word-break:break-all}
+
+.crash-row{display:flex;gap:10px;align-items:center;padding:7px 0;
+  border-bottom:1px dashed #262B33;font-size:11.5px;color:var(--dim);flex-wrap:wrap}
+.crash-row .t{font-family:Consolas,monospace;color:#C8CEDA;flex:none}
+.crash-row .ph{color:var(--accent);flex:none}
+.crash-row .th{color:var(--dim2);flex:none}
+.crash-row .btn{margin-left:auto}

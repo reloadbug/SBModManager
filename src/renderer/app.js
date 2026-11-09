@@ -8,6 +8,8 @@ const state = {
   config: null,
   game: null,
   installed: [],
+  // 崩溃诊断页：report 是主进程 `crash:report` 的整份分析结果（含结论/嫌疑/发现/步骤/崩溃清单）
+  crash: { report: null, loading: false, error: '', at: 0 },
   auth: null,
   prereq: null,
   prereqs: [],
@@ -287,6 +289,7 @@ const TITLES = {
   'p-browse': ['浏览 Mod', '数据来自 Nexus Mods 官方接口'],
   'p-download': ['下载管理', '队列会自动完成 下载 → 识别 → 安装'],
   'p-prereq': ['前置组件', 'Mod 加载器与框架'],
+  'p-crash': ['崩溃诊断', '读游戏日志与崩溃快照，判断是哪个 Mod 让它崩了'],
   'p-settings': ['设置', '路径 / 账号 / 翻译']
 };
 
@@ -326,6 +329,8 @@ function switchPage(id) {
     }
   }
   if (id === 'p-settings') refreshWatchLine();
+  // 崩溃诊断页开销不小（读 UE4SS.log 尾部 + 解析 20 份崩溃快照），只在进页时才跑
+  if (id === 'p-crash' && !state.crash.report && !state.crash.loading) renderCrash();
 }
 
 /* ---------------- 侧栏状态 ---------------- */
@@ -5086,6 +5091,255 @@ function renderAuthLine() {
   }
 }
 
+/* ---------------- 崩溃诊断 ---------------- */
+
+/**
+ * 结论等级 → 文案与颜色。等级由主进程 `crashLog.buildReport()` 给出：
+ * high（有硬证据）/ mid（有强线索）/ low（只能靠对撞）/ none（没现场或没线索）。
+ */
+const CRASH_LEVELS = {
+  high: { text: '高度可疑', color: 'var(--red)' },
+  mid: { text: '比较可疑', color: 'var(--accent)' },
+  low: { text: '证据不足，按步骤对撞', color: 'var(--blue)' },
+  none: { text: '暂无结论', color: 'var(--dim2)' }
+};
+
+/** 崩溃阶段 → 人话（SecondsSinceStart 是引擎自己数的启动秒数） */
+function crashPhaseText(phase) {
+  if (phase === 'startup') return '启动期（≤2 秒）';
+  if (phase === 'loading') return '加载期（2–60 秒）';
+  if (phase === 'runtime') return '运行中';
+  if (phase === 'assert') return '断言失败';
+  return '未知';
+}
+
+/**
+ * 把分析结论里的轻标记渲染成 HTML。
+ * 结论文本是主进程写的（`**重点**` 与反引号路径），这里只做最小转换 ——
+ * 逃生在前面做掉，插进去的只有 `<b>` / `<code>` 两种标签。
+ */
+function crashMd(s) {
+  return esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/**
+ * 打开一段原文（崩溃快照 / UE4SS.log）。
+ * 结论终究是推断，所以每条结论旁边都要能点开现场自己核对。
+ */
+async function openCrashSource(kind, file, title) {
+  $('#dTitle').textContent = title || '原始日志';
+  $('#dSub').textContent = '加载中…';
+  $('#dBody').innerHTML = '<div class="txt" style="color:var(--dim2)"><span class="spin"></span> 正在读取…</div>';
+  $('#dFoot').innerHTML = '<button class="btn" id="crashLocate">在资源管理器中定位</button>' +
+    '<button class="btn" id="crashDrawerClose">关闭</button>';
+  showDrawer();
+
+  let d = null;
+  try { d = await call(window.api.crash.read(kind, file, 256 * 1024), { silent: true }); }
+  catch (e) {
+    $('#dSub').textContent = '读取失败';
+    $('#dBody').innerHTML = `<div class="callout err">${esc(e.message)}</div>`;
+    return;
+  }
+  const text = (d && d.text) || '';
+  const name = String(file || '').split(/[\\/]/).pop();
+  $('#dSub').textContent = [name, d && d.size ? fmtSize(d.size) : ''].filter(Boolean).join(' · ');
+  $('#dBody').innerHTML = `
+    <div class="urlbox"><span style="flex:1">${esc(file || '')}</span></div>
+    ${d && d.truncated ? '<div class="callout warn">文件很长，这里只显示末尾一部分。</div>' : ''}
+    <div class="lbl">内容</div>
+    <pre style="max-height:460px;overflow:auto;white-space:pre-wrap;word-break:break-all;font:11px/1.55 Consolas,'Courier New',monospace;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;margin:0;color:var(--dim)">${esc(text) || '(空文件)'}</pre>`;
+  $('#crashLocate') && $('#crashLocate').addEventListener('click', () => window.api.crash.openFile(file));
+  $('#crashDrawerClose') && $('#crashDrawerClose').addEventListener('click', () => hideDrawer());
+}
+
+/** 诊断页的按钮（每次重绘都要重绑，所以单独一个函数） */
+function bindCrashButtons(root) {
+  root.querySelectorAll('[data-crash]').forEach(b => b.addEventListener('click', () => {
+    const act = b.dataset.crash;
+    if (act === 'reload') renderCrash({ force: true });
+    else if (act === 'openDir') window.api.crash.openDir();
+  }));
+  root.querySelectorAll('[data-crashread]').forEach(b => b.addEventListener('click', () => {
+    const file = b.dataset.crashread;
+    const isCrash = /\\Crashes\\/i.test(file);
+    openCrashSource(isCrash ? 'crash' : 'ue4ss', file, isCrash ? '崩溃快照' : 'UE4SS 日志');
+  }));
+}
+
+/** 把 state.crash.report 画成一页 */
+function paintCrash() {
+  const area = $('#crashArea');
+  if (!area) return;
+  const st = state.crash;
+
+  if (!state.game || !state.game.found) { area.innerHTML = emptyNoGame(); return; }
+
+  if (st.loading) {
+    area.innerHTML = `<div class="empty"><h3><span class="spin"></span> 正在读日志…</h3>
+      <p>要读 <code>ue4ss\\UE4SS.log</code> 和 <code>%LOCALAPPDATA%\\SB\\Saved\\Crashes</code> 里的崩溃快照，稍等一下。</p></div>`;
+    return;
+  }
+  if (!st.report) {
+    area.innerHTML = `<div class="${st.error ? 'callout err' : 'callout'}">${esc(st.error || '还没分析过。')}</div>
+      <div style="margin-top:12px"><button class="btn p" data-crash="reload">开始分析</button></div>`;
+    bindCrashButtons(area);
+    return;
+  }
+
+  const rep = st.report;
+  const a = rep.analysis || {};
+  const vd = a.verdict || {};
+  const lv = CRASH_LEVELS[vd.level] || CRASH_LEVELS.none;
+  const stats = rep.stats || {};
+  const ue = rep.ue4ss || {};
+  const env = rep.env || {};
+  const h = [];
+
+  /* 结论 */
+  h.push(`<div class="crash-verdict" style="--c:${lv.color}">
+    <i class="dot"></i>
+    <div style="min-width:0;flex:1">
+      <div class="vl">${esc(lv.text)}</div>
+      <h3>${esc(vd.headline || '—')}</h3>
+      <p>${esc(vd.detail || '')}</p>
+    </div>
+  </div>`);
+
+  /* 崩溃统计 */
+  const excTop = Object.entries(stats.exceptions || {}).sort((x, y) => y[1] - x[1])[0];
+  h.push(`<div class="crash-stats">
+    <div><b>${stats.total || 0}</b>崩溃记录</div>
+    <div><b>${stats.startup || 0}</b>启动期 ≤2 秒</div>
+    <div><b>${stats.loading || 0}</b>加载期</div>
+    <div><b>${stats.runtime || 0}</b>运行中</div>
+    <div><b>${stats.lastAt ? esc(fmtDate(stats.lastAt)) : '—'}</b>最近一次</div>
+    <div><b style="font-size:11.5px">${esc(excTop ? excTop[0] : '—')}</b>主要异常</div>
+  </div>`);
+
+  /* 排除步骤 */
+  const steps = a.steps || [];
+  if (steps.length) {
+    h.push('<div class="lbl">按这个顺序排除</div><ol class="steps">' +
+      steps.map(s => `<li>${crashMd(s)}</li>`).join('') + '</ol>');
+  }
+
+  /* 嫌疑 Mod */
+  const sus = (a.suspects || []).filter(s => s.score > 0);
+  h.push('<div class="lbl">嫌疑 Mod</div>');
+  if (!sus.length) {
+    h.push('<div class="callout">没有单个 Mod 拿到分数 —— 证据只到「启动期正在加载」这一层，' +
+      '照上面的顺序移文件对撞，比继续看日志更快。</div>');
+  } else {
+    const max = Math.max(...sus.map(s => s.score || 0), 1);
+    h.push(sus.map(s => {
+      const kindText = s.kind === 'bp' ? '蓝图 Mod' : (s.kind === 'pak' ? 'pak 文件' : 'Mod');
+      const where = s.location ? ` · ${esc(s.location)}` : '';
+      return `<div class="sus">
+        <div class="sus-h"><b>${esc(s.name || '—')}</b>
+          <span class="tag gray">${esc(kindText)}${where}</span>
+          <span class="sus-score">${s.score} 分</span></div>
+        <div class="sus-bar"><i style="width:${Math.round((s.score || 0) / max * 100)}%"></i></div>
+        ${(s.reasons || []).map(r => `<div class="sus-r">· ${esc(r)}</div>`).join('')}
+        ${(s.files || []).length ? `<div class="sus-f">${s.files.slice(0, 8).map(f => `<code>${esc(f)}</code>`).join(' ')}</div>` : ''}
+      </div>`;
+    }).join(''));
+  }
+
+  /* 发现 */
+  const fnd = a.findings || [];
+  if (fnd.length) {
+    h.push('<div class="lbl">发现</div>');
+    for (const f of fnd) {
+      const cls = f.level === 'error' ? 'callout err' : (f.level === 'warn' ? 'callout warn' : 'callout');
+      h.push(`<div class="${cls}" style="margin-top:8px"><b>${esc(f.title)}</b><br>${
+        esc(f.detail || '').replace(/\n/g, '<br>')}</div>`);
+    }
+  }
+
+  /* 加载器与日志概况 */
+  const kv = (k, v) => `<div class="crash-kv"><span>${esc(k)}</span><span>${v || '—'}</span></div>`;
+  const chips = (arr) => (arr || []).map(n => `<code>${esc(n)}</code>`).join(' ');
+  h.push('<div class="lbl">加载器与日志</div>');
+  h.push(kv('UE4SS', esc(ue.version || '未检测到') + (ue.gitSha ? ' · ' + esc(ue.gitSha) : '')));
+  h.push(kv('本次启动', ue.firstAt ? esc(ue.firstAt) : '—'));
+  h.push(kv('最后输出', ue.lastAt ? esc(ue.lastAt) : '—'));
+  h.push(kv('最后一行', ue.lastLine ? `<code>${esc(ue.lastLine)}</code>` : '—'));
+  h.push(kv('挂载进度', ue.lastLoadingMod
+    ? `正在加载 <code>${esc(ue.lastLoadingMod)}</code>`
+    : (ue.eventLoopStarted ? '已进入事件循环（启动流程走完）' : '—')));
+  h.push(kv('蓝图 Mod', (ue.bpMods || []).length ? chips(ue.bpMods) : '—'));
+  h.push(kv('C++ Mod', (ue.startedCpp || []).length ? chips(ue.startedCpp) : '—'));
+  h.push(kv('Lua Mod', (ue.startedLua || []).length ? chips(ue.startedLua) : '—'));
+  h.push(kv('已禁用', (ue.disabled || []).length ? chips(ue.disabled) : '—'));
+  if ((ue.errors || []).length) h.push(kv('日志报错', chips(ue.errors.slice(0, 4))));
+
+  /* 崩溃记录 */
+  const crashes = (rep.crashes || []).slice(0, 12);
+  if (crashes.length) {
+    h.push('<div class="lbl">崩溃记录（最近 ' + crashes.length + ' 次）</div>');
+    for (const c of crashes) {
+      h.push(`<div class="crash-row">
+        <span class="t">${esc(fmtDate(c.at))}</span>
+        <span class="ph">${esc(crashPhaseText(c.phase))}</span>
+        <span class="th">${esc((c.crashedThread && c.crashedThread.name) || '—')}</span>
+        <span style="color:var(--dim2)">${esc(c.exception || '')} ${esc(c.address || '')}</span>
+        ${c.xml ? `<button class="btn sm" data-crashread="${esc(c.xml)}">原文</button>` : ''}
+      </div>`);
+    }
+  }
+
+  /* 底部按钮 */
+  h.push(`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px">
+    <button class="btn p" data-crash="reload">重新分析</button>
+    ${env.ue4ssLog ? `<button class="btn" data-crashread="${esc(env.ue4ssLog)}">看 UE4SS.log</button>` : ''}
+    <button class="btn" data-crash="openDir">打开崩溃目录</button>
+    <span style="color:var(--dim2);font-size:11px">分析于 ${esc(fmtDate(rep.generatedAt))}</span>
+  </div>`);
+
+  area.innerHTML = h.join('');
+  bindCrashButtons(area);
+
+  // 侧栏计数：有多少次崩溃现场（0 就不显示徽章）
+  const badge = $('#navCountCrash');
+  if (badge) {
+    const n = stats.total || 0;
+    badge.textContent = n;
+    badge.style.display = n ? '' : 'none';
+  }
+}
+
+/**
+ * 进「崩溃诊断」页时调用：没有结果就现分析一份。
+ * 这里**不在启动时预跑** —— 要读 UE4SS.log 尾部 + 解析 20 份崩溃快照，没必要每次开程序都干。
+ */
+async function renderCrash(opts = {}) {
+  const area = $('#crashArea');
+  if (!area) return;
+  if (!state.game || !state.game.found) { area.innerHTML = emptyNoGame(); return; }
+  const force = !!opts.force;
+  if (force || (!state.crash.report && !state.crash.loading)) {
+    state.crash.loading = true;
+    paintCrash();
+    try {
+      const d = await call(window.api.crash.report(), { silent: true });
+      if (d && d.report) {
+        state.crash.report = d.report;
+        state.crash.error = '';
+        state.crash.at = Date.now();
+      } else {
+        state.crash.report = null;
+        state.crash.error = (d && d.reason) || '没能读到日志或崩溃快照。';
+      }
+    } catch (e) {
+      state.crash.report = null;
+      state.crash.error = '分析失败：' + e.message;
+    }
+    state.crash.loading = false;
+  }
+  paintCrash();
+}
+
 /**
  * 设置页「显示语言」下拉的选项。
  *
@@ -7820,6 +8074,8 @@ window.__refreshPrereqs = refreshPrereqs;
 window.__installUe4ss = installUe4ss;
 window.__refreshUe4ssInfo = refreshUe4ssInfo;
 window.__openLogViewer = openLogViewer;
+window.__renderCrash = renderCrash;
+window.__crashState = () => state.crash;
 window.__prereqDownloaded = onPrereqDownloaded;
 window.__refreshWatchLine = refreshWatchLine;
 window.__watchFound = onWatchFound;

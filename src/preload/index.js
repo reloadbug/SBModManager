@@ -354,6 +354,14 @@ contextBridge.exposeInMainWorld('api', {
     open: (file) => invoke('log:open', file)
   },
 
+  /** 崩溃 / 报错日志：读 UE4SS.log 与引擎崩溃快照，分析「哪个 Mod 让游戏崩了」 */
+  crash: {
+    report: () => invoke('crash:report'),
+    read: (kind, file, maxBytes) => invoke('crash:read', kind, file, maxBytes),
+    openDir: () => invoke('crash:openDir'),
+    openFile: (file) => invoke('crash:openFile', file)
+  },
+
   translate: {
     text: (text, lang) => invoke('translate:text', text, lang),
     stats: () => invoke('translate:stats'),
