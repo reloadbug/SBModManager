@@ -187,7 +187,9 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     backgroundColor: '#14161A',
-    title: '剑星 Mod 管理器',
+    // 2026-11-11：标题里带版本号 —— 用户截图/报障时一眼能看出跑的是哪个构建，
+    // 之前根目录堆了十几个旧 portable，界面差异分不清是谁的问题。
+    title: `剑星 Mod 管理器 v${app.getVersion()}`,
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -198,6 +200,7 @@ function createWindow() {
       spellcheck: false
     }
   });
+  win.on('page-title-updated', (e) => { e.preventDefault(); });
 
   win.mainApp = true; // 标记主窗口，便于其它模块定位（登录窗口等）
 
