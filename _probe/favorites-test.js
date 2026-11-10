@@ -276,8 +276,8 @@ async function main() {
     const paths = fs.readFileSync(PATHS, 'utf8');
 
     // ---- 顶部筛选 ----
-    t('index.html 有 #likeTabs', () => /id="likeTabs"/.test(html) || '缺失');
-    t('#likeTabs 里是「只看喜欢」按钮（data-onlyliked）', () => /data-onlyliked/.test(html) || '缺失');
+  t('顶部标记筛选里有「喜欢」', () => code.includes("k: 'liked'") || '缺失');
+  t('喜欢 chip 走 data-libmk', () => code.includes('data-libmk="${c.k}"') || '缺失');
     t('CSS 有 .tabs.liked 选中态', () => /\.tabs\.liked button\.on\{/.test(css) || '缺失');
 
     // ---- 卡片按钮 ----
@@ -335,8 +335,7 @@ async function main() {
     t('loadFavorites 取不到时不把 mod 藏掉（只当没置顶）', () =>
       /async function loadFavorites[\s\S]{0,600}catch \{[\s\S]{0,200}\}/.test(code) || '缺失');
     t('updateLikeTabs 同步选中态', () => /function updateLikeTabs\(\)[\s\S]{0,300}onlyLiked/.test(code) || '缺失');
-    t('#likeTabs 点击切换 onlyLiked 并重载', () =>
-      /#likeTabs'\)\.addEventListener\('click'[\s\S]{0,900}loadBrowse\(true\)/.test(code) || '缺失');
+  t('点喜欢 chip 只筛喜欢过的', () => /function toggleLibMark\([\s\S]{0,400}renderBrowse\(\);/.test(code) && code.includes("marks.liked && !libHasMark(rec, 'liked')") || '缺失');
     t('「只看喜欢」与「只看黑名单」互斥（点一个关掉另一个）', () =>
       /if \(mode === 'only' && state\.browse\.onlyLiked\)/.test(code) || '缺失');
     t('空态有「只看喜欢」的专门文案', () => /还没有点过喜欢的 Mod/.test(code) || '缺失');

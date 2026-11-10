@@ -128,7 +128,7 @@ if (mkMatch) {
 /* ============ B. 静态接线 ============ */
 // —— 状态 ——
 t('state 里有独立的 gsel（与浏览页 sel 分开）', () =>
-  (/gsel: \{ on: false, busy: false, ids: new Set\(\) \}/.test(app) ? true : '缺 gsel'));
+  (/gsel: \{ on: false, busy: false, ids: new Set\(\), anchor: null \}/.test(app) ? true : '缺 gsel'));
 t('state 里有 instFilters（q / state / kind / bug）', () =>
   (app.includes("instFilters: { q: '', state: '', kind: '', bug: '' }") ? true : '缺 instFilters'));
 t('state 里有 installedShown（全选只看当前显示的）', () =>
@@ -197,7 +197,7 @@ t('多选拦截排在 data-gtoggle 分支之前', () => {
   return inter < gt ? true : `拦截在第 ${inter} 字符、gtoggle 在第 ${gt} 字符 —— 顺序反了`;
 });
 t('多选模式里点卡片 = 勾选（拦在落点判断之前，点开关也不会真关掉）', () =>
-  (/const card = t\.closest\('\.card\[data-gid\]'\);\s*\n\s*if \(card\) \{ gselToggle\(card\.dataset\.gid\); return; \}/.test(app)
+  (/const card = t\.closest\('\.card\[data-gid\]'\);\s*\n\s*if \(card\) \{ gselClick\(card\.dataset\.gid, e\); return; \}/.test(app)
     ? true : '拦截逻辑不对'));
 t('批量/筛选的委托分支都挂在主点击委托里', () => (['data-gbatch-mode', 'data-gbatch-all', 'data-gbatch-on',
   'data-gbatch-off', 'data-gbatch-del', 'data-istate', 'data-iclear'].every(a =>

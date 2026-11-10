@@ -18,13 +18,11 @@
       </div>
     </div>
     <nav>
-      <div class="nav-i on" data-p="p-installed">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        已安装 Mod <span class="badge" id="navCountInstalled">0</span>
-      </div>
-      <div class="nav-i" data-p="p-browse">
+      <!-- 2026-11-10 用户定案：把「已安装 Mod」并进「Mod 库」，左侧只留一个入口。
+           在线 / 已下载 / 已安装 都在同一页，用顶部状态筛选区分。 -->
+      <div class="nav-i on" data-p="p-browse">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18"/></svg>
-        浏览 Mod
+        Mod 库 <span class="badge" id="navCountInstalled">0</span>
       </div>
       <div class="nav-i" data-p="p-download">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
@@ -80,6 +78,13 @@
       <div class="page" id="p-browse">
         <!-- 吸顶区：排序 / 范围 / 筛选 / 统计 —— 滚动时不消失（用户 2026-10-13 要求） -->
         <div class="bhead" id="browseHead">
+          <!-- 统一状态行（2026-11-10）：在线 / 已下载 / 已安装 / 已禁用 都在这里切；
+               右边三颗是「用户标记」筛选，可以和状态叠加。 -->
+          <div class="librow">
+            <div class="tabs libst" id="libStatus"></div>
+            <select class="libkind" id="libKind" title="按类型筛选（本地判定）"></select>
+            <div class="tabs libmarks" id="libMarks"></div>
+          </div>
           <div class="toolbar">
             <div class="tabs" id="sortTabs">
               <button data-sort="downloads" class="on">下载最多</button>
@@ -93,22 +98,17 @@
               <button data-adult="all" class="on">全部内容</button>
               <button data-adult="only">只显示成人内容</button>
             </div>
-            <div class="tabs newonly" id="newOnlyTabs" title="过滤掉已安装的 Mod（本地判定，已下载但未安装的仍会显示）">
-              <button data-onlynew="1">只显示未安装</button>
-              <button data-onlydl="1" title="只看管理器里已经下好、但还没装进当前游戏目录的安装包（本地清单，可多选批量安装）">已下载</button>
             </div>
-            <div class="tabs liked" id="likeTabs" title="只看我点过「喜欢」（👍）的 Mod —— 本地记录，秒开，不请求 Nexus">
-              <button data-onlyliked="1">只看喜欢</button>
             </div>
-            <div class="tabs blocked" id="blockTabs" title="黑名单：点卡片上的「不喜欢」加入，默认不显示">
-              <button data-block="hide" class="on">隐藏黑名单</button>
-              <button data-block="all">显示全部</button>
-              <button data-block="only">只看黑名单</button>
             </div>
-            <div class="tabs batch" id="batchBar" title="多选模式：勾选多个 Mod，一次性加入下载队列（默认下载各自的第一个主文件）">
+            <div class="tabs batch" id="batchBar" title="多选模式：勾选多个 Mod，按它们当前的状态批量下载 / 安装 / 启用 / 卸载">
               <button id="btnBatchMode">多选</button>
               <button id="btnSelectAll" style="display:none">全选</button>
               <button id="btnBatchDownload" class="bdl" style="display:none">批量下载</button>
+              <button id="btnBatchInstall" class="bdl" style="display:none">批量安装</button>
+              <button id="btnBatchOn" class="bdl" style="display:none">批量启用</button>
+              <button id="btnBatchOff" class="bdl" style="display:none">批量禁用</button>
+              <button id="btnBatchUninstall" class="bdl" style="display:none">批量卸载</button>
             </div>
             <div class="spacer"></div>
             <button class="btn sm" id="btnLoadMore" style="display:none">加载更多</button>

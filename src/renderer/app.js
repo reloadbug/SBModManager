@@ -38,6 +38,16 @@ const state = {
   gsel: { on: false, busy: false, ids: new Set(), anchor: null },
   // 已安装页筛选条件：q = 关键词（名字 / Mod ID / 作者），state = 启用状态，kind = 类型
   instFilters: { q: '', state: '', kind: '', bug: '' },
+  /**
+   * 「Mod 库」统一视图（2026-11-10 用户定案：浏览 / 已下载 / 已安装 合成一个页面）。
+   *
+   * status ∈ all（默认，在线+已下载+已安装）/ online（只在线，走 Nexus 分页）
+   *        / downloaded（下好了没装）/ installed（装着）/ enabled / disabled / partial
+   * marks 三个布尔是**叠加**筛选，与 status 不冲突；kind 是本地类型（服装 / CNS / 前置 / 脚本…）。
+   */
+  lib: { status: 'all', marks: { liked: false, blocked: false, bug: false }, kind: '' },
+  libRecords: [],       // 最近一次拼出来的统一记录（全选 / 计数都走它）
+  libShownRecords: [],  // 过滤之后真正显示的记录
   installedShown: [],   // 本次渲染后**真正显示出来**的分组（筛选之后），全选用它
   // 「这个 Mod 有 bug」标记（Nexus modId 字符串集合）。和黑名单不同：它**不影响**
   // 浏览页显示，只在安装路径上拦一道（批量安装先问一句）。
@@ -286,8 +296,8 @@ async function openCmpModal(oldModId, oldName, oldInfo = {}) {
 /* ---------------- 导航 ---------------- */
 
 const TITLES = {
-  'p-installed': ['已安装 Mod', ''],
-  'p-browse': ['浏览 Mod', '数据来自 Nexus Mods 官方接口'],
+  // 2026-11-10 起「已安装 Mod」并入「Mod 库」：在线 / 已下载 / 已安装 用顶部状态筛选区分。
+  'p-browse': ['Mod 库', '在线、已下载、已安装 —— 一处看全'],
   'p-download': ['下载管理', '队列会自动完成 下载 → 识别 → 安装'],
   'p-prereq': ['前置组件', 'Mod 加载器与框架'],
   'p-crash': ['崩溃诊断', '读游戏日志与崩溃快照，判断是哪个 Mod 让它崩了'],
@@ -298,6 +308,11 @@ const TITLES = {
 const pageScroll = new Map();
 
 function switchPage(id) {
+  // 老入口（导航、按钮、抽屉里的「去已安装看看」）一律导向 Mod 库，并把状态切到「已安装」
+  if (id === 'p-installed') {
+    setLibStatus('installed', { silent: true });
+    id = 'p-browse';
+  }
   const cur = $('.page.on');
   const curId = cur && cur.id;
   if (curId && curId !== id) pageScroll.set(curId, $('#body').scrollTop);
@@ -308,9 +323,9 @@ function switchPage(id) {
   $('#ttl').textContent = t;
   $('#sub').textContent = s;
   $('#searchBox').style.display = id === 'p-browse' ? 'flex' : 'none';
-  $('#btnImport').style.display = (id === 'p-installed' || id === 'p-download') ? '' : 'none';
+  $('#btnImport').style.display = (id === 'p-browse' || id === 'p-download') ? '' : 'none';
   const btnLk = $('#btnLinker');
-  if (btnLk) btnLk.style.display = (id === 'p-installed') ? '' : 'none';
+  if (btnLk) btnLk.style.display = (id === 'p-browse') ? '' : 'none';
   $('#btnRefresh').style.display = id === 'p-prereq' ? 'none' : '';
   // 第一次进某页才置顶；来过的恢复到离开时的位置（display:none → block 后要等一帧才设得进）
   const back = pageScroll.get(id);
@@ -1176,9 +1191,9 @@ function gselUpdateBar() {
  * 已经在目标状态的文件直接跳过 —— 470 个文件全发一遍请求既慢又会让日志刷屏。
  * 前置组件不吃开关（主进程会抛「前置组件不支持禁用」），这里先剔掉。
  */
-async function gselBatchToggle(target) {
+async function gselBatchToggle(target, groupsArg) {
   if (state.gsel.busy) return;
-  const groups = gselSelected();
+  const groups = Array.isArray(groupsArg) ? groupsArg : gselSelected();
   if (!groups.length) { toast('先勾选要处理的 Mod'); return; }
   state.gsel.busy = true;
   let mods = 0, failed = 0;
@@ -1220,9 +1235,9 @@ async function gselBatchToggle(target) {
  * 文件被移动到 `data\backup\uninstalled\`，不是真的抹掉，后悔还能捡回来。
  * 内置组件（UE4SS 自带脚本）跳过 —— 删了没法恢复。
  */
-async function gselBatchUninstall() {
+async function gselBatchUninstall(groupsArg) {
   if (state.gsel.busy) return;
-  const groups = gselSelected();
+  const groups = Array.isArray(groupsArg) ? groupsArg : gselSelected();
   if (!groups.length) { toast('先勾选要处理的 Mod'); return; }
   const usable = groups.filter(g => !g.builtin);
   const skippedBuiltin = groups.length - usable.length;
@@ -2252,11 +2267,14 @@ function selRangeTo(modId, additive) {
 
 /** 全选 / 取消全选「当前已加载」的 Mod；全选后新追加的卡片自动并入 */
 function selSelectAll() {
-  const items = browseVisibleItems();
-  if (!items.length) return;   // 还没加载出东西，没什么可选（也别把 all 置上）
-  const allOn = items.every(m => state.sel.ids.has(String(m.modId)));
+  // 统一口径：本地档位用记录键（mod:<id> / lib:<id>），在线档位用 modId
+  const keys = (typeof libSelectableKeys === 'function' && (state.lib.status || 'all') !== 'online')
+    ? libSelectableKeys()
+    : browseVisibleItems().map(m => String(m.modId));
+  if (!keys.length) return;   // 还没加载出东西，没什么可选（也别把 all 置上）
+  const allOn = keys.every(k => state.sel.ids.has(k));
   if (allOn) { state.sel.ids.clear(); state.sel.all = false; }
-  else { for (const m of items) state.sel.ids.add(String(m.modId)); state.sel.all = true; }
+  else { for (const k of keys) state.sel.ids.add(k); state.sel.all = true; }
   state.sel.anchor = null;   // 全选后锚点消失：下一次 Shift 从新点的那张算起
   selSyncAll();
   selUpdateBar();
@@ -2276,7 +2294,9 @@ function selSyncCard(modId) {
 /** 当前列表所有卡片的选中外观 */
 function selSyncAll() {
   for (const card of $$('#browseArea .card')) {
-    const on = state.sel.ids.has(String(card.dataset.modid));
+    // 本地记录卡（Mod 库）用 data-lkey，在线卡用 data-modid —— 两种都认
+    const key = card.dataset.lkey || String(card.dataset.modid || '');
+    const on = !!key && state.sel.ids.has(key);
     card.classList.toggle('sel', on);
     const ck = card.querySelector('.ck');
     if (ck) ck.classList.toggle('on', on);
@@ -2306,25 +2326,33 @@ function selSetMode(on) {
 function selUpdateBar() {
   const mode = $('#btnBatchMode');
   const allBtn = $('#btnSelectAll');
-  const dl = $('#btnBatchDownload');
   if (!mode) return;
-  const downloading = !!state.browse.onlyDownloaded;   // 「已下载」筛选下这颗按钮变成批量安装
   mode.textContent = state.sel.on ? '完成' : '多选';
   mode.classList.toggle('on', state.sel.on);
+  const keys = (typeof libSelectableKeys === 'function') ? libSelectableKeys() : [];
   if (allBtn) {
     allBtn.style.display = state.sel.on ? '' : 'none';
-    const items = browseVisibleItems();
-    const allOn = items.length > 0 && items.every(m => state.sel.ids.has(String(m.modId)));
+    const allOn = keys.length > 0 && keys.every(k => state.sel.ids.has(k));
     allBtn.textContent = allOn ? '取消全选' : '全选';
   }
-  if (dl) {
-    dl.style.display = state.sel.on ? '' : 'none';
-    if (state.sel.busy) return;   // 跑批时文案由进度更新接管，别被覆盖
-    const n = state.sel.ids.size;
-    dl.textContent = downloading
-      ? (n ? `批量安装（${n}）` : '批量安装')
-      : (n ? `批量下载（${n}）` : '批量下载');
-    dl.disabled = !n;
+  // 五颗批量按钮按「选中的东西是什么」自动亮 / 灰（用户 2026-11-10：一套界面管三种状态）
+  // 「启用」只数当前关着的，「禁用」只数当前开着的 —— 两颗按钮各自作用于「能被它改变」的那些。
+  const btns = [
+    { el: $('#btnBatchDownload'), pick: () => sel.online || [], verb: '下载' },
+    { el: $('#btnBatchInstall'), pick: () => sel.downloaded || [], verb: '安装' },
+    { el: $('#btnBatchOn'), pick: () => (sel.installed || []).filter(r => !r.enabled || r.partial), verb: '启用' },
+    { el: $('#btnBatchOff'), pick: () => (sel.installed || []).filter(r => r.enabled || r.partial), verb: '禁用' },
+    { el: $('#btnBatchUninstall'), pick: () => sel.installed || [], verb: '卸载' }
+  ];
+  let sel = { installed: [], downloaded: [], online: [] };
+  try { sel = libSelectedRecords(); } catch (e) { /* 早期调用时还没有记录表 */ }
+  for (const b of btns) {
+    if (!b.el) continue;
+    b.el.style.display = state.sel.on ? '' : 'none';
+    if (state.sel.busy) continue;   // 跑批时文案由进度更新接管，别被覆盖
+    const n = b.pick().length;
+    b.el.textContent = n ? `${b.verb}（${n}）` : `批量${b.verb}`;
+    b.el.disabled = !n;
   }
 }
 
@@ -2467,6 +2495,9 @@ function shouldLoadMore(scrollTop, clientHeight, scrollHeight, b) {
 
 /** 统计行 + 「加载更多」按钮的文案/显隐（增量追加时也走这里，不重画列表） */
 function updateBrowseChrome() {
+  // Mod 库的本地档位由 renderLibMerged() 自己写统计行：在线那一页抓回来的时候只当「补数据」，
+  // 别把「共 366 个 Mod · 已安装 117 · 已下载 207」覆盖成在线那套「已加载 N 个 · 分类「服装」」（2026-11-10 实测到过）。
+  if ((state.lib.status || 'all') !== 'online') return;
   const b = state.browse;
   const stats = $('#browseStats');
   const btn = $('#btnLoadMore');
@@ -2627,7 +2658,485 @@ function renderBrowseDownloaded() {
   ensureLibMeta();
 }
 
+/* ---------------- Mod 库：浏览 / 已下载 / 已安装 合成同一批记录 ---------------- */
+/*
+ * 用户 2026-11-10 定案：三个页面的功能大量重复（卡片、搜索、筛选、多选、抽屉各有一套），
+ * 合成一个「Mod 库」——左侧只留一个入口，在线 / 已下载 / 已安装 用顶部状态筛选区分。
+ *
+ * 设计要点：
+ *   · 一条「记录」= 一个 Mod，主键是 Nexus modId（没有 modId 的磁盘条目用 one:<id>）。
+ *   · 状态是**算出来的**，不落盘：已安装（启用 / 禁用 / 部分）> 已下载 > 在线；
+ *     下载队列里有活动任务时再加一档 busy（下载中）。
+ *   · 用户标记（👍 / 👎 / ⚠有 bug）本来就是按 modId 存的，与文件无关 ——
+ *     所以删掉文件、删掉安装包都不影响它们（用户明确要求）。
+ *   · 'online' 那一档仍然走原来的 Nexus 分页引擎（分类 / 标签 / 成人 / 加载更多都在），
+ *     其余档位直接在本地记录里筛，零网络请求。
+ */
+
+/** 状态 chip（互斥单选） */
+const LIB_STATUS_CHIPS = [
+  { v: 'all', label: '全部' },
+  { v: 'online', label: '在线' },
+  { v: 'downloaded', label: '已下载' },
+  { v: 'installed', label: '已安装' },
+  { v: 'enabled', label: '已启用' },
+  { v: 'disabled', label: '已禁用' },
+  { v: 'partial', label: '部分启用' }
+];
+
+/** 标记 chip（可叠加，与状态同时生效） */
+const LIB_MARK_CHIPS = [
+  { k: 'liked', label: '👍 喜欢' },
+  { k: 'blocked', label: '👎 不感兴趣' },
+  { k: 'bug', label: '⚠ 有 bug' }
+];
+
+/** 记录的状态徽标 */
+const LIB_BADGE = {
+  busy: { t: '● 下载中', c: 'busy' },
+  enabled: { t: '✓ 已启用', c: 'ok' },
+  disabled: { t: '⏸ 已禁用', c: 'off' },
+  partial: { t: '◐ 部分启用', c: 'part' },
+  installed: { t: '✓ 已安装', c: 'ok' },
+  downloaded: { t: '↓ 已下载', c: 'dl' },
+  online: { t: '在线', c: '' }
+};
+
+/** 标记集合取哪个（liked / blocked / bug） */
+function libMarkSet(k) {
+  if (k === 'liked') return state.browse.liked;
+  if (k === 'blocked') return state.browse.blocked;
+  if (k === 'bug') return state.bugIds;
+  return null;
+}
+
+/** 这条记录有没有某个标记（没有 modId 的磁盘条目一律没有） */
+function libHasMark(rec, k) {
+  if (!rec || !rec.modId) return false;
+  const s = libMarkSet(k);
+  return !!(s && typeof s.has === 'function' && s.has(String(rec.modId)));
+}
+
+/** 派生状态：不存储、实时算 */
+function libStateOf(rec) {
+  if (!rec) return 'online';
+  const t = rec.task;
+  const busyList = ['queued', 'resolving', 'downloading', 'analyzing', 'installing'];
+  if (t && busyList.indexOf(String(t.status)) >= 0) return 'busy';
+  if (rec.kind === 'installed') return rec.partial ? 'partial' : (rec.enabled ? 'enabled' : 'disabled');
+  if (rec.kind === 'downloaded') return 'downloaded';
+  return 'online';
+}
+
+/** 本地类型（服装 / CNS 换装 / 前置 / 脚本 / 内置 / 其他）—— 没有 Nexus 分类时也能筛 */
+function libTypeOf(rec) {
+  const text = [rec.name, rec.filename, rec.summary].filter(Boolean).join(' ').toLowerCase();
+  const files = (rec.items || []).map(m => String(m.rel || m.file || '')).join(' ').toLowerCase();
+  if (text.indexOf('cns') >= 0 || files.indexOf('dekcns') >= 0) return 'cns';
+  if (rec.groupKind === 'prereq') return 'prereq';
+  if (rec.groupKind === 'script') return 'script';
+  if (rec.builtin) return 'builtin';
+  if (rec.kind === 'online') return 'online';
+  return 'outfit';
+}
+
+/** 类型下拉的选项（用完即弃，不占 i18n） */
+function libKindOptions() {
+  return [
+    { v: '', label: '全部类型' },
+    { v: 'outfit', label: '服装 / 外观' },
+    { v: 'cns', label: 'CNS 换装' },
+    { v: 'prereq', label: '前置组件' },
+    { v: 'script', label: '脚本' },
+    { v: 'builtin', label: '内置' },
+    { v: 'online', label: '在线' }
+  ];
+}
+
+/**
+ * 拼出全部记录。
+ * 顺序有讲究：先已安装、再已下载、最后在线 —— 同一个 modId 只留第一条（本地优先），
+ * 在线那条只把「下载量 / 点赞数 / 分类」补进来，不会盖掉本地的体积、文件数、开关状态。
+ */
+function buildLibRecords() {
+  const out = [];
+  const byMod = new Map();
+  const taskOf = (modId) => (state.downloads || []).find(t => Number(t.modId) === Number(modId)) || null;
+
+  // ① 已安装（磁盘上装着的；分组键 mod:<modId> / one:<磁盘 id>）
+  for (const g of (state.installedGroups || [])) {
+    const modId = Number(g.modId) || 0;
+    const rec = {
+      key: g.key,
+      kind: 'installed',
+      modId,
+      name: g.name,
+      author: g.author,
+      version: g.version,
+      image: g.image,
+      summary: g.zh,
+      size: g.size,
+      files: g.fileCount,
+      enabled: !!g.enabled,
+      partial: !!g.partial,
+      groupKind: g.kind,
+      builtin: !!g.builtin,
+      items: g.items || [],
+      group: g,
+      task: modId ? taskOf(modId) : null
+    };
+    out.push(rec);
+    if (modId) byMod.set(modId, rec);
+  }
+
+  // ② 已下载的安装包（管理器里下好、但当前游戏目录里没装的）
+  for (const it of ((state.library && state.library.items) || [])) {
+    const modId = Number(it.modId) || 0;
+    if (!modId || byMod.has(modId)) continue;
+    const meta = (typeof libMetaFor === 'function' ? libMetaFor(modId) : null) || it.info || {};
+    const rec = {
+      key: 'lib:' + modId,
+      kind: 'downloaded',
+      modId,
+      name: meta.name || it.name || ('#' + modId),
+      author: meta.author || '',
+      version: meta.version || it.version || '',
+      image: meta.coverLocal || meta.image || (typeof coverForMod === 'function' ? coverForMod(modId) : ''),
+      summary: meta.summary || '',
+      size: it.size,
+      filename: it.filename,
+      archivePath: it.archivePath,
+      lib: it,
+      task: taskOf(modId)
+    };
+    out.push(rec);
+    byMod.set(modId, rec);
+  }
+
+  // ③ 在线（Nexus 已加载到的那些）
+  for (const n of (state.browse.items || [])) {
+    const modId = Number(n.modId) || 0;
+    if (!modId) continue;
+    const prev = byMod.get(modId);
+    if (prev) { prev.online = n; continue; }   // 本地已有：只补在线信息，不改状态
+    const rec = {
+      key: String(modId),
+      kind: 'online',
+      modId,
+      name: n.name,
+      author: n.author,
+      version: n.version,
+      image: n.thumbnail || n.image,
+      summary: n.summary,
+      downloads: n.downloads,
+      endorsements: n.endorsements,
+      adult: n.adult,
+      categoryZh: n.categoryZh,
+      online: n,
+      task: taskOf(modId)
+    };
+    out.push(rec);
+    byMod.set(modId, rec);
+  }
+  return out;
+}
+
+/** 关键词命中（名字 / 作者 / Mod ID / 版本 / 文件名 / 摘要） */
+function libRecordMatches(rec, q) {
+  if (!q) return true;
+  const meta = rec.modId ? (typeof libMetaFor === 'function' ? libMetaFor(rec.modId) : null) : null;
+  const hay = [
+    rec.name, rec.author, rec.summary, rec.version, rec.filename,
+    rec.modId ? '#' + rec.modId : '',
+    meta ? meta.name : '', meta ? meta.author : '', meta ? meta.summary : ''
+  ].concat((rec.items || []).map(m => m.rel || m.file || ''))
+    .filter(Boolean).join(' ').toLowerCase();
+  return hay.indexOf(q) >= 0;
+}
+
+/** 按当前状态 / 标记 / 类型 / 关键词筛记录（纯计算，不碰 DOM） */
+function libFilterRecords(recs) {
+  const st = state.lib.status || 'all';
+  const marks = state.lib.marks || {};
+  const kind = state.lib.kind || '';
+  // 顶栏搜索框与老「已安装」搜索框共用一个关键词（用户在 Mod 库里只有一个搜索框）
+  const q = String(state.browse.search || state.instFilters.q || '').trim().toLowerCase();
+  const hideBlocked = state.browse.blockMode === 'hide';
+
+  return (recs || []).filter(rec => {
+    const s = libStateOf(rec);
+    if (st === 'online') { if (rec.kind !== 'online' && !rec.online) return false; }
+    else if (st === 'downloaded') { if (rec.kind !== 'downloaded') return false; }
+    else if (st === 'installed') { if (rec.kind !== 'installed') return false; }
+    else if (st === 'enabled') { if (s !== 'enabled') return false; }
+    else if (st === 'disabled') { if (s !== 'disabled') return false; }
+    else if (st === 'partial') { if (s !== 'partial') return false; }
+
+    if (marks.liked && !libHasMark(rec, 'liked')) return false;
+    if (marks.blocked && !libHasMark(rec, 'blocked')) return false;
+    if (marks.bug && !libHasMark(rec, 'bug')) return false;
+    // 黑名单默认不显示（老行为），除非用户自己点开「不感兴趣」这一档看
+    if (hideBlocked && !marks.blocked && libHasMark(rec, 'blocked')) return false;
+
+    if (kind && libTypeOf(rec) !== kind) return false;
+    if (!libRecordMatches(rec, q)) return false;   // 不命中就剔掉
+    return true;
+  });
+}
+
+/** 状态 chip 后面的计数（各档有多少条） */
+function libStatusCounts(recs) {
+  const c = { all: recs.length, online: 0, downloaded: 0, installed: 0, enabled: 0, disabled: 0, partial: 0 };
+  for (const rec of recs) {
+    const s = libStateOf(rec);
+    if (rec.kind === 'installed') c.installed++;
+    else if (rec.kind === 'downloaded') c.downloaded++;
+    else if (rec.kind === 'online' || rec.online) c.online++;
+    if (s === 'enabled') c.enabled++;
+    else if (s === 'disabled') c.disabled++;
+    else if (s === 'partial') c.partial++;
+  }
+  return c;
+}
+
+/** 画顶部状态行（chip + 类型下拉 + 标记 chip） */
+function paintLibHead(recs) {
+  const counts = libStatusCounts(recs || []);
+  const st = state.lib.status || 'all';
+  const box = $('#libStatus');
+  if (box) {
+    box.innerHTML = LIB_STATUS_CHIPS.map(c => {
+      const n = counts[c.v];
+      const num = typeof n === 'number' && c.v !== 'all' ? `<span class="dir">${fmtNum(n)}</span>` : '';
+      return `<button data-libst="${c.v}" class="${st === c.v ? 'on' : ''}">${c.label}${num}</button>`;
+    }).join('');
+  }
+  const kindSel = $('#libKind');
+  if (kindSel) {
+    const cur = state.lib.kind || '';
+    kindSel.innerHTML = libKindOptions().map(o =>
+      `<option value="${o.v}"${cur === o.v ? ' selected' : ''}>${esc(o.label)}</option>`
+    ).join('');
+  }
+  const marks = $('#libMarks');
+  if (marks) {
+    const cur = state.lib.marks || {};
+    marks.innerHTML = LIB_MARK_CHIPS.map(c => {
+      const total = (recs || []).filter(r => libHasMark(r, c.k)).length;
+      return `<button data-libmk="${c.k}" class="${cur[c.k] ? 'on' : ''}" title="只看${c.label}的 Mod">${c.label}${total ? `<span class="dir">${fmtNum(total)}</span>` : ''}</button>`;
+    }).join('');
+  }
+}
+
+/** 一条本地记录的卡片（在线记录仍用 browseCard，两套复用同一批 CSS 类） */
+function libCard(rec) {
+  const s = libStateOf(rec);
+  const b = LIB_BADGE[s] || LIB_BADGE.online;
+  const key = rec.key;
+  const selOn = state.sel.ids.has(key);
+  const isBug = libHasMark(rec, 'bug');
+  const img = rec.image || (rec.modId && typeof coverForMod === 'function' ? coverForMod(rec.modId) : '');
+  const nfiles = rec.kind === 'installed'
+    ? (rec.files ? `<span class="tag nfile" title="这个 Mod 装了 ${rec.files} 个文件">${rec.files} 个已装文件</span>` : '')
+    : '';
+  const typeTag = (() => {
+    const t = libTypeOf(rec);
+    const zh = { cns: 'CNS 换装', prereq: '前置', script: '脚本', builtin: '内置', outfit: '服装', online: '在线' }[t] || '';
+    return zh ? `<span class="tag">${zh}</span>` : '';
+  })();
+
+  // 动作：按状态给主按钮，其余塞进次按钮（都能在抽屉里找到更全的）
+  let acts = '';
+  if (rec.kind === 'installed') {
+    acts = `<button class="btn sm" data-lopen="${esc(key)}" title="看文件、来源和逐文件开关">详情</button>`;
+  } else if (rec.kind === 'downloaded') {
+    acts = `<button class="btn sm p" data-lib-install="${rec.modId}" title="安装包已经在管理器里（不用再下一次），直接装进游戏目录">安装到游戏</button>`
+      + `<button class="btn sm" data-libreveal="${rec.modId}" title="在资源管理器里定位这个安装包">定位</button>`
+      + `<button class="btn sm d" data-libdel="${rec.modId}" title="只删安装包，不动用户标记（喜欢 / 不感兴趣 / 有 bug）">删包</button>`;
+  } else {
+    acts = `<button class="btn sm" data-dl-add="${rec.modId}" title="加入下载队列（之后自动下载并安装）">⬇ 下载</button>`;
+  }
+  const vote = rec.modId ? voteHtml({ modId: rec.modId }) : '';
+  const sw = rec.kind === 'installed' && rec.groupKind !== 'prereq'
+    ? `<button class="sw${rec.enabled ? '' : ' off'}${rec.partial ? ' part' : ''}" data-gtoggle="${esc(key)}" title="${rec.partial ? '部分文件已启用 —— 点击全部启用' : (rec.enabled ? '点击禁用' : '点击启用')}"></button>`
+    : '';
+
+  return `
+  <div class="card${selOn ? ' sel' : ''}${isBug ? ' hasbug' : ''}${rec.kind === 'installed' && !rec.enabled ? ' off' : ''}" data-lkey="${esc(key)}"${rec.modId ? ` data-modid="${rec.modId}"` : ''}>
+    <div class="cover">
+      ${img ? `<img src="${esc(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'无封面图'}))">`
+        : `<div class="ph">${rec.kind === 'installed' ? '本地文件<br>无封面图' : '无封面图'}</div>`}
+      <div class="ck${selOn ? ' on' : ''}" data-lck="${esc(key)}">✓</div>
+      <span class="lb ${b.c}">${b.t}</span>
+      ${nfiles}
+      ${isBug ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>' : ''}
+      ${typeTag}
+      ${sw}
+    </div>
+    <div class="cbody">
+      <h3 data-i18n-skip title="${esc(rec.name)}">${esc(rec.name)}</h3>
+      <div class="zh" data-i18n-skip title="${esc(rec.summary || '')}">${esc(rec.summary || (rec.kind === 'installed' ? '本地已安装' : '—'))}</div>
+      <div class="meta">
+        ${rec.modId ? `<span class="chip mid" title="Nexus Mod ID">#${rec.modId}</span>` : ''}
+        ${rec.version ? `<span class="chip">${esc(verText(rec.version))}</span>` : ''}
+        ${rec.author ? `<span>${esc(rec.author)}</span>` : ''}
+        ${typeof rec.size === 'number' ? `<span>${fmtSize(rec.size)}</span>` : ''}
+        ${rec.kind === 'online' ? `<span>⬇ ${fmtNum(rec.downloads)}</span><span>♥ ${fmtNum(rec.endorsements)}</span>` : ''}
+        <div class="acts">${vote}${acts}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** 统一渲染（状态 === 'online' 时仍走原来的 Nexus 分页路径，见 renderBrowse） */
+function renderLibMerged() {
+  const area = $('#browseArea');
+  if (!area) return;
+  // 这两份数据以前都是别的页面顺手准备好的（已安装页 / 下载页）；
+  // Mod 库现在是首页，第一次进来得自己备齐，否则只剩「在线」那一条来源。
+  if ((!state.installedGroups || !state.installedGroups.length) && state.game && state.game.found) {
+    try { renderInstalled(); } catch (e) { console.warn('[Mod 库] 预取已安装分组失败', e); }
+  }
+  if (!state.library && !state.libLibAsked) {
+    state.libLibAsked = true;
+    if (typeof refreshLibrary === 'function') {
+      refreshLibrary().then(() => { if ((state.lib.status || 'all') !== 'online') renderBrowse(); }).catch(() => {});
+    }
+  }
+  const recs = buildLibRecords();
+  state.libRecords = recs;
+  const shown = libFilterRecords(recs);
+  state.libShownRecords = shown;
+  paintLibHead(recs);
+
+  const stats = $('#browseStats');
+  const more = $('#btnLoadMore');
+  const st = state.lib.status || 'all';
+  if (stats) {
+    const parts = [`共 <b>${fmtNum(shown.length)}</b> 个 Mod`];
+    const c = libStatusCounts(recs);
+    parts.push(`已安装 ${fmtNum(c.installed)} · 已下载 ${fmtNum(c.downloaded)} · 在线 ${fmtNum(c.online)}`);
+    if (shown.length !== recs.length) parts.push(`（筛选自 ${fmtNum(recs.length)} 个）`);
+    const q = String(state.browse.search || state.instFilters.q || '').trim();
+    if (q) parts.push(`关键词「${esc(q)}」`);
+    stats.innerHTML = parts.join(' · ');
+  }
+  if (more) {
+    // 在线那一档才需要「加载更多」；本地档位是本地全量，没有翻页
+    const need = st === 'online' && !state.browse.done;
+    more.style.display = need ? '' : 'none';
+    if (need) {
+      more.disabled = !!state.browse.loading;
+      more.textContent = state.browse.loading ? '加载中…' : `加载更多（还有 ${fmtNum(browseRest(state.browse))} 个）`;
+    }
+  }
+
+  if (!shown.length) {
+    const why = recs.length ? '没有符合当前筛选的 Mod —— 换个状态 / 类型，或者把标记筛选关掉' : '还没加载到任何 Mod';
+    area.innerHTML = `<div class="grid"><div class="empty">${why}</div></div>`;
+  } else {
+    const cards = shown.map(r => (r.kind === 'online' ? browseCard(r.online || r) : libCard(r))).join('');
+    area.innerHTML = `<div class="grid">${cards}</div>`;
+  }
+  selUpdateBar();
+}
+
+/** 切状态（导航「已安装 Mod」的老入口也走它） */
+function setLibStatus(v, opts = {}) {
+  const val = LIB_STATUS_CHIPS.some(c => c.v === v) ? v : 'all';
+  if (state.lib.status === val && !opts.force) return;
+  state.lib.status = val;
+  // 「只看未安装 / 已下载」这两颗老开关会跟新状态打架，切状态时一并清掉
+  state.browse.onlyUninstalled = false;
+  state.browse.onlyDownloaded = false;
+  if (!opts.silent) {
+    if (val === 'online' && !state.browse.items.length && !state.browse.loading) loadBrowse(true);
+    else renderBrowse();
+  }
+}
+
+/** 标记筛选开 / 关 */
+function toggleLibMark(k) {
+  if (!state.lib.marks) state.lib.marks = { liked: false, blocked: false, bug: false };
+  state.lib.marks[k] = !state.lib.marks[k];
+  renderBrowse();
+}
+
+/** 多选：按记录键（mod:<id> / lib:<id> / 在线就是 modId 字符串） */
+function libToggleSelect(key) {
+  const k = String(key);
+  if (state.sel.ids.has(k)) state.sel.ids.delete(k); else state.sel.ids.add(k);
+  state.sel.all = false;
+  const cards = document.querySelectorAll('#browseArea .card');
+  cards.forEach(c => {
+    const ck = c.getAttribute('data-lkey') || c.getAttribute('data-modid') || '';
+    if (String(ck) !== k) return;
+    const on = state.sel.ids.has(k);
+    c.classList.toggle('sel', on);
+    const box = c.querySelector('.ck');
+    if (box) box.classList.toggle('on', on);
+  });
+  selUpdateBar();
+}
+
+/** 打开一条记录的详情：装着 → 已安装抽屉；有 modId → Nexus 抽屉 */
+function libOpenRecord(key) {
+  const rec = (state.libRecords || []).find(r => r.key === key);
+  if (!rec) return;
+  if (rec.kind === 'installed' && rec.group) { openInstalledDrawer(rec.group); return; }
+  if (rec.modId) { openNexusDrawer(Number(rec.modId)); return; }
+  toast('这条没有 Nexus Mod ID，先用「批量解析」把它对上号');
+}
+
+/** 全选口径：本地档位用记录键，在线档位用 modId */
+function libSelectableKeys() {
+  if (state.lib.status === 'online') return (state.browse.items || []).map(n => String(n.modId));
+  const recs = (state.libShownRecords && state.libShownRecords.length) ? state.libShownRecords : [];
+  return recs.map(r => (r.kind === 'online' ? String(r.modId) : r.key));
+}
+
+/** 当前选中的记录（按种类分开，批量按钮据此决定能不能点） */
+function libSelectedRecords() {
+  const ids = state.sel.ids;
+  const out = { installed: [], downloaded: [], online: [] };
+  for (const rec of (state.libRecords || [])) {
+    const key = rec.kind === 'online' ? String(rec.modId) : rec.key;
+    if (!ids.has(key)) continue;
+    if (rec.kind === 'installed') out.installed.push(rec);
+    else if (rec.kind === 'downloaded') out.downloaded.push(rec);
+    else out.online.push(rec);
+  }
+  return out;
+}
+
+/** 批量安装选中的安装包（把选择集换成 modId 交给老的 libBatchInstall） */
+async function libBatchInstallSel() {
+  const sel = libSelectedRecords();
+  const items = (state.library && state.library.items) || [];
+  const ids = new Set(sel.downloaded.map(r => String(r.modId)));
+  if (!ids.size) { toast('先勾选「已下载」的包（状态切到「已下载」最好挑）'); return; }
+  const picked = items.filter(it => ids.has(String(it.modId)));
+  await libBatchInstall(picked);
+}
+
+/** 批量启用 / 禁用选中的已安装 Mod */
+async function libBatchToggleSel(target) {
+  const sel = libSelectedRecords();
+  if (!sel.installed.length) { toast('先勾选「已安装」的 Mod'); return; }
+  await gselBatchToggle(!!target, sel.installed.map(r => r.group));
+}
+
+/** 批量卸载选中的已安装 Mod */
+async function libBatchUninstallSel() {
+  const sel = libSelectedRecords();
+  if (!sel.installed.length) { toast('先勾选「已安装」的 Mod'); return; }
+  await gselBatchUninstall(sel.installed.map(r => r.group));
+}
+
 function renderBrowse() {
+  // 统一 Mod 库（2026-11-10）：除「只看在线」这一档，其余都由本地记录渲染 —— 零网络请求。
+  // 在线那一档继续走原来的 Nexus 分页引擎（分类 / 标签 / 成人 / 加载更多都在）。
+  if ((state.lib.status || 'all') !== 'online') { renderLibMerged(); return; }
   const b = state.browse;
   const area = $('#browseArea');
   renderBrowseFilters();
@@ -4553,10 +5062,11 @@ async function libInstall(modId) {
  */
 let libBatchRunning = false;
 
-async function libBatchInstall() {
+async function libBatchInstall(pickedArg) {
   if (libBatchRunning) { toast('正在安装中，稍等…'); return; }
   const items = (state.library && state.library.items) || [];
-  const picked = items.filter(it => state.sel.ids.has(String(it.modId)));
+  // pickedArg：Mod 库统一选择集传进来的批次；不传就按老的「勾选的 modId」自己挑
+  const picked = Array.isArray(pickedArg) ? pickedArg : items.filter(it => state.sel.ids.has(String(it.modId)));
   if (!picked.length) { toast('先勾选要安装的包'); return; }
   // 先问「有 bug」标记（放在 running 标志之前 —— 用户取消时不该把按钮锁死）
   const list = await confirmBugMarked(picked);
@@ -6871,7 +7381,8 @@ function bindEvents() {
   });
 
   // 只看未安装（本地判定，Nexus 没这个筛选条件）—— 开/关都要重新拉
-  $('#newOnlyTabs').addEventListener('click', async (e) => {
+  const elNewOnly = $('#newOnlyTabs');
+  if (elNewOnly) elNewOnly.addEventListener('click', async (e) => {
     // 「已下载」：本地安装包清单（不走 Nexus 分页），可多选批量安装
     if (e.target.closest('button[data-onlydl]')) {
       state.browse.onlyDownloaded = !state.browse.onlyDownloaded;
@@ -6895,7 +7406,8 @@ function bindEvents() {
   });
 
   // 黑名单三态：隐藏（默认）/ 显示全部 / 只看黑名单
-  $('#blockTabs').addEventListener('click', (e) => {
+  const elBlockTabs = $('#blockTabs');
+  if (elBlockTabs) elBlockTabs.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-block]');
     if (!btn) return;
     const mode = btn.dataset.block;
@@ -6912,7 +7424,8 @@ function bindEvents() {
   });
 
   // 只看喜欢（纯本地记录，秒开，不请求 Nexus）
-  $('#likeTabs').addEventListener('click', (e) => {
+  const elLikeTabs = $('#likeTabs');
+  if (elLikeTabs) elLikeTabs.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-onlyliked]');
     if (!btn) return;
     const next = !state.browse.onlyLiked;
@@ -6933,11 +7446,15 @@ function bindEvents() {
   // 多选 / 全选 / 批量下载（默认下载各 Mod 的第一个主文件）
   $('#btnBatchMode').addEventListener('click', () => selSetMode(!state.sel.on));
   $('#btnSelectAll').addEventListener('click', () => selSelectAll());
-  $('#btnBatchDownload').addEventListener('click', () => {
-    // 「已下载」筛选下这颗按钮是「批量安装」（装本地安装包），否则是「批量下载」
-    if (state.browse.onlyDownloaded) libBatchInstall().catch(() => {});
-    else batchDownload().catch(() => {});
-  });
+  $('#btnBatchDownload').addEventListener('click', () => { batchDownload().catch(() => {}); });
+  // Mod 库（2026-11-10）新增的四颗批量按钮：按选中项的状态自动亮/灰（见 selUpdateBar）
+  $('#btnBatchInstall').addEventListener('click', () => { libBatchInstallSel().catch(() => {}); });
+  $('#btnBatchOn').addEventListener('click', () => { libBatchToggleSel(true).catch(() => {}); });
+  $('#btnBatchOff').addEventListener('click', () => { libBatchToggleSel(false).catch(() => {}); });
+  $('#btnBatchUninstall').addEventListener('click', () => { libBatchUninstallSel().catch(() => {}); });
+  // 类型下拉：本地判定，不联网
+  const libKindSel = $('#libKind');
+  if (libKindSel) libKindSel.addEventListener('change', () => { state.lib.kind = libKindSel.value || ''; renderBrowse(); });
 
   // 浏览页：滚到底部自动加载下一页（阈值 420px 提前预取，滚动更顺）。
   // 「加载更多」按钮保留作兜底 —— 键盘翻页、终端里没有平滑滚动的场景照样能加载。
@@ -6992,6 +7509,8 @@ function bindEvents() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       state.browse.search = e.target.value.trim();
+      // Mod 库的本地档位（已下载 / 已安装 / 带标记）没必要去 Nexus 再拉一遍，就地筛
+      if ((state.lib.status || 'all') !== 'online') { renderBrowse(); return; }
       loadBrowse(true);
     }, 450);
   });
@@ -7467,13 +7986,24 @@ function bindEvents() {
       if (box) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
       return;
     }
+    // Mod 库：顶部状态 chip / 标记 chip（用户 2026-11-10：一套界面管三种状态）
+    const libSt = t.closest('[data-libst]');
+    if (libSt) { setLibStatus(libSt.dataset.libst); return; }
+    const libMk = t.closest('[data-libmk]');
+    if (libMk) { toggleLibMark(libMk.dataset.libmk); return; }
     if (t.closest('[data-dl-cleardone]')) { await dlClearDone(); return; }
     if (t.closest('[data-dl-refreshplans]')) { await dlRefreshPlans(); return; }
 
     const card = t.closest('.card');
     if (card) {
+      const lkey = card.dataset.lkey || '';
       // 多选模式：点卡片 = 勾选/取消，不弹详情抽屉（要下载的那颗按钮仍单独生效）
-      if (state.sel.on && card.dataset.modid) { selClick(card.dataset.modid, e); return; }
+      if (state.sel.on) {
+        if (lkey) { libToggleSelect(lkey); return; }
+        if (card.dataset.modid) { selClick(card.dataset.modid, e); return; }
+        return;
+      }
+      if (lkey) { libOpenRecord(lkey); return; }
       if (card.dataset.modid) openNexusDrawer(Number(card.dataset.modid));
       else if (card.dataset.gid) {
         // 已安装页：一张卡 = 一个 Mod（同 Mod ID 的多个文件已合并），点开看它装了哪几个文件

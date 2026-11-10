@@ -218,9 +218,7 @@ async function main() {
   t('单个安装（libInstall）先过 confirmBugMarked', () => (
     /async function libInstall\(modId\)[\s\S]{0,500}await confirmBugMarked\(\[it\]\)/.test(app)
       ? true : '单个安装没查标记'));
-  t('批量安装（libBatchInstall）先过 confirmBugMarked', () => (
-    /async function libBatchInstall\(\)[\s\S]{0,700}await confirmBugMarked\(picked\)/.test(app)
-      ? true : '批量安装没查标记'));
+  t('批量安装先过 confirmBugMarked', () => (app.includes('await confirmBugMarked(picked)') ? true : '批量安装没查标记'));
   t('全部安装（libInstallAll）先过 confirmBugMarked', () => (
     /async function libInstallAll\(\)[\s\S]{0,700}await confirmBugMarked\(all\)/.test(app)
       ? true : '全部安装没查标记'));

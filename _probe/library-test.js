@@ -226,7 +226,7 @@ for (const k of ['安装包', '详情', '作者', '本地安装包', '显示更�
 console.log('\n=== D1b) 「已下载」筛选：并进浏览页 + 多选批量安装 ===');
 
 const htmlSrc = read('src/renderer/index.html');
-ok(htmlSrc.includes('data-onlydl="1"'), 'index.html 的「只看…」那一排里有「已下载」按钮');
+  ok(appSrc.includes("v: 'downloaded'"), '状态行里有「已下载」这一档');
 ok(appSrc.includes('onlyDownloaded: false'), 'state.browse 里有 onlyDownloaded 开关');
 ok(appSrc.includes('function browseVisibleItems()'), 'app.js 有 browseVisibleItems()（多选/全选按当前可见项算）');
 ok(appSrc.includes('function syncOnlyTabs()'), 'app.js 有 syncOnlyTabs()（两个按钮高亮互斥）');
@@ -234,11 +234,10 @@ ok(appSrc.includes('function renderBrowseDownloaded()'), 'app.js 有 renderBrows
 ok(/if \(b\.onlyDownloaded\) \{\r?\n    renderBrowseDownloaded\(\);/.test(appSrc), 'renderBrowse() 在「已下载」时走本地清单');
 ok(appSrc.includes('libCardHtml(it, { selectable: true, hideDetail: true })'),
   '「已下载」里复用浏览页卡片，并打开勾选');
-ok(appSrc.includes('async function libBatchInstall()'), 'app.js 有 libBatchInstall()');
-ok(appSrc.includes('if (state.browse.onlyDownloaded) libBatchInstall()'),
-  '工具栏那颗按钮在「已下载」下改调批量安装');
-ok(appSrc.includes("const downloading = !!state.browse.onlyDownloaded;"), 'selUpdateBar 里按筛选切换文案');
-ok(appSrc.includes('批量安装（${n}）'), '多选时按钮显示「批量安装（N）」');
+  ok(/async function libBatchInstall(Sel)?\(/.test(appSrc), 'app.js 有批量安装实现');
+  ok(appSrc.includes("$('#btnBatchInstall').addEventListener('click'"), '工具栏有独立的「批量安装」按钮');
+  ok(appSrc.includes('pick: () => sel.downloaded'), 'selUpdateBar 按选中种类点亮按钮');
+  ok(appSrc.includes('${b.verb}（${n}）'), '多选时按钮显示「动作（N）」');
 ok(appSrc.includes("t.closest('[data-lib-goto]')"), '下载页那条提示能跳到「已下载」');
 ok(appSrc.includes("if (state.browse.onlyDownloaded) renderBrowse(); else renderDownload();"),
   '装完一个包会按当前筛选决定重画哪一页');
@@ -246,7 +245,7 @@ ok(appSrc.includes("if (state.browse.onlyDownloaded) renderBrowse(); else render
 const selStart = appSrc.indexOf('function selUpdateBar()');
 const selEnd = appSrc.indexOf('function batchDownload(');
 const selSrc = appSrc.slice(selStart, selEnd > selStart ? selEnd : selStart + 2000);
-ok(selSrc.includes('browseVisibleItems()'), 'selUpdateBar 用 browseVisibleItems() 判「全选」状态');
+  ok(selSrc.includes('libSelectableKeys()'), 'selUpdateBar 用 libSelectableKeys() 判「全选」状态');
 ok(appSrc.slice(appSrc.indexOf('function selSelectAll()'), appSrc.indexOf('function selSyncCard(')).includes('browseVisibleItems()'),
   'selSelectAll 用 browseVisibleItems()（只全选当前看得见的）');
 

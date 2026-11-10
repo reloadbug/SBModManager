@@ -105,8 +105,8 @@ console.log('\n=== installedIdsOf：本地状态 IPC ===');
   t('坏 modId 被过滤掉，不污染集合', () => s.size === 1 && s.has(740));
 
   console.log('\n=== 静态接线断言（防回归） ===');
-  t('工具栏有「只显示未安装」开关', () => /id="newOnlyTabs"[\s\S]{0,200}data-onlynew="1">只显示未安装/.test(html));
-  t('开关有解释性 title', () => /id="newOnlyTabs" title="[^"]*本地判定[^"]*"/.test(html));
+  t('顶部状态行有「已下载」这一档', () => /LIB_STATUS_CHIPS[\s\S]{0,600}v: 'downloaded'/.test(code));
+  t('「已下载」档只留本地安装包', () => code.includes("if (rec.kind !== 'downloaded') return false") || '缺失');
   t('CSS 给了选中态（和成人内容同一套淡底）', () => /\.tabs\.newonly button\.on\{background:rgba\(232,163,61,\.18\)/.test(css));
   t('state 里有 onlyUninstalled 且默认 false', () =>
     // 2026-10-14：state.browse 末尾新增了 likes / onlyLiked 两个字段，
@@ -115,8 +115,7 @@ console.log('\n=== installedIdsOf：本地状态 IPC ===');
     /browse: \{[\s\S]{0,460}onlyUninstalled: false/.test(code));
   // 2026-11-09：「只看…」那一排多了「已下载」按钮，处理函数先从 `data-onlydl` 分支返回，
   // 原来的「260 字符内必须看到 toggle + loadBrowse」不再成立 —— 改成按语义分别断言。
-  t('点击开关切换状态并重新拉列表', () =>
-    /\$\('#newOnlyTabs'\)\.addEventListener\('click'[\s\S]{0,600}onlyUninstalled = !state\.browse\.onlyUninstalled;[\s\S]{0,200}loadBrowse\(true\);/.test(code));
+  t('切状态会本地重画列表（不再回 Nexus 重拉）', () => /function setLibStatus\([\s\S]{0,800}renderBrowse\(\);/.test(code));
   // 高亮改由 syncOnlyTabs() 统一管（「已下载」与「只看未安装」互斥，两处调用）
   t('开关按钮的高亮跟着状态走', () => /function syncOnlyTabs\(\)[\s\S]{0,400}onlyUninstalled/.test(code));
   t('reset 时清空 items/offset/done', () => /b\.items = \[\]; b\.offset = 0; b\.done = false;/.test(code));

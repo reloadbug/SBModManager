@@ -160,7 +160,7 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
   const ipc = fs.readFileSync(IPC, 'utf8');
 
   // ---- 吸顶 ----
-  t('index.html 把头部包进 .bhead', () => /<div class="bhead"[\s\S]{0,200}id="sortTabs"/.test(html) || '缺失');
+  t('index.html 把头部包进 .bhead', () => /<div class="bhead"[\s\S]{0,1200}id="sortTabs"/.test(html) || '缺失');
   t('.bhead 里同时含筛选器与统计行', () =>
     /class="bhead"[\s\S]*?id="browseFilters"[\s\S]*?id="browseStats"[\s\S]*?<\/div>\s*<div id="browseArea">/.test(html) || '缺失');
   t('CSS：.bhead 用 position:sticky', () => /\.bhead\{position:sticky/.test(css) || '缺失');
@@ -178,9 +178,8 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
     /\.bhead\{[^}]*padding:16px 16px 12px/.test(css) || '缺失');
 
   // ---- 黑名单 tabs ----
-  t('index.html 有 #blockTabs 三态', () =>
-    /id="blockTabs"[\s\S]*?data-block="hide"[\s\S]*?data-block="all"[\s\S]*?data-block="only"/.test(html) || '缺失');
-  t('默认选中「隐藏黑名单」', () => /data-block="hide" class="on"/.test(html) || '默认不是 hide');
+  t('顶部标记筛选里有「不感兴趣」', () => code.includes("k: 'blocked'") || '缺失');
+  t('默认隐藏黑名单（state.browse.blockMode 默认 hide）', () => code.includes("blockMode: 'hide'") || '默认不是 hide');
   t('CSS 有 .tabs.blocked 选中态', () => /\.tabs\.blocked button\.on\{/.test(css) || '缺失');
 
   // ---- 卡片按钮 ----
@@ -234,9 +233,8 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
   t('undislikeMod 先删集合再落盘', () =>
     /async function undislikeMod[\s\S]{0,400}b\.blocked\.delete\(id\)[\s\S]{0,900}window\.api\.blacklist\.remove/.test(code) || '缺失');
   t('黑名单状态同步到 tabs（updateBlockTabs）', () => /function updateBlockTabs\(\)/.test(code) || '缺失');
-  t('#blockTabs 点击切换模式并重载', () =>
+  t('黑名单默认隐藏仍生效（合并视图的过滤里）', () => code.includes("hideBlocked && !marks.blocked && libHasMark(rec, 'blocked')") || '缺失');
     // 窗口放宽到 700：本轮在切模式与重载之间插了「关掉只看喜欢」的互斥处理与注释
-    /#blockTabs'\)\.addEventListener\('click'[\s\S]{0,700}loadBrowse\(true\)/.test(code) || '缺失');
   t('启动时先拉黑名单与「喜欢」再刷新（否则首屏画不对）', () =>
     /await loadBlacklist\(\);[\s\S]{0,200}await loadFavorites\(\);[\s\S]{0,160}await refreshAll\(\);/.test(code) || '缺失');
 

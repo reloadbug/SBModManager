@@ -158,7 +158,9 @@ const bodyCls = { sel: null };   // body.classList.toggle 的记录（注意 tog
 const dom = { cards: [], els: {}, body: { classList: { toggle(cls, on) { bodyCls[cls] = !!on; } } } };
 const ctx = {
   // 2026-11-07：body.sel 现在由浏览页 + 已安装页共用，两边状态都得给齐
-  state: { sel: { on: false, all: false, busy: false, ids: new Set() }, gsel: { on: false, busy: false, ids: new Set() }, browse: { items: [] } },
+  state: { sel: { on: false, all: false, busy: false, ids: new Set() }, gsel: { on: false, busy: false, ids: new Set() }, browse: { items: [] },
+           // 2026-11-10 统一 Mod 库：selSelectAll 会先看当前档位
+           lib: { status: 'all', marks: {}, kind: '' }, libRecords: [], libShownRecords: [] },
   $$: (s) => (s === '#browseArea .card' ? dom.cards : []),
   $: (s) => {
     if (!dom.els[s]) dom.els[s] = { textContent: '', style: {}, disabled: false, classList: { toggle() {} } };
@@ -168,6 +170,10 @@ const ctx = {
   // 2026-11-09：「已下载」筛选的统计行刷新（只改一行文字，不影响选择状态）
   fmtNum: (n) => String(n),
   refreshDownloadedStats: () => { ctx.statsRefreshed = (ctx.statsRefreshed || 0) + 1; },
+  // 2026-11-10 统一 Mod 库：五颗批量按钮按「选中记录属于哪一类」亮 / 灰，
+  // 探针里用选中的 modId 现推一份假记录表就够了。
+  libSelectedRecords: () => ({ online: [...ctx.state.sel.ids].map(m => ({ modId: m })), downloaded: [], installed: [] }),
+  libSelectableKeys: () => (ctx.state.browse.items || []).map(n => String(n.modId)),
   Set
 };
 vm.createContext(ctx);
@@ -181,6 +187,8 @@ function reset(ids = [], items = []) {
   ctx.state.sel = { on: false, all: false, busy: false, ids: new Set(ids) };
   ctx.state.gsel = { on: false, busy: false, ids: new Set() };
   ctx.state.browse.items = items;
+  ctx.state.lib = { status: 'all', marks: {}, kind: '' };
+  ctx.state.libShownRecords = items.map(n => ({ key: String(n.modId), kind: 'online', modId: n.modId, online: n }));
   dom.cards = [];
   dom.els = {};
 }
@@ -277,7 +285,7 @@ t('勾了 3 个：按钮显示计数且可点', () => {
   reset(['1', '2', '3']);
   ctx.state.sel.on = true;
   ctx.selUpdateBar();
-  return dom.els['#btnBatchDownload'].textContent === '批量下载（3）' && dom.els['#btnBatchDownload'].disabled === false;
+  return dom.els['#btnBatchDownload'].textContent === '下载（3）' && dom.els['#btnBatchDownload'].disabled === false;
 });
 t('全选后「全选」按钮改写成「取消全选」', () => {
   reset(['1'], [{ modId: 1 }]);
@@ -301,8 +309,12 @@ t('批量下载按钮有解释性 title', () => /id="batchBar" title="[^"]*多�
 t('CSS 有多选态复选框（默认隐藏，body.sel 才显示）', () => /\.cover \.ck\{display:none/.test(css) && /body\.sel \.cover \.ck\{display:block\}/.test(css));
 t('CSS 给选中卡片加边框', () => /body\.sel \.card\.sel\{border-color:var\(--accent\)/.test(css));
 t('CSS 让「成人内容」角标给复选框让位', () => /body\.sel \.cover \.tag\{left:38px\}/.test(css));
-t('卡片渲染带复选框与选中类', () => /class="card\$\{state\.sel\.ids\.has\(String\(n\.modId\)\) \? ' sel' : ''\}"/.test(code) && /class="ck\$\{state\.sel\.ids\.has\(String\(n\.modId\)\) \? ' on' : ''\}" data-ck=/.test(code));
-t('多选态下点卡片 = 勾选，不弹抽屉', () => /if \(state\.sel\.on && card\.dataset\.modid\) \{ selToggle\(card\.dataset\.modid\); return; \}/.test(code));
+t('卡片渲染带复选框与选中类', () => /class="card\$\{state\.sel\.ids\.has\(String\(n\.modId\)\) \? ' sel' : ''\}/.test(code) && /class="ck\$\{state\.sel\.ids\.has\(String\(n\.modId\)\) \? ' on' : ''\}" data-ck=/.test(code));
+t('多选态下点卡片 = 勾选，不弹抽屉', () => code.includes('if (lkey) { libToggleSelect(lkey); return; }') && code.includes('if (card.dataset.modid) { selClick(card.dataset.modid, e); return; }'));
+t('Shift 连选 / Ctrl 单张：selClick 把修饰键交给 selRangeTo（2026-11-10 用户要求）', () =>
+  /function selClick\(modId, e\) \{[\s\S]{0,240}shiftKey && selRangeTo\(k, !!\(e\.ctrlKey \|\| e\.metaKey\)\)/.test(code) &&
+  /function selRangeTo\(modId, additive\) \{[\s\S]{0,400}if \(!additive\) state\.sel\.ids\.clear\(\);/.test(code) &&
+  /function selOrderIds\(\) \{[\s\S]{0,160}querySelectorAll\('#browseArea \.card\[data-modid\]'\)/.test(code));
 t('按钮事件已接', () => /\$\('#btnBatchMode'\)\.addEventListener\('click', \(\) => selSetMode\(!state\.sel\.on\)\)/.test(code) &&
   /\$\('#btnSelectAll'\)\.addEventListener\('click', \(\) => selSelectAll\(\)\)/.test(code) &&
   /\$\('#btnBatchDownload'\)\.addEventListener\('click'/.test(code));
@@ -317,7 +329,7 @@ t('并发度有上限', () => /const BATCH_CONCURRENCY = 4;/.test(code) && /Arra
 t('跑批有 busy 守卫（重入直接返回）', () => /if \(state\.sel\.busy\) return;/.test(code) && /state\.sel\.busy = true;/.test(code) && /finally \{\s*state\.sel\.busy = false;/.test(code));
 t('完成后切到下载页并汇总提示', () => /await refreshDownloads\(\);[\s\S]{0,120}switchPage\('p-download'\);[\s\S]{0,80}toast\(batchSummary\(out\)/.test(code));
 t('启动时初始化工具栏状态', () => /selUpdateBar\(\);\s*\/\/ 多选工具栏初始态/.test(code));
-t('暴露自动化入口', () => /window\.__batch = \{ batchDownload, selToggle, selSelectAll, selSetMode, selUpdateBar, pickPrimaryFile, batchSummary \};/.test(code));
+t('暴露自动化入口', () => /window\.__batch = \{ batchDownload, selToggle, selClick, selRangeTo, selOrderIds, selSelectAll, selClear, selSetMode, selUpdateBar, pickPrimaryFile, batchSummary \};/.test(code) && /window\.__gsel = \{ gselToggle, gselClick, gselRangeTo/.test(code));
 
 // ---------- 浏览页点「⬇ 下载」不切页（2026-10-14 用户要求）----------
 // 「浏览 mod 的时候点击下载不切换到下载页面，直接后台加入下载，只在当前 mod 上显示状态」
