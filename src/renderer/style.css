@@ -657,3 +657,21 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 .libkind{height:30px;padding:0 8px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer}
 .lb.off{background:rgba(120,120,120,.2);color:var(--dim)}
 .lb.part{background:rgba(232,163,61,.2);color:var(--accent)}
+
+/* 「有 bug」要红、「不含 bug」要绿 —— 用户 2026-11-10。
+   两颗是相反的话：红的一直红着提醒你有问题，绿的点亮表示「只看没问题的」。
+   Mod 库的标记行（.libmarks）与已安装页老筛选行（#instBug）同一套配色。 */
+.tabs.libmarks button.tone-bad,
+.tabs#instBug button[data-ibug="only"]{ color:#ff6b60; border-color:rgba(229,52,43,.45); }
+.tabs.libmarks button.tone-bad.on,
+.tabs#instBug button[data-ibug="only"].on{
+  background:rgba(229,52,43,.2); color:#fff; font-weight:600;
+  box-shadow:inset 0 0 0 1px rgba(229,52,43,.75);
+}
+.tabs.libmarks button.tone-good,
+.tabs#instBug button[data-ibug="none"]{ color:#5fd48a; border-color:rgba(58,190,110,.4); }
+.tabs.libmarks button.tone-good.on,
+.tabs#instBug button[data-ibug="none"].on{
+  background:rgba(58,190,110,.18); color:#eafff2; font-weight:600;
+  box-shadow:inset 0 0 0 1px rgba(58,190,110,.7);
+}

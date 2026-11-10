@@ -279,11 +279,34 @@ t('状态 chip 覆盖了用户点名的五种状态', () => {
   const vs = ctx.LIB_STATUS_CHIPS.map((c) => c.v);
   return ['all', 'online', 'downloaded', 'installed', 'enabled', 'disabled'].every((v) => vs.includes(v));
 });
-t('标记 chip 有三档（喜欢 / 不感兴趣 / 有 bug）', () => {
+t('标记 chip 有四档（喜欢 / 不感兴趣 / 有 bug / 不含 bug）', () => {
   const ks = ctx.LIB_MARK_CHIPS.map((c) => c.k);
-  return ks.includes('liked') && ks.includes('blocked') && ks.includes('bug');
+  return ks.includes('liked') && ks.includes('blocked') && ks.includes('bug') && ks.includes('nobug');
 });
 
+t('「有 bug」红、「不含 bug」绿（tone 标记 + CSS 都在）', () => {
+  const bad = ctx.LIB_MARK_CHIPS.find((c) => c.k === 'bug');
+  const good = ctx.LIB_MARK_CHIPS.find((c) => c.k === 'nobug');
+  return bad.tone === 'bad' && good.tone === 'good' &&
+    /\.tabs\.libmarks button\.tone-bad\.on/.test(css) && /\.tabs\.libmarks button\.tone-good\.on/.test(css);
+});
+t('「不含 bug」把标过的剔掉（不是只看标过的）', () => {
+  const recs = three();
+  state.bugIds = new Set(['200']);
+  state.lib.marks.nobug = true;
+  const shown = ctx.libFilterRecords(recs);
+  return shown.length === 2 && !shown.some((r) => r.modId === 200);
+});
+t('「有 bug」与「不含 bug」互斥（点亮一个就关掉另一个）', () =>
+  app.includes("if (k === 'bug' && state.lib.marks.bug) state.lib.marks.nobug = false;") &&
+  app.includes("if (k === 'nobug' && state.lib.marks.nobug) state.lib.marks.bug = false;"));
+t('没标过的记录「不含 bug」为真、标过的为假', () => {
+  const recs = three();
+  state.bugIds = new Set(['100']);
+  const r100 = recs.find((r) => r.modId === 100);
+  const r200 = recs.find((r) => r.modId === 200);
+  return ctx.libHasMark(r100, 'nobug') === false && ctx.libHasMark(r200, 'nobug') === true;
+});
 // ---------------------------------------------------------------------------
 console.log('\n=== F. 接线：一套界面、一套多选、一套批量 ===');
 t('index.html 有状态行（#libStatus）、类型下拉（#libKind）、标记筛选（#libMarks）', () =>

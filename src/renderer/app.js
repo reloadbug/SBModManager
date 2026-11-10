@@ -45,7 +45,7 @@ const state = {
    *        / downloaded（下好了没装）/ installed（装着）/ enabled / disabled / partial
    * marks 三个布尔是**叠加**筛选，与 status 不冲突；kind 是本地类型（服装 / CNS / 前置 / 脚本…）。
    */
-  lib: { status: 'all', marks: { liked: false, blocked: false, bug: false }, kind: '' },
+  lib: { status: 'all', marks: { liked: false, blocked: false, bug: false, nobug: false }, kind: '' },
   libRecords: [],       // 最近一次拼出来的统一记录（全选 / 计数都走它）
   libShownRecords: [],  // 过滤之后真正显示的记录
   installedShown: [],   // 本次渲染后**真正显示出来**的分组（筛选之后），全选用它
@@ -2688,7 +2688,9 @@ const LIB_STATUS_CHIPS = [
 const LIB_MARK_CHIPS = [
   { k: 'liked', label: '👍 喜欢' },
   { k: 'blocked', label: '👎 不感兴趣' },
-  { k: 'bug', label: '⚠ 有 bug' }
+  // 用户 2026-11-10：有 bug 的要**红**，没 bug 的要**绿** —— 两颗 chip 说相反的话，因而互斥
+  { k: 'bug', label: '⚠ 有 bug', tone: 'bad' },
+  { k: 'nobug', label: '不含 bug', tone: 'good' }
 ];
 
 /** 记录的状态徽标 */
@@ -2713,6 +2715,8 @@ function libMarkSet(k) {
 /** 这条记录有没有某个标记（没有 modId 的磁盘条目一律没有） */
 function libHasMark(rec, k) {
   if (!rec || !rec.modId) return false;
+  // 「不含 bug」不是一个开关，而是「有没有 bug 标记」的取反 —— 别去 libMarkSet 里找它
+  if (k === 'nobug') return !libHasMark(rec, 'bug');
   const s = libMarkSet(k);
   return !!(s && typeof s.has === 'function' && s.has(String(rec.modId)));
 }
@@ -2875,6 +2879,7 @@ function libFilterRecords(recs) {
     if (marks.liked && !libHasMark(rec, 'liked')) return false;
     if (marks.blocked && !libHasMark(rec, 'blocked')) return false;
     if (marks.bug && !libHasMark(rec, 'bug')) return false;
+    if (marks.nobug && libHasMark(rec, 'bug')) return false;
     // 黑名单默认不显示（老行为），除非用户自己点开「不感兴趣」这一档看
     if (hideBlocked && !marks.blocked && libHasMark(rec, 'blocked')) return false;
 
@@ -2921,9 +2926,12 @@ function paintLibHead(recs) {
   const marks = $('#libMarks');
   if (marks) {
     const cur = state.lib.marks || {};
+    const bugged = (recs || []).filter(r => libHasMark(r, 'bug')).length;
     marks.innerHTML = LIB_MARK_CHIPS.map(c => {
-      const total = (recs || []).filter(r => libHasMark(r, c.k)).length;
-      return `<button data-libmk="${c.k}" class="${cur[c.k] ? 'on' : ''}" title="只看${c.label}的 Mod">${c.label}${total ? `<span class="dir">${fmtNum(total)}</span>` : ''}</button>`;
+      const total = c.k === 'nobug' ? (recs || []).length - bugged : (recs || []).filter(r => libHasMark(r, c.k)).length;
+      const tone = c.tone ? ` tone-${c.tone}` : '';
+      const tip = c.k === 'nobug' ? '把标记过「有 bug」的 Mod 藏起来' : `只看${c.label}的 Mod`;
+      return `<button data-libmk="${c.k}" class="${cur[c.k] ? 'on' : ''}${tone}" title="${tip}">${c.label}${total ? `<span class="dir">${fmtNum(total)}</span>` : ''}</button>`;
     }).join('');
   }
 }
@@ -3057,8 +3065,11 @@ function setLibStatus(v, opts = {}) {
 
 /** 标记筛选开 / 关 */
 function toggleLibMark(k) {
-  if (!state.lib.marks) state.lib.marks = { liked: false, blocked: false, bug: false };
+  if (!state.lib.marks) state.lib.marks = { liked: false, blocked: false, bug: false, nobug: false };
   state.lib.marks[k] = !state.lib.marks[k];
+  // 「有 bug」和「不含 bug」说的是相反的话：点亮一个必须关掉另一个，否则列表永远是空的
+  if (k === 'bug' && state.lib.marks.bug) state.lib.marks.nobug = false;
+  if (k === 'nobug' && state.lib.marks.nobug) state.lib.marks.bug = false;
   renderBrowse();
 }
 
