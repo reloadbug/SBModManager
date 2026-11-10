@@ -4,6 +4,39 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.20] - 2026-11-10
+
+修「mod 依然无法禁用」「现在开启也不好使了」：同一件事在四个地方各写了一套「怎么算关着」，
+于是关掉之后又被按磁盘核对改回「已启用」，而已关掉的 pak 又被当成「不归我管」的文件、
+一个都开不回来。
+
+### 修改
+
+- 新增 `src/main/toggleName.js`：开/关的**唯一判定口径**。停用靠改文件名，而这类文件有两种写法 ——
+  pak 三件套直接加后缀（`x.pak` ⇄ `x.pak.disabled`）；CNS/ATOOL 换装索引必须把标记插在
+  `.json` 前面（`x.dekcns.json` ⇄ `x.dekcns.disabled.json`），因为 `DekCNS\Scripts\main.lua`
+  是**子串**匹配 `"dekcns.json"`，加在最后面游戏照样加载。导出 `isDisabledName` /
+  `stripDisabled` / `counterpartName` / `renameStep`。
+- `ipc.js` 的 `setEnabled()` 改用上面那套：已关掉的 `x.pak.disabled` 会先剥后缀再判类型，
+  不再被判成「不归我管」（`found=0` → 抛「找不到这个 Mod 的文件…没法启用」）；
+  注册表里记的名字和磁盘差一个开关后缀时，去同目录找另一种写法并顺手修正登记表；
+  返回值带上 `renamed` / `fixed` 两个数，界面能据此判断到底动没动磁盘。
+- `reconcile.js`（按磁盘核对）用同一口径判「关着」，不会再关闭成功后又把开关改回「已启用」。
+- `scanner.js` 归组、`crashLog.js` 清点也统一走模块（崩溃诊断里那份 `DISABLED_EXT` 删掉）。
+- 批量启停失败时把前几条失败原因弹出来（「没改成功的原因：名字（错误）」），不再只报个数。
+
+### 测试
+
+- 新增 `_probe/togglename-test.js`：46 条（纯函数正反两个方向、reconcile 不把关闭改回启用、
+  四处接线、真账本「一个受管文件都没有」的条目数从 24 降到 0）。
+- `_probe/instbatch-test.js` 的 E 段整段重写：直接 `require` 真函数做功能断言（往返改名、
+  裸 `.dekcns` 老包、已在目标状态不白改、文案文件不误判），共 76 条。
+- 真机（dev，真实 `c:\Star Blade`）：`nexus:3002:13976` 关闭 → `renamed:1`、注册表 `enabled:false`、
+  磁盘出现 `.dekcns.disabled.json`；再开启 → `renamed:1`、回到 `.dekcns.json`。
+  `nexus:2846:13359`（pak + ucas + utoc + json 全关着）开启 → `renamed:4` 真的开回来；
+  再关闭 → `renamed:4` 复原。之后跑一遍按磁盘核对：`fixes 0`，一个「纠正开关」都不剩。
+- 全量 54 个探针全绿。
+
 ## [0.4.19] - 2026-11-10
 
 已安装页的工具条（搜索框 / 状态筛选 / 类型下拉 / 排序 / 多选 / 内置脚本开关）改成吸顶：

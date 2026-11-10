@@ -29,6 +29,7 @@
  */
 
 const fs = require('fs');
+const toggleName = require('./toggleName');
 
 /** 磁盘上这个路径存在吗（读不了也算不存在，别让权限问题把记录删掉…不，宁可保守：报 true） */
 function defaultExists(p) {
@@ -82,9 +83,13 @@ function plan(entries, exists = defaultExists) {
       report.trim.push({ id: e.id, name: e.name || e.id, manifest: alive, removed: manifest.length - alive.length });
     }
 
-    // 开关状态以磁盘为准：清单里只要有 `.disabled` 结尾的，就是「关着」。
+  // 开关状态以磁盘为准：清单里有文件挂着「关着」的名字，就是「关着」。
+  // 「关着」有两种写法（pak 加 .disabled 后缀；CNS 索引把标记插在 .json 前面），
+  // 判定统一走 toggleName.isDisabledName —— 只认后缀的话，xxx.dekcns.disabled.json
+  // 会被当成「开着」，于是这里把注册表改回 enabled=true，界面又显示「已启用」，
+  // 用户看到的就是「关掉了又自己回来了」。
     // （用户绕过管理器直接改扩展名时，账本会停在旧值。）
-    const anyDisabled = alive.some(x => /\.disabled$/i.test(String(x.path)));
+  const anyDisabled = alive.some(x => toggleName.isDisabledName(String(x.path)));
     const want = !anyDisabled;
     if (!!e.enabled !== want) {
       report.flagged++;

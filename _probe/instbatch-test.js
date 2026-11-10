@@ -274,89 +274,152 @@ t('13 个语言包都补上了这 19 条', () => {
   return bad.length ? bad.join('，') : true;
 });
 
-/* ---------- E. 批量启停真的落到磁盘上（setEnabled 的改名范围） ---------- */
+/* ---------- E. 开关改名规则（现在集中在 toggleName.js）真的能开能关 ---------- */
 
-const IPC = path.join(ROOT, 'src/main/ipc.js');
+const TOGGLE = path.join(ROOT, 'src/main/toggleName.js');
+const toggleName = require(TOGGLE);
+const ipcSrc = fs.readFileSync(path.join(ROOT, 'src/main/ipc.js'), 'utf8');
+const reconcileSrc = fs.readFileSync(path.join(ROOT, 'src/main/reconcile.js'), 'utf8');
+const scannerSrc = fs.readFileSync(path.join(ROOT, 'src/main/scanner.js'), 'utf8');
+const crashSrc = fs.readFileSync(path.join(ROOT, 'src/main/crashLog.js'), 'utf8');
+const toggleSrc = fs.readFileSync(TOGGLE, 'utf8');
 
-function setEnabledSrc() {
-  const s = fs.readFileSync(IPC, 'utf8');
-  const i = s.indexOf('function setEnabled(');
-  const j = s.indexOf('function toggleScriptMod(');
-  if (i < 0 || j < 0) throw new Error('没找到 setEnabled');
-  return s.slice(i, j);
-}
-
-t('setEnabled 用注册表 manifest 的绝对路径来改名（不再只拼 ~Mods）', () => {
-  const s = setEnabledSrc();
-  if (!/mod\.meta\.manifest/.test(s)) return '没读 mod.meta.manifest';
-  const ok = /manifest\.map\(x => x && x\.path\)/.test(s);
-  return ok || '没有从 manifest 取 path';
-});
-
-t('pak 三件套仍然按「加/去 .disabled 后缀」改名', () => {
-  const s = setEnabledSrc();
-  if (!/const RENAMEABLE = \/\\\.\(pak\|ucas\|utoc\)\$\/i;/.test(s)) return 'RENAMEABLE 正则不对';
-  const ok = /return \{ managed: true, next: wantEnabled \? null : base \+ '\.disabled' \};/.test(s);
-  return ok || 'pak 的改名规则没走 renameStep';
-});
-
-/* 2026-11-10 用户报「批量关闭有一部分出错、刷新也没变化」：
-   纯 CNS 换装包（manifest 只有一个 .dekcns.json）在旧代码里被整条跳过 →
-   found 恒为 0 → 抛「找不到这个 Mod 的文件」。现在必须真的能改名，
-   而且不能加在 .json 后面（DekCNS 是子串匹配 "dekcns.json"）。 */
-t('CNS 换装索引（.dekcns.json / .dekani.json）也要能停用', () => {
-  const s = setEnabledSrc();
-  if (!/DATA_INDEX_ON = \/\\\.\(dekcns\|dekani\)\\\.json\$\/i;/.test(s)) return '缺 DATA_INDEX_ON';
-  if (!/DATA_INDEX_OFF = \/\\\.\(dekcns\|dekani\)\\\.disabled\\\.json\$\/i;/.test(s)) return '缺 DATA_INDEX_OFF';
-  if (!/renameStep = \(base, wantEnabled\)/.test(s)) return '缺 renameStep';
-  if (!/base\.replace\(\/\\\.json\$\/i, '\.disabled\.json'\)/.test(s)) return '停用时没把标记插到 .json 前面';
-  if (!/base\.replace\(\/\\\.disabled\\\.json\$\/i, '\.json'\)/.test(s)) return '启用时没还原成 .json';
+/**
+ * 2026-11-10 用户连着报的三件事（批量关闭出错 / 关闭后又变回启用 / 开启了也开不回来）
+ * 根都在「怎么判定开与关」上。所以这组断言直接跑真函数，不再靠读源码猜。
+ */
+t('pak 三件套：停用加后缀、启用去后缀（往返一致）', () => {
+  const off = toggleName.renameStep('x.pak', false);
+  const on = toggleName.renameStep('x.pak.disabled', true);
+  if (!off.managed || off.next !== 'x.pak.disabled') return '停用没加 .disabled';
+  if (!on.managed || on.next !== 'x.pak') return '启用没去掉 .disabled';
   return true;
 });
 
-t('循环按 renameStep().managed 决定跳不跳（旧的 RENAMEABLE 直判已删）', () => {
-  const s = setEnabledSrc();
-  if (/if \(!RENAMEABLE\.test\(from\.replace\(\/\\\.disabled\$\/i, ''\)\)\) continue;/.test(s)) {
-    return '旧的三件套直判还在，CNS 包仍会被跳过';
-  }
-  return /const step = renameStep\(base, enabled\);\s*if \(!step\.managed\) continue;/.test(s) || '缺 step.managed 判断';
+t('已经关掉的 pak 仍算受管（否则永远开不回来）', () => {
+  const r = toggleName.renameStep('x.ucas.disabled', true);
+  return (r.managed && r.next === 'x.ucas') || '把 .ucas.disabled 当成不归我们管了';
 });
 
-t('源码里写清「为什么不能加 .disabled 后缀」（DekCNS 子串匹配）', () => {
-  const s = setEnabledSrc();
-  return /string\.find\(fileName, "dekcns\.json"\)/.test(s) || '没注释子串匹配这个坑';
+t('CNS 换装索引：标记插在 .json 前面（不能是 .dekcns.json.disabled）', () => {
+  const off = toggleName.renameStep('foo.dekcns.json', false);
+  const on = toggleName.renameStep('foo.dekcns.disabled.json', true);
+  if (off.next !== 'foo.dekcns.disabled.json') return '停用写法不对：' + off.next;
+  if (on.next !== 'foo.dekcns.json') return '启用写法不对：' + on.next;
+  return true;
 });
 
-t('批量启停失败时把原因带出来，不只报个数', () => {
-  const s = fs.readFileSync(path.join(ROOT, 'src/renderer/app.js'), 'utf8');
-  if (!/const failedWhy = \[\];/.test(s)) return '没收集失败原因';
-  if (!/failedWhy\.push\(/.test(s)) return '没有 push 原因';
-  return /没改成功的原因：/.test(s) || '没把原因弹给用户';
+t('裸 .dekcns / .dekani（老包）也能开关', () => {
+  const a = toggleName.renameStep('foo.dekcns', false);
+  const b = toggleName.renameStep('foo.dekcns', true);
+  const c = toggleName.renameStep('bar.dekani.json', false);
+  if (!a.managed || a.next !== 'foo.dekcns.disabled') return '裸 .dekcns 停用不对';
+  if (!b.managed || b.next !== null) return '已经是开着的，不该再改';
+  if (c.next !== 'bar.dekani.disabled.json') return '.dekani.json 停用不对';
+  return true;
+});
+
+t('已经在目标状态时 next 为 null（不白改文件名）', () => {
+  const a = toggleName.renameStep('x.pak', true);
+  const b = toggleName.renameStep('x.pak.disabled', false);
+  const c = toggleName.renameStep('foo.dekcns.disabled.json', false);
+  return (a.next === null && b.next === null && c.next === null) || '目标状态还给了新名字';
+});
+
+t('不归我们管的文件 managed=false（文案/配置不该被改名）', () => {
+  const bad = ['readme.txt', 'notes.lua', 'x.json'].filter((n) => toggleName.renameStep(n, false).managed);
+  return bad.length === 0 || '误判为受管：' + bad.join(',');
+});
+
+t('isDisabledName 两种关闭写法都认，开着的名字不算关', () => {
+  const yes = ['x.pak.disabled', 'x.ucas.disabled', 'foo.dekcns.disabled.json', 'foo.dekcns.disabled'];
+  const no = ['x.pak', 'foo.dekcns.json', 'foo.dekani.json'];
+  const bad = yes.filter((n) => !toggleName.isDisabledName(n)).concat(no.filter((n) => toggleName.isDisabledName(n)));
+  return bad.length === 0 || '判错：' + bad.join(',');
+});
+
+t('stripDisabled 把关闭写法还原成开着的名字', () => {
+  return (
+    (toggleName.stripDisabled('x.pak.disabled') === 'x.pak' &&
+      toggleName.stripDisabled('foo.dekcns.disabled.json') === 'foo.dekcns.json') ||
+    '还原结果不对'
+  );
+});
+
+t('counterpartName 正反都对得上（注册表名字和磁盘差一个后缀时要用它）', () => {
+  const cases = [
+    ['x.pak', 'x.pak.disabled'],
+    ['x.pak.disabled', 'x.pak'],
+    ['foo.dekcns.json', 'foo.dekcns.disabled.json'],
+    ['foo.dekcns.disabled.json', 'foo.dekcns.json']
+  ];
+  const bad = cases.filter((p) => toggleName.counterpartName(p[0]) !== p[1]);
+  return bad.length === 0 || '对不上：' + bad.map((p) => p[0]).join(',');
+});
+
+t('ipc 引用模块的 renameStep，自己不再留一份改名规则', () => {
+  if (!ipcSrc.includes('const renameStep = toggleName.renameStep;')) return '没引用模块的 renameStep';
+  if (ipcSrc.includes('const RENAMEABLE = ')) return 'ipc 里还留着自己那份 RENAMEABLE';
+  if (ipcSrc.includes('const DATA_INDEX_ON')) return 'ipc 里还留着自己那份 DATA_INDEX_ON';
+  if (ipcSrc.includes('function renameStep(')) return 'ipc 里还自己定义 renameStep';
+  return true;
+});
+
+t('setEnabled 用注册表 manifest 的绝对路径改名（不再只拼 ~Mods）', () => {
+  if (!ipcSrc.includes('manifest.map(x => x && x.path)')) return '没从 manifest 取绝对路径';
+  return ipcSrc.includes('mod.meta.manifest') || '没读 mod.meta.manifest';
+});
+
+t('名字和磁盘差一个后缀时，去同目录找另一种写法（别再报找不到文件）', () => {
+  if (!ipcSrc.includes('toggleName.counterpartName(')) return '没找另一种写法';
+  if (!ipcSrc.includes('const fixed = [];')) return '没记录这类修正';
+  return ipcSrc.includes('...fixed, ...renames') || '修正没并进 manifest 更新';
+});
+
+t('循环按 renameStep().managed 决定跳不跳', () => {
+  return ipcSrc.includes('const step = renameStep(base, enabled);') && ipcSrc.includes('if (!step.managed) continue;')
+    ? true
+    : '缺 step.managed 判断';
 });
 
 t('改名后把注册表 manifest 也同步了（否则卸载会找不到文件）', () => {
-  const s = setEnabledSrc();
-  const ok = /registry\.patch\(id, \{ enabled, manifest: nextManifest \}\)/.test(s);
-  return ok || '没有 registry.patch(id, { enabled, manifest })';
+  return ipcSrc.includes('registry.patch(id, { enabled, manifest: nextManifest })') || '没同步 manifest';
 });
 
-t('磁盘上一个文件都找不到时报错，不假装成功', () => {
-  const s = setEnabledSrc();
-  if (!/found === 0/.test(s)) return '没有统计 found';
-  const hasThrow = /throw new Error\(enabled\s*\?\s*'找不到这个 Mod 的文件/.test(s);
-  return hasThrow || '没有在文件缺失时抛错';
+t('返回值带上改了几个文件（renamed + fixed），前端能据此判断真动了磁盘', () => {
+  return ipcSrc.includes('renamed: renames.length, fixed: fixed.length') || '返回值里没有 renamed/fixed';
 });
 
-t('已经在目标状态时不报错（只翻注册表开关）', () => {
-  const s = setEnabledSrc();
-  const ok = /else \{\s*registry\.setEnabled\(id, enabled\);\s*\}/.test(s.replace(/\r\n/g, '\n'));
-  return ok || '缺少「已经到位」的分支';
+t('磁盘上一个受管文件都找不到时报错，不假装成功', () => {
+  return ipcSrc.includes('找不到这个 Mod 的文件') ? true : '没有兜底报错';
 });
 
-t('返回值带上实际改名的文件数，前端可据此判断是否真的动了磁盘', () => {
-  const s = setEnabledSrc();
-  const ok = /return \{ id, enabled, renamed: renames\.length \}/.test(s);
-  return ok || '返回值里没有 renamed';
+t('按磁盘核对（reconcile）用同一口径判「关着」，不会再把开关改回去', () => {
+  if (!reconcileSrc.includes('toggleName.isDisabledName(')) return 'reconcile 还在自己判 .disabled';
+  return reconcileSrc.includes("require('./toggleName')") || 'reconcile 没引入模块';
+});
+
+t('scanner 归组也用同一口径（关着的包不该变成看不见的幽灵）', () => {
+  return scannerSrc.includes('toggleName.isDisabledName(name)') &&
+    scannerSrc.includes('toggleName.stripDisabled(name)')
+    ? true
+    : 'scanner 没走模块';
+});
+
+t('崩溃诊断清点时也认 CNS 索引的关闭写法', () => {
+  if (crashSrc.includes('DISABLED_EXT')) return 'crashLog 还留着自己那份 DISABLED_EXT';
+  return crashSrc.includes('toggleName.') ? true : 'crashLog 没走模块';
+});
+
+t('模块注释写清「为什么不能加在 .json 后面」（DekCNS 子串匹配）', () => {
+  return toggleSrc.includes('string.find(fileName, "dekcns.json")') ||
+    '没注释 DekCNS 是子串匹配这个坑';
+});
+
+t('批量启停失败时把原因带出来，不只报个数', () => {
+  if (!app.includes('const failedWhy = [];')) return '没收集失败原因';
+  if (!app.includes('failedWhy.push(')) return '没有 push 原因';
+  return app.includes('没改成功的原因：') || '没把原因弹给用户';
 });
 
 /* ---------- 汇总 ---------- */

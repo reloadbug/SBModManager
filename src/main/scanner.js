@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const toggleName = require('./toggleName');
 const game = require('./game');
 const prereqs = require('./prereqs');
 const paths = require('./paths');
@@ -42,8 +43,8 @@ function scanPaks(L, registry) {
   const groups = new Map();
   for (const e of entries) {
     const name = e.name;
-    const disabled = /\.disabled$/i.test(name);
-    const base = name.replace(/\.disabled$/i, '');
+    const disabled = toggleName.isDisabledName(name);
+    const base = toggleName.stripDisabled(name);
     if (!PAK_EXT.test(base)) continue;
     const key = base.replace(PAK_EXT, '');
 

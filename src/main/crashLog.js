@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const toggleName = require('./toggleName');
 
 /**
  * 报错日志 / 崩溃分析 —— 主进程侧。
@@ -336,8 +337,8 @@ function parseUe4ssLog(text) {
 
 /** 容器基名：`Foo_P [nx12].ucas` → `Foo_P [nx12]` */
 const CONTAINER_EXT = /\.(pak|ucas|utoc)$/i;
-const CNS_EXT = /\.dekcns\.json$/i;
-const DISABLED_EXT = /\.disabled$/i;
+const CNS_EXT = /\.(dekcns|dekani)\.json$/i;
+// 「关着」的判定与 ipc/reconcile 共用一套（见 src/main/toggleName.js）
 
 /**
  * 盘点一套加载目录：把 .pak/.ucas/.utoc 按基名归组，顺带把 `.dekcns.json` 收进来。
@@ -350,8 +351,8 @@ function inventory(dir, { depth = 0 } = {}) {
   const walk = (d, level) => {
     const files = listFiles(d);
     for (const f of files) {
-      const disabled = DISABLED_EXT.test(f.name);
-      const base = f.name.replace(DISABLED_EXT, '');
+      const disabled = toggleName.isDisabledName(f.name);
+      const base = toggleName.stripDisabled(f.name);
       if (CONTAINER_EXT.test(base)) {
         const key = base.replace(CONTAINER_EXT, '');
         let g = out.groups.find(x => x.key.toLowerCase() === key.toLowerCase());
@@ -412,7 +413,7 @@ function modNewestMs(mod) {
 function modBaseNames(mod) {
   const names = [];
   for (const f of (mod && mod.files) || []) {
-    const base = String((f && f.name) || '').replace(DISABLED_EXT, '').replace(CONTAINER_EXT, '');
+    const base = toggleName.stripDisabled(String((f && f.name) || '')).replace(CONTAINER_EXT, '');
     if (base) names.push(base.toLowerCase());
   }
   if (mod && mod.name) names.push(String(mod.name).toLowerCase());

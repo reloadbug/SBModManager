@@ -21,6 +21,7 @@ const { createDownloadEngine } = require('./downloadEngine');
 const localState = require('./localState');
 const linker = require('./linker');
 const reconcile = require('./reconcile');
+const toggleName = require('./toggleName');
 const localLibrary = require('./localLibrary');
 const fsMove = require('./fsMove');
 const relocate = require('./relocate');
@@ -1380,50 +1381,31 @@ function setEnabled(id, enabled) {
   /** @type {{from: string, to: string}[]} */
   const renames = [];
   let found = 0;
-  const RENAMEABLE = /\.(pak|ucas|utoc)$/i;
-
-  /* CNS / ATOOL 的换装索引（`xxx.dekcns.json` / `xxx.dekani.json`，真实扩展名是 .json）。
-   *
-   * ⚠️ 这类文件**不能用加 `.disabled` 后缀**的办法停用：DekCNS 的
-   *    `ue4ss\Mods\DekCNS\Scripts\main.lua` 里是
-   *        if string.find(fileName, "dekcns.json") then … end
-   *    的子串匹配，而且递归扫整个 ~Mods —— `x.dekcns.json.disabled` 里照样含
-   *    "dekcns.json"，游戏还是照旧加载。只能把标记**插到 .json 前面**：
-   *        x.dekcns.json  ⇄  x.dekcns.disabled.json
-   *    这样文件名里再没有 "dekcns.json" 这个子串，DekCNS 就扫不到它。
-   *
-   * 这也是「批量关闭后有一部分出错」的根因：纯 CNS 换装包（只有一个 .dekcns.json、
-   * 没有 pak）在旧代码里会被 `RENAMEABLE` 全部跳过 → found 一直是 0 →
-   * 抛「找不到这个 Mod 的文件（可能已被移走或改名），没法关闭」，刷新当然也没变化。
-   */
-  const DATA_INDEX_ON = /\.(dekcns|dekani)\.json$/i;
-  const DATA_INDEX_OFF = /\.(dekcns|dekani)\.disabled\.json$/i;
-  /**
-   * 这个文件切换后该叫什么。
-   * @returns {{managed:boolean, next:string|null}} managed=false 表示不归我们管；
-   *          next=null 表示「已经在目标状态，不用动」。
-   */
-  const renameStep = (base, wantEnabled) => {
-    if (DATA_INDEX_ON.test(base)) {
-      return { managed: true, next: wantEnabled ? null : base.replace(/\.json$/i, '.disabled.json') };
-    }
-    if (DATA_INDEX_OFF.test(base)) {
-      return { managed: true, next: wantEnabled ? base.replace(/\.disabled\.json$/i, '.json') : null };
-    }
-    if (!RENAMEABLE.test(base)) return { managed: false, next: null };
-    if (base.endsWith('.disabled')) {
-      return { managed: true, next: wantEnabled ? base.slice(0, -'.disabled'.length) : null };
-    }
-    return { managed: true, next: wantEnabled ? null : base + '.disabled' };
-  };
-
+  /** 记录的名字和磁盘差一个开关后缀、实际按另一种写法找到了：只算修正，不算改名 */
+  const fixed = [];
+  // 改名规则，以及「关着的名字长什么样」，集中在 src/main/toggleName.js：
+  // 那里同时解释了两件事 —— ①CNS 换装索引（.dekcns.json）为什么必须把标记插在
+  // .json 前面（DekCNS 主脚本是子串匹配 "dekcns.json"）；②reconcile（按磁盘核对）
+  // 为什么必须用同一套判定。两处分头写正则时出过「关掉了又被改回启用」的 bug。
+  const renameStep = toggleName.renameStep;
   const manifest = (mod.meta && Array.isArray(mod.meta.manifest)) ? mod.meta.manifest : null;
   if (mod.kind === 'pak' || mod.kind === 'logicmod' || mod.kind === 'cns') {
     const sources = manifest && manifest.length
       ? manifest.map(x => x && x.path).filter(Boolean)
       : (mod.files || []).map(f => path.join(L.modsDir, f.name));
-    for (const from of sources) {
-      if (!fs.existsSync(from)) continue;
+    for (const raw of sources) {
+      /* manifest 里记的名字可能和磁盘差一个「开关后缀」（以前 reconcile 会把
+         enabled 改回 true 却没动 manifest，于是按记录去找就找不到文件）。先在
+         同一个目录里找另一种写法（开着 ⇄ 关着），找到了照样能开关，顺手把
+         记录改正 —— 用户不该因为记录跟不上就永远开不了 / 关不了。 */
+      let from = raw;
+      if (!fs.existsSync(from)) {
+        const alt = toggleName.counterpartName(path.basename(from));
+        const altPath = alt ? path.join(path.dirname(from), alt) : '';
+        if (!altPath || !fs.existsSync(altPath)) continue;
+        from = altPath;
+        fixed.push({ from: raw, to: altPath });
+      }
       const base = path.basename(from);
       const dir = path.dirname(from);
       const step = renameStep(base, enabled);
@@ -1441,8 +1423,8 @@ function setEnabled(id, enabled) {
   for (const r of renames) fs.renameSync(r.from, r.to);
 
   // 注册表里的 manifest 也要跟着改名，否则下次卸载会找不到文件。
-  if (renames.length) {
-    const map = new Map(renames.map(r => [r.from.toLowerCase(), r.to]));
+  if (renames.length || fixed.length) {
+    const map = new Map([...fixed, ...renames].map(r => [r.from.toLowerCase(), r.to]));
     const nextManifest = (manifest || []).map(x => {
       const to = map.get(String(x && x.path).toLowerCase());
       if (!to) return x;
@@ -1464,7 +1446,7 @@ function setEnabled(id, enabled) {
   } else {
     registry.setEnabled(id, enabled);
   }
-  return { id, enabled, renamed: renames.length };
+  return { id, enabled, renamed: renames.length, fixed: fixed.length };
 }
 
 function toggleScriptMod(L, name, enabled) {
