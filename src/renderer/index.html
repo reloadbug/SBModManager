@@ -116,6 +116,15 @@
               <button id="btnBatchOff" class="bdl" style="display:none">批量禁用</button>
               <button id="btnBatchUninstall" class="bdl" style="display:none">批量卸载</button>
             </div>
+            <!-- 批量标记（用户 2026-11-10）：多选之后一次给这批 Mod 打上 / 取消标记。
+                 按钮文字会跟着「选中的这批是不是已经全标过」变：全标过再点一下就是取消。 -->
+            <div class="tabs batch marks" id="batchMarks" style="display:none" title="多选模式：给选中的 Mod 批量打标记">
+              <button id="btnBatchLike">👍 喜欢</button>
+              <button id="btnBatchDislike">👎 不喜欢</button>
+              <button id="btnBatchBug">⚠ 有 bug</button>
+              <button id="btnBatchVerify">✓ 已验证</button>
+              <button id="btnBatchUnverify">未验证</button>
+            </div>
             <div class="spacer"></div>
             <button class="btn sm" id="btnLoadMore" style="display:none">加载更多</button>
           </div>

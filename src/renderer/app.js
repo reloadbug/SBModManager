@@ -2384,6 +2384,30 @@ function selUpdateBar() {
   ];
   let sel = { installed: [], downloaded: [], online: [] };
   try { sel = libSelectedRecords(); } catch (e) { /* 早期调用时还没有记录表 */ }
+  // 批量标记那五颗（喜欢 / 不喜欢 / 有 bug / 已验证 / 未验证）：
+  // 「全标过再点一下 = 取消」这件事得在按钮上看得出，所以全标过时按钮点亮、文案换成取消。
+  {
+    const wrap = $('#batchMarks');
+    if (wrap) wrap.style.display = state.sel.on ? '' : 'none';
+    const allSel = [...(sel.installed || []), ...(sel.downloaded || []), ...(sel.online || [])];
+    const usable = allSel.filter(r => Number(r.modId) > 0);
+    const MK = [
+      { el: $('#btnBatchLike'), has: (r) => state.browse.liked.has(String(r.modId)), on: '取消喜欢', off: '👍 喜欢' },
+      { el: $('#btnBatchDislike'), has: (r) => state.browse.blocked.has(String(r.modId)), on: '移出黑名单', off: '👎 不喜欢' },
+      { el: $('#btnBatchBug'), has: (r) => state.bugIds.has(String(r.modId)), on: '取消「有 bug」', off: '⚠ 有 bug' },
+      { el: $('#btnBatchVerify'), has: (r) => state.verifiedIds.has(String(r.modId)), on: '取消「已验证」', off: '✓ 已验证' },
+      { el: $('#btnBatchUnverify'), has: (r) => !state.verifiedIds.has(String(r.modId)), on: '', off: '未验证' }
+    ];
+    for (const m of MK) {
+      if (!m.el) continue;
+      m.el.disabled = !usable.length;
+      if (state.sel.busy) continue;
+      const allHas = usable.length > 0 && usable.every(m.has);
+      m.el.classList.toggle('on', allHas);
+      if (!m.on) { m.el.textContent = usable.length ? `${m.off}（${usable.length}）` : m.off; continue; }
+      m.el.textContent = allHas ? `${m.on}（${usable.length}）` : (usable.length ? `${m.off}（${usable.length}）` : m.off);
+    }
+  }
   for (const b of btns) {
     if (!b.el) continue;
     b.el.style.display = state.sel.on ? '' : 'none';
@@ -2393,6 +2417,86 @@ function selUpdateBar() {
     b.el.disabled = !n;
   }
 }
+
+/**
+ * 批量标记（用户 2026-11-10：「全选后要支持批量标记 喜欢 / 不喜欢 / bug / 已验证 / 未验证」）。
+ *
+ * 五个动作共用这一支：`kind` 决定写哪份记录，`force` 决定是「打上」还是「取消」。
+ * 默认是**智能开关** —— 选中的这批如果已经全标过，再点一下就是全取消；
+ * 否则全部打上。这样不用为了「取消」再摆五颗按钮出来。
+ *
+ * 标记只认 Nexus modId，所以没有 modId 的本地条目会被跳过并说明原因。
+ */
+async function libBatchMark(kind, force) {
+  const KINDS = {
+    like: {
+      has: (r) => state.browse.liked.has(String(r.modId)),
+      add: (id) => window.api.favorites.add(Number(id), {}),
+      del: (id) => window.api.favorites.remove(Number(id)),
+      reload: () => loadFavorites(),
+      on: '已标记喜欢：%s 个', off: '已取消喜欢：%s 个'
+    },
+    dislike: {
+      has: (r) => state.browse.blocked.has(String(r.modId)),
+      add: (id) => window.api.blacklist.add(Number(id), {}),
+      del: (id) => window.api.blacklist.remove(Number(id)),
+      reload: () => loadBlacklist(),
+      on: '已加入黑名单：%s 个', off: '已移出黑名单：%s 个'
+    },
+    bug: {
+      has: (r) => state.bugIds.has(String(r.modId)),
+      add: (id) => window.api.bugs.add(Number(id), {}),
+      del: (id) => window.api.bugs.remove(Number(id)),
+      reload: () => loadBugs(),
+      on: '已标记「有 bug」：%s 个', off: '已取消「有 bug」：%s 个'
+    },
+    verified: {
+      has: (r) => state.verifiedIds.has(String(r.modId)),
+      add: (id) => window.api.verified.add(Number(id), {}),
+      del: (id) => window.api.verified.remove(Number(id)),
+      reload: () => loadVerified(),
+      on: '已标记「已验证」：%s 个', off: '已取消「已验证」：%s 个'
+    }
+  };
+  const K = KINDS[kind];
+  if (!K) return;
+
+  let recs = [];
+  try { recs = libSelectedRecords(); } catch (e) { recs = []; }
+  const all = [];
+  for (const g of [recs.installed || [], recs.downloaded || [], recs.online || []]) all.push(...g);
+  const usable = all.filter(r => Number(r.modId) > 0);
+  if (!all.length) { toast('先勾选要标记的 Mod'); return; }
+  if (!usable.length) { toast('选中的条目都没有 Nexus Mod ID，标不上（标记靠 Mod ID 认人）', 'warn'); return; }
+
+  // 全标过 → 这一下是取消；否则是打上（force === false 时按「这批是不是已经全标了」决定）
+  const allMarked = usable.every(r => K.has(r));
+  const remove = force === true ? true : (force === false ? false : allMarked);
+  let ok = 0;
+  let bad = 0;
+  // 成功一条就把内存集合同步改掉（与 likeMod/dislikeMod 同一套「先改界面、再落盘」的做法）——
+  // 否则按钮上「全标过了吗」的判断要等下一轮 IPC 回来才对，用户会看到文案慢半拍。
+  const set = kind === 'like' ? state.browse.liked
+    : kind === 'dislike' ? state.browse.blocked
+      : kind === 'bug' ? state.bugIds
+        : state.verifiedIds;
+  for (const r of usable) {
+    const id = String(r.modId);
+    try {
+      await call(remove ? K.del(r.modId) : K.add(r.modId), { silent: true });
+      if (remove) set.delete(id); else set.add(id);
+      ok++;
+    } catch (e) { bad++; }
+  }
+  renderBrowse();
+  selUpdateBar();
+  try { await K.reload(); } catch (e) { /* 状态刷新失败不该挡住提示 */ }
+  renderBrowse();
+  selUpdateBar();
+  const msg = (remove ? K.off : K.on).replace('%s', String(ok));
+  toast(bad ? msg + '（失败 ' + bad + ' 个）' : msg, bad ? 'warn' : 'ok');
+}
+
 
 /**
  * 批量加入下载队列：每个 Mod 默认下**第一个主文件**。
@@ -7652,6 +7756,16 @@ function bindEvents() {
   if (libKindSel) libKindSel.addEventListener('change', () => { state.lib.kind = libKindSel.value || ''; renderBrowse(); });
     // 排序下拉（0.5.3）：放在类型筛选旁边，切换即重排，不需要重新拉列表
     const libSortSel = $('#libSort');
+    // 批量标记（0.5.4）：智能开关，全标过再点就是取消；「未验证」是明确取消已验证
+    const bindMark = (id, kind, force) => {
+      const el = $('#' + id);
+      if (el) el.addEventListener('click', () => { libBatchMark(kind, force); });
+    };
+    bindMark('btnBatchLike', 'like');
+    bindMark('btnBatchDislike', 'dislike');
+    bindMark('btnBatchBug', 'bug');
+    bindMark('btnBatchVerify', 'verified');
+    bindMark('btnBatchUnverify', 'verified', true);
     if (libSortSel) {
       libSortSel.value = state.lib.sort || '';
       libSortSel.addEventListener('change', () => { state.lib.sort = libSortSel.value || ''; renderBrowse(); });

@@ -200,7 +200,7 @@ section('E. i18n');
   for (const w of ['开启时间', '开启时间 ↓', '开启时间 ↑', '安装时间 ↓', '（按安装时间推算）']) {
     ok('词条在册：' + w, keys.includes(w));
   }
-  ok('总条数 = 1250', keys.length === 1250, '实际 ' + keys.length);
+  ok('总条数 = 1266', keys.length === 1266, '实际 ' + keys.length);
 }
 
 /* ---------------- 汇总 ---------------- */

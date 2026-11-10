@@ -57,3 +57,6 @@ _probe/*.bak*
 _shot/
 _tmp/
 _tmp-*.js
+SBModManager-*-portable.exe
+SBModManager-*-setup.exe
+_probe/patch_*.py

@@ -1503,6 +1503,55 @@ const TABLE = [
   ['（按安装时间推算）', [
     '（依安裝時間推算）','(estimated from install time)','（インストール日時から推定）','(설치 시간 기준 추정)','(по времени установки)','(aus Installationszeit geschätzt)','(estimé d’après l’installation)','(estimado según la instalación)','(estimado pela instalação)','(stimato dall’installazione)','(szacowane z czasu instalacji)','(kurulum zamanından tahmini)','(ประมาณจากเวลาติดตั้ง)'
   ]],
+  // ㉔ 批量标记（用户 2026-11-10：全选之后要能一次标 喜欢 / 不喜欢 / 有 bug / 已验证 / 未验证）
+  ['👍 喜欢', [
+    '👍 喜歡','👍 Like','👍 いいね','👍 좋아요','👍 Нравится','👍 Gefällt mir','👍 J’aime','👍 Me gusta','👍 Gostei','👍 Mi piace','👍 Lubię','👍 Beğendim','👍 ชอบ'
+  ]],
+  ['👎 不喜欢', [
+    '👎 不喜歡','👎 Not interested','👎 興味なし','👎 관심 없음','👎 Не интересно','👎 Nicht interessiert','👎 Pas intéressé','👎 No me interesa','👎 Não me interessa','👎 Non mi interessa','👎 Nie interesuje','👎 İlgilenmiyorum','👎 ไม่สนใจ'
+  ]],
+  ['移出黑名单', [
+    '移出黑名單','Remove from blocklist','ブロック解除','차단 해제','Убрать из чёрного списка','Aus der Sperrliste entfernen','Retirer de la liste noire','Quitar de la lista negra','Remover da lista de bloqueio','Rimuovi dalla lista nera','Usuń z czarnej listy','Kara listeden çıkar','เอาออกจากรายการบล็อก'
+  ]],
+  ['取消「有 bug」', [
+    '取消「有 bug」','Remove “has bug”','「不具合あり」を解除','「버그 있음」 해제','Снять «есть баг»','„Fehlerhaft“ entfernen','Retirer « bug »','Quitar «tiene bug»','Remover «tem bug»','Togli «ha bug»','Usuń „ma błąd”','«Hatalı» işaretini kaldır','ยกเลิก «มีบั๊ก»'
+  ]],
+  ['取消「已验证」', [
+    '取消「已驗證」','Remove “verified”','「検証済み」を解除','「검증됨」 해제','Снять «проверено»','„Geprüft“ entfernen','Retirer « vérifié »','Quitar «verificado»','Remover «verificado»','Togli «verificato»','Usuń „sprawdzony”','«Doğrulandı» işaretini kaldır','ยกเลิก «ยืนยันแล้ว»'
+  ]],
+  ['先勾选要标记的 Mod', [
+    '先勾選要標記的 Mod','Select the mods to mark first','先にマークする Mod を選んでください','먼저 표시할 Mod를 선택하세요','Сначала выберите моды для отметки','Erst die zu markierenden Mods auswählen','Sélectionnez d’abord les mods à marquer','Primero selecciona los mods a marcar','Selecione primeiro os mods a marcar','Prima seleziona i mod da contrassegnare','Najpierw zaznacz mody do oznaczenia','Önce işaretlenecek modları seçin','เลือก Mod ที่จะทำเครื่องหมายก่อน'
+  ]],
+  ['选中的条目都没有 Nexus Mod ID，标不上（标记靠 Mod ID 认人）', [
+    '選中的項目都沒有 Nexus Mod ID，標不上（標記靠 Mod ID 認人）','None of the selected items has a Nexus mod ID — marks are keyed by mod ID','選択した項目に Nexus Mod ID がないためマークできません（マークは Mod ID で識別）','선택한 항목에 Nexus Mod ID가 없어 표시할 수 없습니다(표시는 Mod ID 기준)','У выбранных записей нет Nexus Mod ID — отметки привязаны к ID','Keine der ausgewählten Dateien hat eine Nexus-Mod-ID — Markierungen hängen an der Mod-ID','Aucun élément sélectionné n’a d’ID Nexus — les marques sont liées à l’ID','Ningún elemento seleccionado tiene ID de Nexus: las marcas se guardan por ID','Nenhum item selecionado tem ID do Nexus — as marcas são por ID','Nessun elemento selezionato ha un ID Nexus: i contrassegni sono legati all’ID','Żaden zaznaczony element nie ma Nexus Mod ID — oznaczenia trzymają się ID','Seçilen öğelerin Nexus Mod ID’si yok — işaretler ID’ye bağlıdır','รายการที่เลือกไม่มี Nexus Mod ID จึงทำเครื่องหมายไม่ได้ (ใช้ Mod ID ระบุ)'
+  ]],
+  ['已标记喜欢：%s 个', [
+    '已標記喜歡：%s 個','Marked as liked: %s','いいねを付けました：%s 件','좋아요 표시: %s개','Отмечено «нравится»: %s','Als „gefällt mir“ markiert: %s','Marqué comme aimé : %s','Marcado como me gusta: %s','Marcado como gostei: %s','Contrassegnato come mi piace: %s','Oznaczono jako lubię: %s','Beğenildi olarak işaretlendi: %s','ทำเครื่องหมายชอบแล้ว: %s'
+  ]],
+  ['已取消喜欢：%s 个', [
+    '已取消喜歡：%s 個','Removed the like from: %s','いいねを外しました：%s 件','좋아요 취소: %s개','Снято «нравится»: %s','„Gefällt mir“ entfernt: %s','Mention « j’aime » retirée : %s','Se quitó «me gusta» de: %s','«Gostei» removido de: %s','Rimosso «mi piace» da: %s','Usunięto „lubię” z: %s','Beğeni kaldırıldı: %s','ยกเลิกชอบแล้ว: %s'
+  ]],
+  ['已加入黑名单：%s 个', [
+    '已加入黑名單：%s 個','Added to blocklist: %s','ブロックリストに追加：%s 件','차단 목록에 추가: %s개','Добавлено в чёрный список: %s','Zur Sperrliste hinzugefügt: %s','Ajouté à la liste noire : %s','Añadido a la lista negra: %s','Adicionado à lista de bloqueio: %s','Aggiunto alla lista nera: %s','Dodano do czarnej listy: %s','Kara listeye eklendi: %s','เพิ่มในรายการบล็อกแล้ว: %s'
+  ]],
+  ['已移出黑名单：%s 个', [
+    '已移出黑名單：%s 個','Removed from blocklist: %s','ブロックリストから削除：%s 件','차단 목록에서 제거: %s개','Убрано из чёрного списка: %s','Aus der Sperrliste entfernt: %s','Retiré de la liste noire : %s','Quitado de la lista negra: %s','Removido da lista de bloqueio: %s','Rimosso dalla lista nera: %s','Usunięto z czarnej listy: %s','Kara listeden çıkarıldı: %s','เอาออกจากรายการบล็อกแล้ว: %s'
+  ]],
+  ['已标记「有 bug」：%s 个', [
+    '已標記「有 bug」：%s 個','Marked as “has bug”: %s','「不具合あり」を付けました：%s 件','「버그 있음」 표시: %s개','Отмечено «есть баг»: %s','Als „Fehlerhaft“ markiert: %s','Marqué « bug » : %s','Marcado como «tiene bug»: %s','Marcado como «tem bug»: %s','Contrassegnato «ha bug»: %s','Oznaczono „ma błąd”: %s','«Hatalı» olarak işaretlendi: %s','ทำเครื่องหมาย «มีบั๊ก» แล้ว: %s'
+  ]],
+  ['已取消「有 bug」：%s 个', [
+    '已取消「有 bug」：%s 個','Removed “has bug” from: %s','「不具合あり」を解除：%s 件','「버그 있음」 해제: %s개','Снято «есть баг»: %s','„Fehlerhaft“ entfernt: %s','« bug » retiré : %s','«tiene bug» quitado de: %s','«tem bug» removido de: %s','«ha bug» rimosso da: %s','Usunięto „ma błąd” z: %s','«Hatalı» işareti kaldırıldı: %s','ยกเลิก «มีบั๊ก» แล้ว: %s'
+  ]],
+  ['已标记「已验证」：%s 个', [
+    '已標記「已驗證」：%s 個','Marked as verified: %s','「検証済み」を付けました：%s 件','「검증됨」 표시: %s개','Отмечено «проверено»: %s','Als „Geprüft“ markiert: %s','Marqué « vérifié » : %s','Marcado como «verificado»: %s','Marcado como «verificado»: %s','Contrassegnato «verificato»: %s','Oznaczono „sprawdzony”: %s','«Doğrulandı» işaretlendi: %s','ทำเครื่องหมาย «ยืนยันแล้ว» แล้ว: %s'
+  ]],
+  ['已取消「已验证」：%s 个', [
+    '已取消「已驗證」：%s 個','Removed “verified” from: %s','「検証済み」を解除：%s 件','「검증됨」 해제: %s개','Снято «проверено»: %s','„Geprüft“ entfernt: %s','« vérifié » retiré : %s','«verificado» quitado de: %s','«verificado» removido de: %s','«verificato» rimosso da: %s','Usunięto „sprawdzony” z: %s','«Doğrulandı» işareti kaldırıldı: %s','ยกเลิก «ยืนยันแล้ว» แล้ว: %s'
+  ]],
+  ['（失败 %s 个）', [
+    '（失敗 %s 個）','(%s failed)','（%s 件失敗）','(%s개 실패)','(ошибок: %s)','(%s fehlgeschlagen)','(%s échecs)','(%s fallos)','(%s falhas)','(%s non riusciti)','(nie udało się: %s)','(%s başarısız)','(ล้มเหลว %s)'
+  ]],
 ];
 
 /**

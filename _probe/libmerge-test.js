@@ -415,6 +415,47 @@ t('老筛选块撤掉后，三处 addEventListener 都做了「元素不在就�
   /const elLikeTabs = \$\('#likeTabs'\);\r?\n\s*if \(elLikeTabs\) elLikeTabs\.addEventListener/.test(app));
 
 // ---------------------------------------------------------------------------
+// 批量标记（用户 2026-11-10：「全选后要支持批量标记 喜欢 / 不喜欢 / bug / 已验证 / 未验证」）
+// ---------------------------------------------------------------------------
+t('多选态多出「批量标记」一排，五颗按钮都在 HTML 里', () =>
+  html.includes("id=\"batchMarks\"") &&
+  ['btnBatchLike', 'btnBatchDislike', 'btnBatchBug', 'btnBatchVerify', 'btnBatchUnverify'].every((id) => html.includes('id="' + id + '"')));
+t('这排按钮默认藏起来，只在多选态出现', () =>
+  /<div class="tabs batch marks" id="batchMarks" style="display:none"/.test(html) &&
+  app.includes("const wrap = $('#batchMarks');") &&
+  app.includes("if (wrap) wrap.style.display = state.sel.on ? '' : 'none';"));
+t('libBatchMark 支四类标记，各写各的记录、各刷各的状态', () =>
+  /async function libBatchMark\(kind, force\)/.test(app) &&
+  app.includes('add: (id) => window.api.favorites.add(Number(id), {})') &&
+  app.includes('add: (id) => window.api.blacklist.add(Number(id), {})') &&
+  app.includes('add: (id) => window.api.bugs.add(Number(id), {})') &&
+  app.includes('add: (id) => window.api.verified.add(Number(id), {})') &&
+  app.includes('reload: () => loadFavorites()') &&
+  app.includes('reload: () => loadBlacklist()') &&
+  app.includes('reload: () => loadBugs()') &&
+  app.includes('reload: () => loadVerified()'));
+t('默认是智能开关：全标过再点一下就是取消', () =>
+  app.includes('const allMarked = usable.every(r => K.has(r));') &&
+  app.includes('const remove = force === true ? true : (force === false ? false : allMarked);'));
+t('只给有 Nexus Mod ID 的条目打标记，其余跳过并说明原因', () =>
+  app.includes('const usable = all.filter(r => Number(r.modId) > 0);') &&
+  app.includes('标记靠 Mod ID 认人'));
+t('打完标记会重画列表并保留选择，同时提示标了几个 / 失败几个', () =>
+  /try \{ await K\.reload\(\); \}[\s\S]{0,400}renderBrowse\(\);\r?\n\s*selUpdateBar\(\);/.test(app) &&
+  app.includes("toast(bad ? msg + '（失败 ' + bad + ' 个）' : msg, bad ? 'warn' : 'ok');"));
+t('五颗按钮都绑定了，且「未验证」是明确取消已验证（force=true）', () =>
+  app.includes("bindMark('btnBatchLike', 'like');") &&
+  app.includes("bindMark('btnBatchDislike', 'dislike');") &&
+  app.includes("bindMark('btnBatchBug', 'bug');") &&
+  app.includes("bindMark('btnBatchVerify', 'verified');") &&
+  app.includes("bindMark('btnBatchUnverify', 'verified', true);"));
+t('selUpdateBar 里同步这五颗：全标过时点亮并换成「取消…」文案', () =>
+  app.includes('const allHas = usable.length > 0 && usable.every(m.has);') &&
+  app.includes("m.el.classList.toggle('on', allHas);") &&
+  app.includes("on: '取消喜欢', off: '👍 喜欢'") &&
+  app.includes("on: '取消「已验证」', off: '✓ 已验证'"));
+
+// ---------------------------------------------------------------------------
 console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
 if (fail) {
   console.log('\n失败项：');

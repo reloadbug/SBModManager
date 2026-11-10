@@ -158,7 +158,7 @@ const bodyCls = { sel: null };   // body.classList.toggle 的记录（注意 tog
 const dom = { cards: [], els: {}, body: { classList: { toggle(cls, on) { bodyCls[cls] = !!on; } } } };
 const ctx = {
   // 2026-11-07：body.sel 现在由浏览页 + 已安装页共用，两边状态都得给齐
-  state: { sel: { on: false, all: false, busy: false, ids: new Set() }, gsel: { on: false, busy: false, ids: new Set() }, browse: { items: [] },
+  state: { sel: { on: false, all: false, busy: false, ids: new Set() }, gsel: { on: false, busy: false, ids: new Set() }, browse: { items: [], liked: new Set(), blocked: new Set() }, bugIds: new Set(), verifiedIds: new Set(), lib: { status: 'all', marks: {}, kind: '' },
            // 2026-11-10 统一 Mod 库：selSelectAll 会先看当前档位
            lib: { status: 'all', marks: {}, kind: '' }, libRecords: [], libShownRecords: [] },
   $$: (s) => (s === '#browseArea .card' ? dom.cards : []),
