@@ -4,6 +4,28 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.18] - 2026-11-10
+
+修「批量关闭有一部分出错、刷新也没变化」：纯 CNS 换装包（包里只有一个 `.dekcns.json`、没有 pak）
+在批量关闭时逐条报「找不到这个 Mod 的文件」，实际一个都没关掉，刷新自然也没变化。
+
+### 修改
+
+- `setEnabled()` 不再只认 pak 三件套：CNS / ATOOL 的换装索引 `xxx.dekcns.json`、`xxx.dekani.json`
+  也参与启停。这类文件**不能**加 `.disabled` 后缀 —— DekCNS 的 `main.lua` 用
+  `string.find(fileName, "dekcns.json")` 做子串匹配且递归扫整个 `~Mods`，
+  `x.dekcns.json.disabled` 里照样含 `dekcns.json`，游戏仍会加载。所以改成把标记插进扩展名前：
+  `x.dekcns.json` ⇄ `x.dekcns.disabled.json`。
+- 批量启停失败时把前几个失败原因弹出来，不再只报「有 N 个文件没能改过来」。
+
+### 测试
+
+- `_probe/instbatch-test.js` 新增四条：CNS 索引文件必须能停用、循环按 `renameStep().managed` 判断、
+  源码注释里保留子串匹配这个坑、批量失败要把原因带给用户。
+- 真机（dev，真数据 `c:\Star Blade`）：5 个纯 CNS 包（Moutan Peony / Fusion Suit / CNS - Royal Guard /
+  CNS - Black n Red Pearl / Takanashi Channel Ocean string）逐条关闭全部 `renamed:1`，
+  磁盘上确实生成 5 个 `.dekcns.disabled.json`；再全部启用，磁盘恢复 0 个 `.disabled` / 98 个 `.json`。
+
 ## [0.4.17] - 2026-11-10
 
 「崩溃诊断」页的操作按钮挪到顶部并吸顶 —— 结论、嫌疑 Mod、日志概览加起来能滚好几屏，

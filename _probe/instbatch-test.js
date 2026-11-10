@@ -280,11 +280,45 @@ t('setEnabled 用注册表 manifest 的绝对路径来改名（不再只拼 ~Mod
   return ok || '没有从 manifest 取 path';
 });
 
-t('只重命名 pak 三件套，`.dekcns.json` 这类数据文件不碰', () => {
+t('pak 三件套仍然按「加/去 .disabled 后缀」改名', () => {
   const s = setEnabledSrc();
   if (!/const RENAMEABLE = \/\\\.\(pak\|ucas\|utoc\)\$\/i;/.test(s)) return 'RENAMEABLE 正则不对';
-  const guard = /if \(!RENAMEABLE\.test\(from\.replace\(\/\\\.disabled\$\/i, ''\)\)\) continue;/.test(s);
-  return guard || '缺少非三件套的跳过判断';
+  const ok = /return \{ managed: true, next: wantEnabled \? null : base \+ '\.disabled' \};/.test(s);
+  return ok || 'pak 的改名规则没走 renameStep';
+});
+
+/* 2026-11-10 用户报「批量关闭有一部分出错、刷新也没变化」：
+   纯 CNS 换装包（manifest 只有一个 .dekcns.json）在旧代码里被整条跳过 →
+   found 恒为 0 → 抛「找不到这个 Mod 的文件」。现在必须真的能改名，
+   而且不能加在 .json 后面（DekCNS 是子串匹配 "dekcns.json"）。 */
+t('CNS 换装索引（.dekcns.json / .dekani.json）也要能停用', () => {
+  const s = setEnabledSrc();
+  if (!/DATA_INDEX_ON = \/\\\.\(dekcns\|dekani\)\\\.json\$\/i;/.test(s)) return '缺 DATA_INDEX_ON';
+  if (!/DATA_INDEX_OFF = \/\\\.\(dekcns\|dekani\)\\\.disabled\\\.json\$\/i;/.test(s)) return '缺 DATA_INDEX_OFF';
+  if (!/renameStep = \(base, wantEnabled\)/.test(s)) return '缺 renameStep';
+  if (!/base\.replace\(\/\\\.json\$\/i, '\.disabled\.json'\)/.test(s)) return '停用时没把标记插到 .json 前面';
+  if (!/base\.replace\(\/\\\.disabled\\\.json\$\/i, '\.json'\)/.test(s)) return '启用时没还原成 .json';
+  return true;
+});
+
+t('循环按 renameStep().managed 决定跳不跳（旧的 RENAMEABLE 直判已删）', () => {
+  const s = setEnabledSrc();
+  if (/if \(!RENAMEABLE\.test\(from\.replace\(\/\\\.disabled\$\/i, ''\)\)\) continue;/.test(s)) {
+    return '旧的三件套直判还在，CNS 包仍会被跳过';
+  }
+  return /const step = renameStep\(base, enabled\);\s*if \(!step\.managed\) continue;/.test(s) || '缺 step.managed 判断';
+});
+
+t('源码里写清「为什么不能加 .disabled 后缀」（DekCNS 子串匹配）', () => {
+  const s = setEnabledSrc();
+  return /string\.find\(fileName, "dekcns\.json"\)/.test(s) || '没注释子串匹配这个坑';
+});
+
+t('批量启停失败时把原因带出来，不只报个数', () => {
+  const s = fs.readFileSync(path.join(ROOT, 'src/renderer/app.js'), 'utf8');
+  if (!/const failedWhy = \[\];/.test(s)) return '没收集失败原因';
+  if (!/failedWhy\.push\(/.test(s)) return '没有 push 原因';
+  return /没改成功的原因：/.test(s) || '没把原因弹给用户';
 });
 
 t('改名后把注册表 manifest 也同步了（否则卸载会找不到文件）', () => {

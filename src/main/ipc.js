@@ -1381,22 +1381,56 @@ function setEnabled(id, enabled) {
   const renames = [];
   let found = 0;
   const RENAMEABLE = /\.(pak|ucas|utoc)$/i;
+
+  /* CNS / ATOOL 的换装索引（`xxx.dekcns.json` / `xxx.dekani.json`，真实扩展名是 .json）。
+   *
+   * ⚠️ 这类文件**不能用加 `.disabled` 后缀**的办法停用：DekCNS 的
+   *    `ue4ss\Mods\DekCNS\Scripts\main.lua` 里是
+   *        if string.find(fileName, "dekcns.json") then … end
+   *    的子串匹配，而且递归扫整个 ~Mods —— `x.dekcns.json.disabled` 里照样含
+   *    "dekcns.json"，游戏还是照旧加载。只能把标记**插到 .json 前面**：
+   *        x.dekcns.json  ⇄  x.dekcns.disabled.json
+   *    这样文件名里再没有 "dekcns.json" 这个子串，DekCNS 就扫不到它。
+   *
+   * 这也是「批量关闭后有一部分出错」的根因：纯 CNS 换装包（只有一个 .dekcns.json、
+   * 没有 pak）在旧代码里会被 `RENAMEABLE` 全部跳过 → found 一直是 0 →
+   * 抛「找不到这个 Mod 的文件（可能已被移走或改名），没法关闭」，刷新当然也没变化。
+   */
+  const DATA_INDEX_ON = /\.(dekcns|dekani)\.json$/i;
+  const DATA_INDEX_OFF = /\.(dekcns|dekani)\.disabled\.json$/i;
+  /**
+   * 这个文件切换后该叫什么。
+   * @returns {{managed:boolean, next:string|null}} managed=false 表示不归我们管；
+   *          next=null 表示「已经在目标状态，不用动」。
+   */
+  const renameStep = (base, wantEnabled) => {
+    if (DATA_INDEX_ON.test(base)) {
+      return { managed: true, next: wantEnabled ? null : base.replace(/\.json$/i, '.disabled.json') };
+    }
+    if (DATA_INDEX_OFF.test(base)) {
+      return { managed: true, next: wantEnabled ? base.replace(/\.disabled\.json$/i, '.json') : null };
+    }
+    if (!RENAMEABLE.test(base)) return { managed: false, next: null };
+    if (base.endsWith('.disabled')) {
+      return { managed: true, next: wantEnabled ? base.slice(0, -'.disabled'.length) : null };
+    }
+    return { managed: true, next: wantEnabled ? null : base + '.disabled' };
+  };
+
   const manifest = (mod.meta && Array.isArray(mod.meta.manifest)) ? mod.meta.manifest : null;
   if (mod.kind === 'pak' || mod.kind === 'logicmod' || mod.kind === 'cns') {
     const sources = manifest && manifest.length
       ? manifest.map(x => x && x.path).filter(Boolean)
       : (mod.files || []).map(f => path.join(L.modsDir, f.name));
     for (const from of sources) {
-      // 只动 pak 三件套：`.dekcns.json` 这类数据文件被 DekCNS 按名引用，
-      // 改扩展名不一定拦得住，反而可能让 CNS 读不到数据。
-      if (!RENAMEABLE.test(from.replace(/\.disabled$/i, ''))) continue;
       if (!fs.existsSync(from)) continue;
-      found++;
       const base = path.basename(from);
       const dir = path.dirname(from);
-      const nextBase = enabled ? base.replace(/\.disabled$/i, '') : (base.endsWith('.disabled') ? base : base + '.disabled');
-      const to = path.join(dir, nextBase);
-      if (to !== from) renames.push({ from, to });
+      const step = renameStep(base, enabled);
+      if (!step.managed) continue;
+      found++;
+      if (!step.next) continue;          // 已经是目标状态，不用动
+      renames.push({ from, to: path.join(dir, step.next) });
     }
   } else if (mod.kind === 'script') {
     // ⚠️ 用目录名（`mod.dir`），不能用 `mod.name` —— 关联/登记之后 name 是显示名，

@@ -1109,6 +1109,9 @@ async function gselBatchToggle(target) {
   if (!groups.length) { toast('先勾选要处理的 Mod'); return; }
   state.gsel.busy = true;
   let mods = 0, failed = 0;
+  // 把「为什么没改成功」带出来 —— 只报个数的话用户无从下手
+  // （2026-11-10 用户报「批量关闭有一部分出错」，界面上只有一句「有 N 个文件没能改过来」）。
+  const failedWhy = [];
   try {
     for (const g of groups) {
       let touched = false;
@@ -1118,7 +1121,10 @@ async function gselBatchToggle(target) {
         try {
           await call(window.api.mods.setEnabled(m.id, !!target), { silent: true });
           touched = true;
-        } catch { failed++; }
+        } catch (e) {
+          failed++;
+          if (failedWhy.length < 3) failedWhy.push(`${g.name || m.name || m.id}${e && e.message ? '（' + e.message + '）' : ''}`);
+        }
       }
       if (touched) mods++;
     }
@@ -1127,6 +1133,9 @@ async function gselBatchToggle(target) {
   }
   toast(target ? `已启用 ${mods} 个 Mod` : `已关闭 ${mods} 个 Mod`, failed ? 'err' : 'ok');
   if (failed) toast(`有 ${failed} 个文件没能改过来`, 'err');
+  // 光报个数没用 —— 把前几个失败原因带出来（用户 2026-11-10 报「批量关闭有一部分出错」时，
+  // 界面上只有一句「有 N 个文件没能改过来」，完全看不出是哪个 mod、为什么）。
+  if (failed && failedWhy.length) toast('没改成功的原因：' + failedWhy.join('；'), 'err');
   state.gsel.ids.clear();
   await refreshAll();
 }
