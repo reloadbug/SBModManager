@@ -1248,5 +1248,10 @@
     '点一下取消「已验证」标记': 'Click to remove the "verified" mark',
     '我实测过它能用 —— 打上「已验证」，之后可以按这个筛': 'I tested it and it works — mark it verified so you can filter by it later',
     '把标记过「已验证」的 Mod 藏起来': 'Hide the mods you marked as verified',
+    '开启时间': 'Enabled at',
+    '开启时间 ↓': 'Enabled ↓',
+    '开启时间 ↑': 'Enabled ↑',
+    '安装时间 ↓': 'Installed ↓',
+    '（按安装时间推算）': '(estimated from install time)',
   });
 })();

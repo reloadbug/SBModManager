@@ -1248,5 +1248,10 @@
     '点一下取消「已验证」标记': 'Kliknij, aby usunąć oznaczenie „sprawdzony”',
     '我实测过它能用 —— 打上「已验证」，之后可以按这个筛': 'Sprawdziłem, działa — oznacz jako sprawdzony, by później filtrować',
     '把标记过「已验证」的 Mod 藏起来': 'Ukryj mody oznaczone jako sprawdzone',
+    '开启时间': 'Włączono',
+    '开启时间 ↓': 'Włączono ↓',
+    '开启时间 ↑': 'Włączono ↑',
+    '安装时间 ↓': 'Zainstalowano ↓',
+    '（按安装时间推算）': '(szacowane z czasu instalacji)',
   });
 })();

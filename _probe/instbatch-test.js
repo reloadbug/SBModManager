@@ -405,7 +405,7 @@ t('循环按 renameStep().managed 决定跳不跳', () => {
 });
 
 t('改名后把注册表 manifest 也同步了（否则卸载会找不到文件）', () => {
-  return ipcSrc.includes('registry.patch(id, { enabled, manifest: nextManifest })') || '没同步 manifest';
+  return ipcSrc.includes('registry.patch(id, { enabled, ...stamp, manifest: nextManifest })') || '没同步 manifest（或没带开关时间戳）';
 });
 
 t('返回值带上改了几个文件（renamed + fixed），前端能据此判断真动了磁盘', () => {

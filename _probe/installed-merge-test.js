@@ -54,11 +54,13 @@ const SRC_DEFDIR = pick(/function sortDefaultDir\([\s\S]*?\n}/, 'sortDefaultDir'
 const SRC_MTIME = pick(/function groupMtime\([\s\S]*?\n}/, 'groupMtime');
 const SRC_CMP = pick(/function compareInstalled\([\s\S]*?\n}/, 'compareInstalled');
 const SRC_GROUP = pick(/function groupInstalled\([\s\S]*?\n}/, 'groupInstalled');
+// groupInstalled 里会取「最近启用时刻」，抽真身时要把它一起带上（0.5.3）
+const SRC_EAT = pick(/function groupEnabledAt\([\s\S]*?\n}/, 'groupEnabledAt');
 
 const ctx = {};
 vm.createContext(ctx);
 vm.runInContext(
-  [SRC_KIND, SRC_SORTS, SRC_DIRS, SRC_DEFDIR, SRC_MTIME, SRC_CMP, SRC_GROUP].join('\n') +
+  [SRC_KIND, SRC_SORTS, SRC_DIRS, SRC_DEFDIR, SRC_MTIME, SRC_CMP, SRC_EAT, SRC_GROUP].join('\n') +
   '\nthis.K = { KIND_RANK, INSTALLED_SORTS, SORT_DIRS, sortDefaultDir, groupMtime, compareInstalled, groupInstalled };',
   ctx);
 const { groupMtime, compareInstalled, groupInstalled, INSTALLED_SORTS, sortDefaultDir } = ctx.K;

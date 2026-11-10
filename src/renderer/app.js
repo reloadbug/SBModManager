@@ -45,7 +45,7 @@ const state = {
    *        / downloaded（下好了没装）/ installed（装着）/ enabled / disabled / partial
    * marks 三个布尔是**叠加**筛选，与 status 不冲突；kind 是本地类型（服装 / CNS / 前置 / 脚本…）。
    */
-  lib: { status: 'all', marks: { liked: false, blocked: false, bug: false, nobug: false }, kind: '' },
+  lib: { status: 'all', marks: { liked: false, blocked: false, bug: false, nobug: false }, kind: '', sort: '' },
   libRecords: [],       // 最近一次拼出来的统一记录（全选 / 计数都走它）
   libShownRecords: [],  // 过滤之后真正显示的记录
   installedShown: [],   // 本次渲染后**真正显示出来**的分组（筛选之后），全选用它
@@ -608,6 +608,30 @@ function compareInstalled(a, b, mode, dir) {
  *    files / meta …），这样 `installedCard()` 与 `openInstalledDrawer()` 不用大改；
  *    多出来的 `items` 才是「这个 Mod 装了哪几个文件」。
  */
+/**
+ * 一组里最近一次「启用」的时刻。一条 Mod 可能有多个文件，取最晚的那个 ——
+ * 用户排查崩溃时关心的是「最后一次让它生效是什么时候」。
+ */
+function groupEnabledAt(items) {
+  let t = '';
+  for (const m of items || []) {
+    const at = String((m.meta && m.meta.enabledAt) || '');
+    if (at && at > t) t = at;
+  }
+  return t;
+}
+
+/** ISO 时间 → `11-10 22:31`（同一年省略年份）；解析不出来返回空串 */
+function fmtWhen(iso) {
+  const t = Date.parse(String(iso || ''));
+  if (!t) return '';
+  const d = new Date(t);
+  const p = (n) => String(n).padStart(2, '0');
+  const md = p(d.getMonth() + 1) + '-' + p(d.getDate());
+  const hm = p(d.getHours()) + ':' + p(d.getMinutes());
+  return d.getFullYear() === new Date().getFullYear() ? md + ' ' + hm : d.getFullYear() + '-' + md + ' ' + hm;
+}
+
 function groupInstalled(list) {
   const byKey = new Map();
   for (const m of list || []) {
@@ -655,6 +679,9 @@ function groupInstalled(list) {
       fileCount: items.reduce((n, m) => n + (m.fileCount || 0), 0),
       files: items.flatMap(m => m.files || []),
       mtime: groupMtime(items),
+      // 最近一次「启用」的时刻：排查「装了哪个之后开始崩」先按它排（0.5.3）
+      enabledAt: groupEnabledAt(items),
+      enabledAtGuess: items.some(m => m.meta && m.meta.enabledAtGuess === true),
       archive: (items.find(m => m.archive) || {}).archive || null,
       location: items[0].location,
       meta
@@ -1623,6 +1650,7 @@ function openInstalledDrawer(g) {
     <div class="kv"><span>文件数</span><span>${m.fileCount}</span></div>
     <div class="kv"><span>占用</span><span>${fmtSize(m.size)}</span></div>
     <div class="kv"><span>修改时间</span><span>${fmtDate(m.mtime)}</span></div>
+    ${g.enabledAt ? `<div class="kv"><span>开启时间</span><span data-i18n-skip>${esc(fmtWhen(g.enabledAt))}${g.enabledAtGuess ? '（按安装时间推算）' : ''}</span></div>` : ''}
     <div class="kv"><span>登记状态</span><span>${m.registered
       ? '已登记（含来源信息）'
       : (m.linked ? '未登记 · 已关联 Nexus 来源' : '未登记（磁盘扫描发现）')}</span></div>
@@ -2798,6 +2826,9 @@ function buildLibRecords() {
       files: g.fileCount,
       enabled: !!g.enabled,
       partial: !!g.partial,
+      enabledAt: g.enabledAt || '',
+      enabledAtGuess: !!g.enabledAtGuess,
+      installedAt: g.mtime || '',
       groupKind: g.kind,
       builtin: !!g.builtin,
       items: g.items || [],
@@ -2923,6 +2954,7 @@ function libStatusCounts(recs) {
 
 /** 画顶部状态行（chip + 类型下拉 + 标记 chip） */
 function paintLibHead(recs) {
+  { const s = $('#libSort'); if (s) s.style.display = ''; }
   const counts = libStatusCounts(recs || []);
   const st = state.lib.status || 'all';
   const box = $('#libStatus');
@@ -2962,6 +2994,38 @@ function paintLibHead(recs) {
 }
 
 /** 一条本地记录的卡片（在线记录仍用 browseCard，两套复用同一批 CSS 类） */
+// Mod 库的排序方式（0.5.3）。默认档位不动：状态优先、组内保持原顺序；
+// 「开启时间」是排查崩溃时最常用的 —— 新开的 Mod 最可疑。
+const LIB_SORTS = [
+  { value: '', label: '默认', title: '按状态分组，保持原来的顺序' },
+  { value: 'on-desc', label: '开启时间 ↓', title: '最近开启的排最前 —— 崩了先看它' },
+  { value: 'on-asc', label: '开启时间 ↑', title: '最早开启的排最前' },
+  { value: 'inst-desc', label: '安装时间 ↓', title: '最近装的排最前' },
+  { value: 'name', label: '名称', title: '按名称排' }
+];
+
+/** 按 `state.lib.sort` 排一下；没有时间戳的记录始终排在后面（不参与比较） */
+function applyLibSort(recs) {
+  const mode = state.lib.sort || '';
+  if (!mode) return recs;
+  const out = recs.slice();
+  const timeOf = (r) => (mode.startsWith('on') ? r.enabledAt : (r.installedAt || r.enabledAt)) || '';
+  const dir = mode.endsWith('desc') ? -1 : 1;
+  out.sort((a, b) => {
+    if (mode === 'name') {
+      const x = String(a.name || '').toLowerCase();
+      const y = String(b.name || '').toLowerCase();
+      return x < y ? -1 : (x > y ? 1 : 0);
+    }
+    const ta = timeOf(a), tb = timeOf(b);
+    if (!ta && !tb) return 0;
+    if (!ta) return 1;          // 没时间的沉底
+    if (!tb) return -1;
+    return ta < tb ? -dir : (ta > tb ? dir : 0);
+  });
+  return out;
+}
+
 function libCard(rec) {
   const s = libStateOf(rec);
   const b = LIB_BADGE[s] || LIB_BADGE.online;
@@ -3021,7 +3085,8 @@ function libCard(rec) {
         ${rec.version ? `<span class="chip">${esc(verText(rec.version))}</span>` : ''}
         ${rec.author ? `<span>${esc(rec.author)}</span>` : ''}
         ${typeof rec.size === 'number' ? `<span>${fmtSize(rec.size)}</span>` : ''}
-        ${rec.kind === 'online' ? `<span>⬇ ${fmtNum(rec.downloads)}</span><span>♥ ${fmtNum(rec.endorsements)}</span>` : ''}
+${rec.kind === 'online' ? `<span>⬇ ${fmtNum(rec.downloads)}</span><span>♥ ${fmtNum(rec.endorsements)}</span>` : ''}
+        ${rec.enabledAt ? `<span data-i18n-skip title="${rec.enabledAtGuess ? '按安装时间推算的开启时刻' : '最近一次开启的时刻'}">开启于 ${esc(fmtWhen(rec.enabledAt))}</span>` : ''}
         <div class="acts">${vote}${acts}</div>
       </div>
     </div>
@@ -3045,7 +3110,7 @@ function renderLibMerged() {
   }
   const recs = buildLibRecords();
   state.libRecords = recs;
-  const shown = libFilterRecords(recs);
+  const shown = applyLibSort(libFilterRecords(recs));
   state.libShownRecords = shown;
   paintLibHead(recs);
 
@@ -3255,6 +3320,9 @@ function renderBrowse() {
   // 统一 Mod 库（2026-11-10）：除「只看在线」这一档，其余都由本地记录渲染 —— 零网络请求。
   // 在线那一档继续走原来的 Nexus 分页引擎（分类 / 标签 / 成人 / 加载更多都在）。
   if ((state.lib.status || 'all') !== 'online') { renderLibMerged(); return; }
+  // 「开启时间 / 安装时间」是本地记录的排序；在线档位用的是 Nexus 的排序标签，
+  // 两个下拉同时出现会让人不知道该用哪个 —— 在线时把本地这个藏起来。
+  { const s = $('#libSort'); if (s) s.style.display = 'none'; }
   const b = state.browse;
   const area = $('#browseArea');
   renderBrowseFilters();
@@ -7582,6 +7650,12 @@ function bindEvents() {
   // 类型下拉：本地判定，不联网
   const libKindSel = $('#libKind');
   if (libKindSel) libKindSel.addEventListener('change', () => { state.lib.kind = libKindSel.value || ''; renderBrowse(); });
+    // 排序下拉（0.5.3）：放在类型筛选旁边，切换即重排，不需要重新拉列表
+    const libSortSel = $('#libSort');
+    if (libSortSel) {
+      libSortSel.value = state.lib.sort || '';
+      libSortSel.addEventListener('change', () => { state.lib.sort = libSortSel.value || ''; renderBrowse(); });
+    }
 
   // 浏览页：滚到底部自动加载下一页（阈值 420px 提前预取，滚动更顺）。
   // 「加载更多」按钮保留作兜底 —— 键盘翻页、终端里没有平滑滚动的场景照样能加载。

@@ -340,6 +340,8 @@ async function runInstall({
     name: meta.name || path.basename(plan.archivePath, path.extname(plan.archivePath)),
     kind: plan.kind,
     enabled: true,
+    // 装完立刻启用 —— 这一下也算一次「启用」，崩排查时和 setEnabled 同等看待
+    enabledAt: new Date().toISOString(),
     source: {
       url: meta.url || null,
       modId: meta.modId || null,

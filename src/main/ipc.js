@@ -238,6 +238,27 @@ async function imagesForMod(modId, opts = {}) {
   return shape(cached);
 }
 
+/**
+ * 老注册表没有 enabledAt（0.5.2 之前的记录）——但「安装时就是启用的」，
+ * 所以 installedAt 就是它的启用时刻。只补 enabled 且缺 enabledAt 的条目，
+ * 并打上 enabledAtGuess，界面上据此说明「时间是按安装时间推的」。
+ */
+function backfillEnabledAt() {
+  let pairs = [];
+  try {
+    for (const m of registry.all()) {
+      if (!m || !m.enabled || m.enabledAt) continue;
+      const at = m.installedAt || '';
+      if (!at) continue;
+      pairs.push({ id: m.id, patch: { enabledAt: at, enabledAtGuess: true } });
+    }
+  } catch { return 0; }
+  if (!pairs.length) return 0;
+  try { registry.patchMany(pairs); } catch { return 0; }
+  try { logger.event('mods:backfillEnabledAt', { count: pairs.length }); } catch { /* 忽略 */ }
+  return pairs.length;
+}
+
 function init() {
   paths.ensure();
   config = createConfigStore(paths.configFile);
@@ -248,7 +269,8 @@ function init() {
   blacklist = createBlacklist(paths.blacklistFile);
   favorites = createFavorites(paths.favoritesFile);
   bugFlags = createBugFlags(paths.bugsFile);
-    verifiedFlags = createVerified(paths.verifiedFile);
+  verifiedFlags = createVerified(paths.verifiedFile);
+  backfillEnabledAt();
 
   engine = createDownloadEngine({
     file: paths.downloadQueueFile,
@@ -1385,6 +1407,10 @@ function setEnabled(id, enabled) {
   let found = 0;
   /** 记录的名字和磁盘差一个开关后缀、实际按另一种写法找到了：只算修正，不算改名 */
   const fixed = [];
+  // 开启 / 关闭的时刻：排查「装完哪个 Mod 之后开始崩」全靠它，
+  // 也用来在 Mod 库里按「开启时间」排序。只保留最近一次动作的时间，够用了。
+  const nowIso = new Date().toISOString();
+  const stamp = enabled ? { enabledAt: nowIso } : { disabledAt: nowIso };
   // 改名规则，以及「关着的名字长什么样」，集中在 src/main/toggleName.js：
   // 那里同时解释了两件事 —— ①CNS 换装索引（.dekcns.json）为什么必须把标记插在
   // .json 前面（DekCNS 主脚本是子串匹配 "dekcns.json"）；②reconcile（按磁盘核对）
@@ -1438,7 +1464,7 @@ function setEnabled(id, enabled) {
         : base;
       return { ...x, path: to, rel };
     });
-    registry.patch(id, { enabled, manifest: nextManifest });
+    registry.patch(id, { enabled, ...stamp, manifest: nextManifest });
   } else if (found === 0 && ((manifest && manifest.length) || (mod.files && mod.files.length))) {
     // 一个文件都没在磁盘上找到，就别装作成功 —— 否则注册表说「已关闭」，
     // 游戏还在照旧加载，用户看到的和实际不一样。
@@ -1446,7 +1472,7 @@ function setEnabled(id, enabled) {
       ? '找不到这个 Mod 的文件（可能已被移走或改名），没法启用'
       : '找不到这个 Mod 的文件（可能已被移走或改名），没法关闭');
   } else {
-    registry.setEnabled(id, enabled);
+    registry.patch(id, { enabled, ...stamp });
   }
   return { id, enabled, renamed: renames.length, fixed: fixed.length };
 }

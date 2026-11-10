@@ -1248,5 +1248,10 @@
     '点一下取消「已验证」标记': 'Haz clic para quitar la marca «verificado»',
     '我实测过它能用 —— 打上「已验证」，之后可以按这个筛': 'Lo probé y funciona: márcalo como verificado para poder filtrar después',
     '把标记过「已验证」的 Mod 藏起来': 'Ocultar los mods marcados como verificados',
+    '开启时间': 'Activado el',
+    '开启时间 ↓': 'Activado ↓',
+    '开启时间 ↑': 'Activado ↑',
+    '安装时间 ↓': 'Installado ↓',
+    '（按安装时间推算）': '(estimado según la instalación)',
   });
 })();

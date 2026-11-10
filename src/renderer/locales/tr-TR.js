@@ -1248,5 +1248,10 @@
     '点一下取消「已验证」标记': '«Doğrulandı» işaretini kaldırmak için tıkla',
     '我实测过它能用 —— 打上「已验证」，之后可以按这个筛': 'Kendim denedim, çalışıyor — doğrulandı olarak işaretle, sonra filtreleyebilirsin',
     '把标记过「已验证」的 Mod 藏起来': 'Doğrulanmış olarak işaretlenenleri gizle',
+    '开启时间': 'Etkinleştirme',
+    '开启时间 ↓': 'Etkinleştirme ↓',
+    '开启时间 ↑': 'Etkinleştirme ↑',
+    '安装时间 ↓': 'Kurulum ↓',
+    '（按安装时间推算）': '(kurulum zamanından tahmini)',
   });
 })();

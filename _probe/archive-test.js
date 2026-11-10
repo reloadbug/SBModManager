@@ -164,7 +164,7 @@ console.log('\n[3] verText() / installedCard()：版本号不拼成 vv2.3、卡�
   // 一起抽进来，走**真实的「单条 → 分组 → 画卡」链路**（与 `renderInstalled()` 一致），
   // 而不是手工补几个组字段 —— 后者会掩盖「分组产物喂不进卡片」这类真问题。
   vm.runInContext(
-    extract('groupMtime') + '\n' + extract('groupInstalled') + '\n'
+    extract('groupMtime') + '\n' + extract('groupEnabledAt') + '\n' + extract('groupInstalled') + '\n'
     + extract('esc') + '\n' + extract('fmtSize') + '\n' + extract('verText') + '\n'
     + extract('installedCard') + '\n'
     + 'this.f = { installedCard, groupInstalled };',

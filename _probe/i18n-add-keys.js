@@ -1487,6 +1487,22 @@ const TABLE = [
   ['把标记过「已验证」的 Mod 藏起来', [
     '把標記過「已驗證」的 Mod 藏起來','Hide the mods you marked as verified','「検証済み」に印を付けた Mod を隠す','검증됨으로 표시한 Mod 숨기기','Скрыть моды с отметкой «проверено»','Als geprüft markierte Mods ausblenden','Masquer les mods marqués comme vérifiés','Ocultar los mods marcados como verificados','Ocultar os mods marcados como verificados','Nascondi i mod segnati come verificati','Ukryj mody oznaczone jako sprawdzone','Doğrulanmış olarak işaretlenenleri gizle','ซ่อน Mod ที่ทำเครื่องหมายว่ายืนยันแล้ว'
   ]],
+  // ㉓ Mod 库排序（用户 2026-11-10：按开启时间排序，排查新装的 Mod）
+  ['开启时间', [
+    '開啟時間','Enabled at','有効化日時','활성화 시간','Время включения','Aktiviert am','Activé le','Activado el','Ativado em','Attivato il','Włączono','Etkinleştirme','เวลาที่เปิดใช้งาน'
+  ]],
+  ['开启时间 ↓', [
+    '開啟時間 ↓','Enabled ↓','有効化日時 ↓','활성화 시간 ↓','Включено ↓','Aktiviert ↓','Activé ↓','Activado ↓','Ativado ↓','Attivato ↓','Włączono ↓','Etkinleştirme ↓','เปิดใช้งาน ↓'
+  ]],
+  ['开启时间 ↑', [
+    '開啟時間 ↑','Enabled ↑','有効化日時 ↑','활성화 시간 ↑','Включено ↑','Aktiviert ↑','Activé ↑','Activado ↑','Ativado ↑','Attivato ↑','Włączono ↑','Etkinleştirme ↑','เปิดใช้งาน ↑'
+  ]],
+  ['安装时间 ↓', [
+    '安裝時間 ↓','Installed ↓','インストール日時 ↓','설치 시간 ↓','Установлено ↓','Installiert ↓','Installé ↓','Installado ↓','Instalado ↓','Installato ↓','Zainstalowano ↓','Kurulum ↓','ติดตั้ง ↓'
+  ]],
+  ['（按安装时间推算）', [
+    '（依安裝時間推算）','(estimated from install time)','（インストール日時から推定）','(설치 시간 기준 추정)','(по времени установки)','(aus Installationszeit geschätzt)','(estimé d’après l’installation)','(estimado según la instalación)','(estimado pela instalação)','(stimato dall’installazione)','(szacowane z czasu instalacji)','(kurulum zamanından tahmini)','(ประมาณจากเวลาติดตั้ง)'
+  ]],
 ];
 
 /**
