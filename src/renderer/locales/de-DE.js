@@ -1237,5 +1237,9 @@
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': '%s sind heruntergeladen, wurden aber durch Suchbegriff oder Blacklist alle ausgefiltert. Filter zurücksetzen.',
     '打开游戏目录': 'Spielordner öffnen',
     '打开 Mod 目录': 'Mod-Ordner öffnen',
+    '有 bug': 'Fehlerhaft',
+    '不含 bug': 'Ohne Fehler-Mods',
+    '只看标记过「有 bug」的 Mod': 'Nur als fehlerhaft markierte Mods anzeigen',
+    '把标记过「有 bug」的 Mod 藏起来': 'Als fehlerhaft markierte Mods ausblenden',
   });
 })();

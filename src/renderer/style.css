@@ -98,13 +98,17 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .cover .sw.part::after{right:9px}
 /* 「N 个已装文件」角标 —— 挪到左下角，避开左上角的类型 tag 和右上角的开关 */
 .cover .tag.nfile{top:auto;bottom:8px;left:8px;color:var(--blue);border-color:rgba(74,158,255,.45);background:rgba(74,158,255,.16)}
-/* 「有 bug」角标（2026-11-09 加）：位置与 nfile 相同（左下），有它时 nfile 让位到上一行 —— 
-   用橙色区别于蓝色的「N 个已装文件」、红色的卸载按钮：它是**提醒**，不是状态。 */
-.cover .tag.bug{top:auto;bottom:8px;left:8px;color:#E8A33D;border-color:rgba(232,163,61,.5);background:rgba(232,163,61,.18)}
+/* 「有 bug」角标（2026-11-09 加，2026-11-10 改红）：位置与 nfile 相同（左下），有它时 nfile 让位到上一行。
+   用户 2026-11-10：「bug标记的mod要用鲜明的红色标记」——原来用橙色（当提醒），现在改成实心红：
+   这是「别装」的警告，比蓝色角标、红色卸载按钮都更该抢眼。 */
+.cover .tag.bug{top:auto;bottom:8px;left:8px;color:#fff;border-color:rgba(229,52,43,.9);background:#e5342b;font-weight:600}
 .cover .tag.nfile + .tag.bug{left:auto;right:8px}
-/* 抽屉底部「标为有 bug」按钮：与「卸载」并排，但不能抢它的红 —— 用细橙边 */
-.btn.bug{border-color:rgba(232,163,61,.5);color:#E8A33D;background:rgba(232,163,61,.1)}
-.btn.bug:hover{background:rgba(232,163,61,.18)}
+/* 标了 bug 的卡片整体也带一圈红边（在线列表 + 已安装都用）：扫列表时不用逐个看角标 */
+.card.hasbug{border-color:rgba(229,52,43,.55)}
+.card.hasbug .cover{box-shadow:inset 0 0 0 2px rgba(229,52,43,.5)}
+/* 抽屉底部「标为有 bug」按钮：与「卸载」并排，但不能抢它的红 —— 用细红边 */
+.btn.bug{border-color:rgba(229,52,43,.55);color:#ff6b60;background:rgba(229,52,43,.12)}
+.btn.bug:hover{background:rgba(229,52,43,.2)}
 /* 卡片底部的操作区：👍 / 👎 与「下载 / 已安装」按钮并排，操作类按钮集中在一处。
    用户 2026-10-14：「喜欢和不喜欢按钮下移，与下载按钮放在一起，操作类的按钮尽量集中」——
    原来是绝对定位贴在封面右下角的，现随 `.meta` 排到行末（`margin-left:auto` 推右），
@@ -206,6 +210,10 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .card.inst-hid{display:none !important}
 .sortgrp.ifilter select{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0 8px;height:29px;color:var(--text);font-size:11.5px;font-family:inherit;outline:none;cursor:pointer;flex:none}
 .sortgrp.ifilter select:focus{border-color:var(--accent)}
+/* 「有 bug」筛选的两颗按钮（2026-11-10 加）：与状态 chip 分开一组，风格沿用 .tabs，
+   但选中时是红的 —— 一眼看出现在筛的是「有问题的 Mod」。 */
+.tabs#instBug button{font-size:11.5px;padding:6px 11px}
+.tabs#instBug button.on{background:rgba(229,52,43,.18);color:#ff6b60;font-weight:600;box-shadow:inset 0 0 0 1px rgba(229,52,43,.5)}
 .tabs button .dir{margin-left:5px;font-size:11px}
 .btn .dir{margin-right:3px;font-size:11px}
 

@@ -43,7 +43,8 @@ function matcherFactory() {
   if (!m) return null;
   // 造一个闭包：函数体里只引用 state.instFilters
   const make = new Function('state', m[0] + '\nreturn installedGroupMatches;');
-  return (filters) => make({ instFilters: filters });
+  // 2026-11-10：state 里多了 bugIds（「有 bug」标记），筛选要能用上
+  return (filters, bugIds) => make({ instFilters: filters, bugIds: new Set(bugIds || []) });
 }
 const mkMatch = matcherFactory();
 t('installedGroupMatches 能从 app.js 抠出来', () => (mkMatch ? true : '没找到函数体'));
@@ -101,14 +102,35 @@ if (mkMatch) {
     mkMatch({ q: 'bayonetta', state: 'on', kind: 'pak' })(gReg) === true
     && mkMatch({ q: 'bayonetta', state: 'off', kind: 'pak' })(gReg) === false ? true : '叠加不对'));
   t('关键词首尾空格不影响匹配', () => (mkMatch({ q: '  bayonetta  ', state: '', kind: '' })(gReg) ? true : '没修剪'));
+
+  // —— 「有 bug」筛选（2026-11-10 用户要求：顶部要能筛出有 bug 的，也要能不含）——
+  const gBug = { key: 'mod:4110', modId: 4110, name: 'Bayonetta Bayonetta', kind: 'pak', enabled: true,
+    partial: false, registered: true, builtin: false, linked: false, items: [], meta: { source: { modId: 4110 } } };
+  t('bug=only 只留标记过有 bug 的', () => (
+    mkMatch({ q: '', state: '', kind: '', bug: 'only' }, ['4110'])(gBug) === true
+    && mkMatch({ q: '', state: '', kind: '', bug: 'only' }, ['4110'])(gReg) === false ? true : '判定不对'));
+  t('bug=none 把标记过的藏起来', () => (
+    mkMatch({ q: '', state: '', kind: '', bug: 'none' }, ['4110'])(gBug) === false
+    && mkMatch({ q: '', state: '', kind: '', bug: 'none' }, ['4110'])(gReg) === true ? true : '判定不对'));
+  t('bug 留空时不影响任何分组', () => (
+    mkMatch({ q: '', state: '', kind: '', bug: '' }, ['4110'])(gBug) === true
+    && mkMatch({ q: '', state: '', kind: '' }, ['4110'])(gReg) === true ? true : '空值反而筛掉了'));
+  t('bug 筛选能跟关键词 / 状态叠加', () => (
+    mkMatch({ q: 'bayonetta', state: 'on', kind: '', bug: 'none' }, ['4110'])(gBug) === false
+    && mkMatch({ q: 'bayonetta', state: 'on', kind: '', bug: 'none' }, ['4110'])(gReg) === true ? true : '叠加不对'));
+  t('bugIds 缺失时不炸（只筛「有 bug」会筛空）', () => (
+    mkMatch({ q: '', state: '', kind: '', bug: 'only' })(gBug) === false
+    && mkMatch({ q: '', state: '', kind: '', bug: 'none' })(gBug) === true ? true : '缺 bugIds 时行为异常'));
+  t('没有 modId 的本地分组永远不算有 bug', () => (
+    mkMatch({ q: '', state: '', kind: '', bug: 'none' }, ['0', ''])(gBuiltin) === true ? true : '本地文件被误判'));
 }
 
 /* ============ B. 静态接线 ============ */
 // —— 状态 ——
 t('state 里有独立的 gsel（与浏览页 sel 分开）', () =>
   (/gsel: \{ on: false, busy: false, ids: new Set\(\) \}/.test(app) ? true : '缺 gsel'));
-t('state 里有 instFilters（q / state / kind）', () =>
-  (/instFilters: \{ q: '', state: '', kind: '' \}/.test(app) ? true : '缺 instFilters'));
+t('state 里有 instFilters（q / state / kind / bug）', () =>
+  (app.includes("instFilters: { q: '', state: '', kind: '', bug: '' }") ? true : '缺 instFilters'));
 t('state 里有 installedShown（全选只看当前显示的）', () =>
   (/installedShown: \[\]/.test(app) ? true : '缺 installedShown'));
 
@@ -180,8 +202,8 @@ t('多选模式里点卡片 = 勾选（拦在落点判断之前，点开关也�
 t('批量/筛选的委托分支都挂在主点击委托里', () => (['data-gbatch-mode', 'data-gbatch-all', 'data-gbatch-on',
   'data-gbatch-off', 'data-gbatch-del', 'data-istate', 'data-iclear'].every(a =>
   new RegExp(`t\\.closest\\('\\[${a}\\]'\\)`).test(app)) ? true : '有分支缺失'));
-t('清空筛选按钮把三个条件一起复位', () =>
-  (/state\.instFilters = \{ q: '', state: '', kind: '' \};/.test(app) ? true : '清空不彻底'));
+t('清空筛选按钮把四个条件一起复位', () =>
+  (app.includes("state.instFilters = { q: '', state: '', kind: '', bug: '' };") ? true : '清空不彻底'));
 t('关键词输入走委托，且输入过程中**不重画**（只就地过滤）', () => {
   if (!/e\.target\.id !== 'instSearch'/.test(app)) return '没接委托';
   const seg = app.slice(app.indexOf("e.target.id !== 'instSearch'"), app.indexOf("e.target.id !== 'instSearch'") + 320);
@@ -422,6 +444,39 @@ t('批量启停失败时把原因带出来，不只报个数', () => {
   return app.includes('没改成功的原因：') || '没把原因弹给用户';
 });
 
+
+/* ============ B. 「有 bug」红色标识与顶部筛选（2026-11-10） ============ */
+t('state 默认带 instFilters.bug', () =>
+  (/instFilters: \{ q: '', state: '', kind: '', bug: '' \}/.test(app) ? true : '缺 bug 默认值'));
+t('INST_BUG_FILTERS 有 only / none 两档', () => {
+  const m = app.match(/const INST_BUG_FILTERS = \[([\s\S]*?)\n\];/);
+  if (!m) return '缺 INST_BUG_FILTERS';
+  const vs = [...m[1].matchAll(/v: '([^']*)'/g)].map(x => x[1]);
+  return (vs.length === 2 && vs[0] === 'only' && vs[1] === 'none') ? true : '档位不对：' + vs.join(',');
+});
+t('筛选条里多了一组「有 bug」按钮（#instBug + data-ibug）', () => (
+  /id="instBug"/.test(app) && /data-ibug=/.test(app) ? true : '缺筛选按钮'));
+t('点「有 bug」再点一次会取消（互斥切换）', () => (
+  /const ibug = t\.closest\('\[data-ibug\]'\);[\s\S]{0,200}state\.instFilters\.bug = \(state\.instFilters\.bug \|\| ''\) === v \? '' : v;/.test(app)
+    ? true : '切换逻辑缺失'));
+t('「清空筛选」也把 bug 清掉', () => (
+  /state\.instFilters = \{ q: '', state: '', kind: '', bug: '' \};/.test(app) ? true : '清空时漏了 bug'));
+t('installedIsBug() 只认 modId', () => (
+  /function installedIsBug\(g\) \{[\s\S]{0,220}ids\.has\(String\(g\.modId\)\)/.test(app) ? true : '判定函数不对'));
+t('已安装卡片带 hasbug 类（整卡红框）', () => (
+  /class="card\$\{g\.enabled \? '' : ' off'\}\$\{isBug \? ' hasbug' : ''\}"/.test(app) ? true : '卡片没加 hasbug'));
+t('在线列表卡片也标 bug（hasbug + 角标）', () => (
+  /\$\{isBug \? ' hasbug' : ''\}/.test(app) && /const isBug = installedIsBug\(n\);/.test(app) ? true : '浏览卡没标'));
+t('«有 bug» 角标是实心红（#e5342b），不再是橙', () => (
+  /\.cover \.tag\.bug\{[^}]*background:#e5342b/.test(css) ? true : '角标还不是红的'));
+t('.card.hasbug 有红边 + 封面内描边', () => (
+  /\.card\.hasbug\{border-color:rgba\(229,52,43,\.55\)\}/.test(css)
+    && /\.card\.hasbug \.cover\{box-shadow:inset 0 0 0 2px rgba\(229,52,43,\.5\)\}/.test(css) ? true : '缺红框样式'));
+t('筛选按钮选中态是红的（.tabs#instBug button.on）', () => (
+  /\.tabs#instBug button\.on\{[^}]*#ff6b60/.test(css) ? true : '缺选中态样式'));
+t('新增的 4 个词条都在 keys.json 里', () => (
+  ['有 bug', '不含 bug', '只看标记过「有 bug」的 Mod', '把标记过「有 bug」的 Mod 藏起来']
+    .every(k => keys.includes(k)) ? true : '词条没登记全'));
 /* ---------- 汇总 ---------- */
 console.log('');
 for (const f of fails) console.log('  ✗ ' + f);

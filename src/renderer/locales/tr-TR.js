@@ -1237,5 +1237,9 @@
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': '%s indirilmiş var, ama hepsi anahtar sözcük veya kara liste tarafından elendi. Filtreleri temizleyip tekrar bakın.',
     '打开游戏目录': 'Oyun klasörünü aç',
     '打开 Mod 目录': 'Mod klasörünü aç',
+    '有 bug': 'Hatalı',
+    '不含 bug': 'Hatalı olmayanlar',
+    '只看标记过「有 bug」的 Mod': 'Yalnızca hatalı olarak işaretlediklerini göster',
+    '把标记过「有 bug」的 Mod 藏起来': 'Hatalı olarak işaretlenenleri gizle',
   });
 })();

@@ -1237,5 +1237,9 @@
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': 'Hay %s descargados, pero el filtro de palabra clave o la lista negra los ocultaron todos. Borra los filtros y vuelve a mirar.',
     '打开游戏目录': 'Abrir la carpeta del juego',
     '打开 Mod 目录': 'Abrir la carpeta de mods',
+    '有 bug': 'Con fallo',
+    '不含 bug': 'Sin mods con fallos',
+    '只看标记过「有 bug」的 Mod': 'Mostrar solo los mods marcados como defectuosos',
+    '把标记过「有 bug」的 Mod 藏起来': 'Ocultar los mods marcados como defectuosos',
   });
 })();

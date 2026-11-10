@@ -1237,5 +1237,9 @@
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': 'Pobranych jest %s, ale wszystkie odfiltrowało słowo kluczowe lub czarna lista. Wyczyść filtry.',
     '打开游戏目录': 'Otwórz folder gry',
     '打开 Mod 目录': 'Otwórz folder modów',
+    '有 bug': 'Ma błąd',
+    '不含 bug': 'Bez modów z błędem',
+    '只看标记过「有 bug」的 Mod': 'Pokaż tylko mody oznaczone jako błędne',
+    '把标记过「有 bug」的 Mod 藏起来': 'Ukryj mody oznaczone jako błędne',
   });
 })();

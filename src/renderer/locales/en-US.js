@@ -1237,5 +1237,9 @@
     '已下载的有 %s 个，但都被关键词或黑名单筛掉了。清掉筛选再看看。': '%s are downloaded, but the keyword or blacklist filtered them all out. Clear the filters and try again.',
     '打开游戏目录': 'Open game folder',
     '打开 Mod 目录': 'Open mods folder',
+    '有 bug': 'Has bug',
+    '不含 bug': 'No bugged mods',
+    '只看标记过「有 bug」的 Mod': 'Only show mods you marked as buggy',
+    '把标记过「有 bug」的 Mod 藏起来': 'Hide the mods you marked as buggy',
   });
 })();

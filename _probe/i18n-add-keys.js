@@ -1450,6 +1450,21 @@ const TABLE = [
     'Mod klasörünü aç',
     'เปิดโฟลเดอร์มอด'
   ]],
+
+  // ── ㉑ 0.4.22：「有 bug」标记改红 + 已安装页顶部「有 bug / 不含 bug」筛选（4 条）──
+  // 角标文案（⚠ 有 bug）0.4.11 就登记过，这里只补筛选按钮与两条提示。
+  ['有 bug', [
+    '有 bug','Has bug','バグあり','버그 있음','Есть баг','Fehlerhaft','Bug signalé','Con fallo','Com falha','Con bug','Ma błąd','Hatalı','มีบั๊ก'
+  ]],
+  ['不含 bug', [
+    '不含 bug','No bugged mods','バグありを除外','버그 없음만','Без багов','Ohne Fehler-Mods','Sans mods bugués','Sin mods con fallos','Sem mods com falha','Senza mod con bug','Bez modów z błędem','Hatalı olmayanlar','ไม่รวมที่มีบั๊ก'
+  ]],
+  ['只看标记过「有 bug」的 Mod', [
+    '只看標記過「有 bug」的 Mod','Only show mods you marked as buggy','「バグあり」に印を付けた Mod だけ表示','버그 있음으로 표시한 Mod만 보기','Показывать только моды с отметкой «есть баг»','Nur als fehlerhaft markierte Mods anzeigen','Afficher uniquement les mods marqués comme bugués','Mostrar solo los mods marcados como defectuosos','Mostrar só os mods marcados como com falha','Mostra solo i mod segnati come con bug','Pokaż tylko mody oznaczone jako błędne','Yalnızca hatalı olarak işaretlediklerini göster','แสดงเฉพาะ Mod ที่ทำเครื่องหมายว่ามีบั๊ก'
+  ]],
+  ['把标记过「有 bug」的 Mod 藏起来', [
+    '把標記過「有 bug」的 Mod 藏起來','Hide the mods you marked as buggy','「バグあり」に印を付けた Mod を隠す','버그 있음으로 표시한 Mod 숨기기','Скрыть моды с отметкой «есть баг»','Als fehlerhaft markierte Mods ausblenden','Masquer les mods marqués comme bugués','Ocultar los mods marcados como defectuosos','Ocultar os mods marcados como com falha','Nascondi i mod segnati come con bug','Ukryj mody oznaczone jako błędne','Hatalı olarak işaretlenenleri gizle','ซ่อน Mod ที่ทำเครื่องหมายว่ามีบั๊ก'
+  ]],
 ];
 
 /**
@@ -1605,11 +1620,23 @@ for (const code of CODES) {
   const need = NEW.filter(n => !src.includes(`'${jsq(n.key)}':`));
   if (!need.length) { console.log(`  ${code}: 已是最新`); continue; }
 
-  if (!TAIL.test(src)) { console.log(`  ✗ ${code}: 结尾格式不匹配，未改动`); continue; }
+  // 2026-11-10：语言包现在统一是 CRLF（早期只有 LF），两种行尾都要吃。
+  // 这里不用正则、也不用模板里的转义 —— 直接拿字符码拼，避免行尾被工具层改写。
+  const CR = String.fromCharCode(13);
+  const LF = String.fromCharCode(10);
+  const EOL = src.indexOf(CR + LF) >= 0 ? CR + LF : LF;
+  let end = src;
+  while (end.endsWith(LF) || end.endsWith(CR)) end = end.slice(0, -1);
+  const tailA = EOL + '  });' + EOL + '})();';
+  const tailB = ',' + tailA;
+  let cut = '';
+  if (end.endsWith(tailB)) cut = tailB;
+  else if (end.endsWith(tailA)) cut = tailA;
+  if (!cut) { console.log(`  ✗ ${code}: 结尾格式不匹配，未改动`); continue; }
 
-  const lines = need.map(n => `    '${jsq(n.key)}': '${jsq(n.t[code])}',`).join('\n');
+  const lines = need.map(n => `    '${jsq(n.key)}': '${jsq(n.t[code])}',`).join(EOL);
   // 上一行末尾补逗号 + 追加新行
-  src = src.replace(TAIL, `,\n${lines}\n  });\n})();\n`);
+  src = end.slice(0, end.length - cut.length) + ',' + EOL + lines + EOL + '  });' + EOL + '})();' + EOL;
   fs.writeFileSync(file, src, 'utf8');
   total += need.length;
   console.log(`  ${code}: 补了 ${need.length} 条`);
