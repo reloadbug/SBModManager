@@ -3054,6 +3054,22 @@ function libRecordMatches(rec, q) {
   return hay.indexOf(q) >= 0;
 }
 
+/**
+ * 成人内容那三档在合并态是「筛选」的一部分，不是「排序」的一部分 ——
+ * 2026-11-11 用户指出它夹在排序行里、和下面的分类/标签不像一伙的。
+ * 在线档位仍然用顶部那条 #adultTabs（Nexus 的分页要它），合并态这里出同款 chip。
+ */
+function libAdultChips(recs) {
+  const mode = state.browse.adultMode || 'all';
+  const total = (recs || []).length;
+  const adultN = (recs || []).filter((r) => r && r.adult).length;
+  const cnt = (n) => '<span class="n">' + Number(n).toLocaleString() + '</span>';
+  const chip = (v, label, n) => '<button class="fc' + (mode === v ? ' on' : '') + '" data-adult="' + v + '">' + label + cnt(n) + '</button>';
+  return chip('hide', '隐藏成人内容', Math.max(0, total - adultN))
+    + chip('all', '全部内容', total)
+    + chip('only', '只显示成人内容', adultN);
+}
+
 /** 按当前状态 / 标记 / 类型 / 关键词筛记录（纯计算，不碰 DOM） */
 function libFilterRecords(recs) {
   const st = state.lib.status || 'all';
@@ -3313,7 +3329,8 @@ function renderLibFilters(recs) {
     catMap.set(zh, (catMap.get(zh) || 0) + 1);
   }
   if (!catMap.size) {
-    box.innerHTML = '<div class="frow"><span class="fl">分类</span><div class="fchips"><span class="fnote" style="margin:0">本地记录的分类要等 Nexus 信息补全后才出现</span></div></div>';
+    box.innerHTML = '<div class="frow"><span class="fl">分类</span><div class="fchips"><span class="fnote" style="margin:0">本地记录的分类要等 Nexus 信息补全后才出现</span></div>'
+      + '<span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div></div>';
     return;
   }
   const cnt = (n) => '<span class="n">' + Number(n).toLocaleString() + '</span>';
@@ -3325,37 +3342,15 @@ function renderLibFilters(recs) {
   box.innerHTML = '<div class="frow"><span class="fl">分类</span>'
     + '<div class="fchips">' + chips + '</div>'
     + (cur ? '<button class="fclear" id="btnClearFilter">清除筛选</button>' : '')
+    + '<span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div>'
     + '</div>';
 }
 
-let libHeadPacked = false;
-
-// 2026-11-11：合并页顶部条挤了五行（状态/标记、排序、成人、分类、统计），高 254px，
-// 用户报「控件有重叠」。这里把「成人内容」并进排序那条、并让每条不换行横向滚动，
-// 高度压到 ~150px。只搬一次节点（renderLibMerged 每次重画都会调用）。
-function compactLibHead() {
-  if (libHeadPacked) return;
-  const sortRow = $('#sortTabs') ? $('#sortTabs').parentElement : null;
-  if (!sortRow) return;
-  sortRow.style.flexWrap = 'nowrap';
-  sortRow.style.overflowX = 'auto';
-  // 成人三档原本就和排序同一行；批量条（默认只有「多选」一颗）原本独占一行，
-  // 也拖过来 —— 窗口矮的时候这一行就是白占 32px。
-  const adult = $('#adultTabs');
-  if (adult && adult.parentElement !== sortRow) sortRow.appendChild(adult);
-  const batch = $('#batchBar');
-  if (batch) {
-    const oldRow = batch.parentElement;
-    if (oldRow && oldRow !== sortRow) {
-      sortRow.appendChild(batch);
-      if (!oldRow.children.length) oldRow.style.display = 'none';
-    }
-  }
-  libHeadPacked = true;
-}
-
+// 2026-11-11：顶部改成「筛选 / 排序 / 操作」三块（写在 index.html 里，不再搬节点），
+// 每块一行、不换行横向滚动 —— 之前五行 254px 的挤法用户说像「控件叠在一起」。
 function renderLibMerged() {
-  compactLibHead();
+  // 合并态的成人档在筛选区（libAdultRow），顶部这条只在在线档位用
+  { const ad = $('#adultTabs'); if (ad) ad.style.display = 'none'; }
   const area = $('#browseArea');
   if (!area) return;
   // 这两份数据以前都是别的页面顺手准备好的（已安装页 / 下载页）；
@@ -3586,6 +3581,7 @@ function renderBrowse() {
   // 「开启时间 / 安装时间」是本地记录的排序；在线档位用的是 Nexus 的排序标签，
   // 两个下拉同时出现会让人不知道该用哪个 —— 在线时把本地这个藏起来。
   { const s = $('#libSort'); if (s) s.style.display = 'none'; }
+  { const ad = $('#adultTabs'); if (ad) ad.style.display = ''; }
   const b = state.browse;
   const area = $('#browseArea');
   renderBrowseFilters();
@@ -7828,13 +7824,16 @@ function bindEvents() {
   });
 
   // 成人内容三态：隐藏成人 / 全部内容 / 只显示成人
-  $('#adultTabs').addEventListener('click', (e) => {
+  // 2026-11-11：合并态的这三档变成筛选区里的一行（libAdultRow），节点是每次重画新建的 ——
+  // 所以不能再往 #adultTabs 上挂监听，改成文档级委托（data-adult 只在这两处出现）。
+  document.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-adult]');
     if (!b) return;
     const mode = b.dataset.adult;
     if (state.browse.adultMode === mode) return; // 已选中，不重复拉
     state.browse.adultMode = mode;
-    $$('#adultTabs button').forEach(x => x.classList.toggle('on', x === b));
+    // 注意用 $（$ 是单元素，没有 forEach）—— 这里再踩一次就会「状态改了但界面不重画」
+    $$('#adultTabs button, #browseFilters button[data-adult]').forEach(x => x.classList.toggle('on', x.dataset.adult === mode));
     // 合并档位（在线以外）是本地记录，就地重画即可；在线档位才需要回 Nexus 重拉
     if ((state.lib.status || 'all') !== 'online') { renderBrowse(); return; }
     loadBrowse(true);
@@ -9245,7 +9244,10 @@ async function refreshAll(showToast) {
       syncBrowseFilterUI();
       filtersReady = true;   // 恢复完成，此后才允许 saveFilters 落盘
       // 首屏的 switchPage 可能已经用默认筛选拉过一轮了，筛选真的变了才重拉
-      if (before !== JSON.stringify(browseFilterSnapshot())) loadBrowse(true);
+      // 合并档位（Mod 库）用的是本地记录，恢复筛选后就地重画即可；只有在线档位才回 Nexus 重拉
+      if (before !== JSON.stringify(browseFilterSnapshot())) {
+        if ((state.lib.status || 'all') !== 'online') renderBrowse(); else loadBrowse(true);
+      }
     }
     await refreshPrereqs();
     // 「管理器里还有哪些包装得进去」要在画下载页之前取到手（队列空着时那一页就靠它）

@@ -609,35 +609,54 @@ t('app.js：老入口 p-installed 会被导向 p-browse 并把状态切到「已
 
 ﻿
 // ---------------------------------------------------------------------------
-// K. 顶部条不许再堆成五行（2026-11-11 用户报「控件有重叠」）
-//    做法：状态+标记压成一条横向滚动（不换行），排序/成人/批量挤同一行。
+// K. 顶栏按「筛选 / 排序 / 操作」三段重排（2026-11-11 用户要求）
+//    上一版是把节点在 JS 里搬来搬去（compactLibHead），现在直接写死在 HTML 里，
+//    顺序固定、不依赖运行时搬迁。
 // ---------------------------------------------------------------------------
-t('style.css：.librow 不换行 + 横向滚动', () => {
+t('index.html：#browseHead 分成「筛选 / 排序 / 操作」三段', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  const i = html.indexOf('id="browseHead"');
+  const j = html.indexOf('id="browseArea"');
+  if (i < 0 || j <= i) return "找不到 #browseHead / #browseArea";
+  const seg = html.slice(i, j);
+  const secs = (seg.match(/class="sect"/g) || []).length;
+  return (secs === 3 && seg.includes('>筛选<') && seg.includes('>排序<') && seg.includes('>操作<'))
+    || '顶栏没分成三段：' + secs;
+});
+t('index.html：三段归属正确（筛选=状态/标记/内置脚本/分类，排序=sortTabs+libSort，操作=批量条）', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  const i = html.indexOf('id="browseHead"');
+  const j = html.indexOf('id="browseArea"');
+  const seg = html.slice(i, j);
+  const segOf = (label) => {
+    const a = seg.indexOf('>' + label + '<');
+    const b = seg.indexOf('class="sect"', a);
+    return seg.slice(a, b < 0 ? seg.length : b);
+  };
+  const f = segOf('筛选'), so = segOf('排序'), op = segOf('操作');
+  const need = (s, id) => s.indexOf('id="' + id + '"') >= 0;
+  return (need(f, 'libStatus') && need(f, 'libMarks') && need(f, 'libBuiltin') && need(f, 'browseFilters')
+    && need(so, 'sortTabs') && need(so, 'libSort')
+    && need(op, 'batchBar') && need(op, 'batchMarks'))
+    || '控件没落在对应的段里';
+});
+t('app.js：不再用 compactLibHead 搬节点（写死在 HTML 里了）', () =>
+  !app.includes('function compactLibHead(') || '还在运行时搬节点');
+t('style.css：三段样式 .sect / .slabel / .sline 齐全', () => {
   const css = fs.readFileSync('src/renderer/style.css', 'utf8');
-  const i = css.lastIndexOf('.librow{');
-  if (i < 0) return '.librow 不见了';
-  const body = css.slice(i, css.indexOf('}', i));
-  return (body.includes('flex-wrap:nowrap') && body.includes('overflow-x:auto')) || 'librow 还会换行：' + body;
+  return (/\.sect\{/.test(css) && /\.slabel\{/.test(css) && /\.sline\{/.test(css))
+    || '缺三段样式';
 });
-t('style.css：#libStatus / #libMarks 的 chip 尺寸被压小', () => {
-  const css = fs.readFileSync('src/renderer/style.css', 'utf8');
-  return css.includes('.tabs.libst button,.tabs.libmarks button{font-size:11px') || 'chip 没压小';
+t('成人三档的文档委托必须用 $$（用 $ 会在单元素上调 forEach 抛错 —— 2026-11-11 踩过「模式改了界面不重画」）', () => {
+  const i = app.indexOf("closest('button[data-adult]')");
+  if (i < 0) return "找不到成人档委托";
+  const seg = app.slice(i, i + 900);
+  if (!seg.includes("$$('#adultTabs button, #browseFilters button[data-adult]')")) return "委托里没用 " + D;
+  return !seg.includes('    $(\'#adultTabs') || "还在用单元素 $";
 });
-t('app.js：有 compactLibHead() 且 renderLibMerged 开头就调用', () => {
-  if (!app.includes('function compactLibHead(')) return 'compactLibHead 不见了';
-  const i = app.indexOf('function renderLibMerged(');
-  const open = app.indexOf('{', i);
-  const head = app.slice(i, open + 260);
-  return head.includes('compactLibHead()') || 'renderLibMerged 没有调用 compactLibHead';
-});
-t('app.js：compactLibHead 把成人档与批量条并进排序行，并隐藏空行', () => {
-  const i = app.indexOf('function compactLibHead(');
-  const body = app.slice(i, i + 1400);
-  return (body.includes("$('#adultTabs')") && body.includes("$('#batchBar')") && body.includes("oldRow.style.display = 'none'"))
-    || 'compactLibHead 没把 adultTabs/batchBar 并进来';
-});
-
-﻿
+t('启动恢复筛选后：合并档位就地重画，只有在线档位才回 Nexus', () =>
+  /applyLastFilters\(\)[\s\S]{0,600}renderBrowse\(\); else loadBrowse\(true\)/.test(app)
+    || 'applyLastFilters 之后没有按档位分流重画');
 // ---------------------------------------------------------------------------
 // L. 布局收拾（2026-11-11 用户点出两处重复/错位）
 //    ① 「全部类型」下拉与下面的分类 chip 重复 → 删掉下拉；

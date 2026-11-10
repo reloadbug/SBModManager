@@ -706,3 +706,32 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 .tabs button{font-size:11.5px;padding:5px 11px}
 .filters .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 .filters .tabs::-webkit-scrollbar{height:0}
+
+/* 吸顶区按用途分三块：筛选 / 排序 / 操作（2026-11-11）。
+   左边窄标签、右边控件一行不换行（横向滚动），窗口矮的时候也不至于把内容挤没。 */
+.sect{display:flex;gap:9px;align-items:flex-start;margin-bottom:5px}
+.slabel{flex:0 0 28px;color:var(--dim2);font-size:11px;line-height:24px;letter-spacing:1px;user-select:none}
+.sbody{flex:1 1 auto;min-width:0}
+.sline{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;margin-bottom:4px}
+.sline::-webkit-scrollbar{height:0}
+.sline>.tabs{flex:0 0 auto;flex-wrap:nowrap}
+.sline>.libkind{flex:0 0 auto}
+.sline>.btn{flex:0 0 auto;white-space:nowrap}
+.sect:last-of-type .sline{margin-bottom:0}
+
+/* 筛选区（分类 / 成人）每行收紧一点：这三块加起来要能塞进吸顶区 */
+.filters .frow{margin-bottom:3px}
+.filters .frow:last-child{margin-bottom:0}
+.filters .fc{font-size:11px;padding:4px 9px}
+
+/* 分类与成人同处一行：中间用一条竖线隔开，省掉一整行高度 */
+.filters .fl.sep{margin-left:4px;padding-left:10px;border-left:1px solid var(--border);flex:0 0 auto}
+.filters .fchips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.filters .fchips::-webkit-scrollbar{height:0}
+
+/* 2026-11-11：顶栏三段（筛选/排序/操作）压到 180px 以内 —— 用户嫌它太高、把卡片挤下去了 */
+.sect{margin-bottom:3px}
+.slabel{line-height:22px}
+.sline{margin-bottom:2px}
+.bhead{padding-bottom:4px}
+#browseStats{margin:0}

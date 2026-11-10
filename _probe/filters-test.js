@@ -354,8 +354,9 @@ function makeHarness(cfg) {
       const iRender = code.indexOf('renderInstalled();', i0);
       return (iApply > 0 && iRender > 0 && iApply < iRender) || `apply@${iApply} render@${iRender}`;
     });
-    t('恢复后筛选真的变了才重拉列表（没变就不白跑一趟）', () =>
-      /if \(before !== JSON\.stringify\(browseFilterSnapshot\(\)\)\) loadBrowse\(true\);/.test(code) || '缺失');
+        t('恢复后筛选真的变了才重画/重拉（没变就不白跑一趟）', () =>
+      /if \(before !== JSON\.stringify\(browseFilterSnapshot\(\)\)\) \{[\s\S]{0,200}?!== 'online'\) renderBrowse\(\); else loadBrowse\(true\);/.test(code)
+        || '缺失');
 
     t('设置页有「记住筛选条件」下拉', () => /id="setRememberFilters"/.test(code) || '缺失');
     t('设置页分组标题是「浏览与筛选」', () => /<h3>浏览与筛选<\/h3>/.test(code) || '缺失');

@@ -160,7 +160,7 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
   const ipc = fs.readFileSync(IPC, 'utf8');
 
   // ---- 吸顶 ----
-  t('index.html 把头部包进 .bhead', () => /<div class="bhead"[\s\S]{0,1200}id="sortTabs"/.test(html) || '缺失');
+  t('index.html 把头部包进 .bhead', () => /<div class="bhead"[\s\S]{0,4000}id="sortTabs"/.test(html) || '缺失');
   t('.bhead 里同时含筛选器与统计行', () =>
     /class="bhead"[\s\S]*?id="browseFilters"[\s\S]*?id="browseStats"[\s\S]*?<\/div>\s*<div id="browseArea">/.test(html) || '缺失');
   t('CSS：.bhead 用 position:sticky', () => /\.bhead\{position:sticky/.test(css) || '缺失');

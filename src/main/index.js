@@ -181,6 +181,11 @@ function flushNxm() {
 }
 
 function createWindow() {
+  /* 2026-11-11 用户报障：「你测试能不能用个虚拟桌面，老弹出来影响我用电脑啊」。
+   * 自动化验证（--shot=…）时窗口会真的弹到桌面上、抢焦点，用户正在用电脑就被打断。
+   * 这里在截图模式下把窗口挪到屏幕外、不进任务栏、也不抢焦点 —— 渲染照常进行，
+   * capturePage() 仍能拿到当前帧（窗口是「可见但不在屏内」，不是隐藏，隐藏会停渲染）。 */
+  const QUIET = ARGV.some(a => a.startsWith('--shot='));
   win = new BrowserWindow({
     width: 1360,
     height: 860,
@@ -192,6 +197,8 @@ function createWindow() {
     title: `剑星 Mod 管理器 v${app.getVersion()}`,
     autoHideMenuBar: true,
     show: false,
+    skipTaskbar: QUIET,
+    focusable: !QUIET,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,
@@ -204,7 +211,14 @@ function createWindow() {
 
   win.mainApp = true; // 标记主窗口，便于其它模块定位（登录窗口等）
 
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    if (QUIET) {
+      try { win.setPosition(-30000, -30000); } catch { /* 多屏环境摆不平就算了 */ }
+      win.showInactive();   // 不抢焦点
+      return;
+    }
+    win.show();
+  });
 
   /* 兜底显示：正常情况下 `ready-to-show` 会来，但实测有机器（GPU 初始化失败、
    * 远程桌面、安全软件插手）这个事件永远不来 —— 窗口一直 `show:false` 藏着，
@@ -215,7 +229,7 @@ function createWindow() {
     try {
       if (win && !win.isDestroyed() && !win.isVisible()) {
         console.error('[启动] ready-to-show 迟迟不来，强制显示主窗口');
-        win.show();
+        if (QUIET) { try { win.setPosition(-30000, -30000); } catch { /* 忽略 */ } win.showInactive(); } else win.show();
       }
     } catch { /* 窗口已销毁就算了 */ }
   }, 8000).unref?.();
