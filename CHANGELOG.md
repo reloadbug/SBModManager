@@ -1,5 +1,20 @@
 # 更新日志
 
+## [0.5.7] - 2026-11-11
+
+### 修改
+
+- **首屏固定为「Mod 库」**：`index.html` 里那个隐藏的数据容器 `#p-installed` 还带着 `.on`，
+  冷启动时显示的是老「已安装」页（深色工具条 + Pak 组卡片），点一下别的导航再回来才对。
+  现在 `#p-installed` 不再带 `.on`、`#p-browse` 带 `.on`，且 `main()` 里 `refreshAll()` 之后
+  显式 `switchPage('p-browse')`，标题与按钮显隐也随之一致。
+- 给 `#p-installed` 加了注释说明它只是 `renderInstalled()` 的数据容器，免得以后又被当成显示页。
+
+### 测试
+
+- `_probe/libmerge-test.js` 加 J 段 4 条：`#p-installed` 不得带 `.on`、`#p-browse` 必须带 `.on`、
+  `main()` 里 refreshAll 之后切页、老入口 `p-installed` 重定向到 Mod 库。
+
 ## [0.5.6] - 2026-11-11
 
 ### 修改

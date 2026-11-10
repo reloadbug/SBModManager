@@ -70,12 +70,14 @@
     <div class="body" id="body">
 
       <!-- 已安装 -->
-      <div class="page on" id="p-installed">
+      <!-- 2026-11-11：#p-installed 只是 renderInstalled() 的数据容器（留着它，state.installedGroups 才有来源），
+     不能再带 .on —— 否则首屏显示的是这个老页面，点一下导航才变成 Mod 库。 -->
+    <div class="page" id="p-installed">
         <div id="installedArea"></div>
       </div>
 
       <!-- 浏览 -->
-      <div class="page" id="p-browse">
+      <div class="page on" id="p-browse">
         <!-- 吸顶区：排序 / 范围 / 筛选 / 统计 —— 滚动时不消失（用户 2026-10-13 要求） -->
         <div class="bhead" id="browseHead">
           <!-- 统一状态行（2026-11-10）：在线 / 已下载 / 已安装 / 已禁用 都在这里切；

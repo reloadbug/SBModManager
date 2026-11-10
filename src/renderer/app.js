@@ -9386,6 +9386,10 @@ window.__refreshAll = refreshAll;
 
   await refreshAll();
 
+  // 2026-11-11：首屏固定在「Mod 库」。以前 index.html 里 #p-installed 带着 .on，
+  // 冷启动先显示老「已安装」页，点一下导航才正确 —— 用户截图里那个「界面不对」就是它。
+  switchPage('p-browse');
+
   // 冷启动时窗口还没建好就收到的 nxm:// 链接，主动取一次（避免事件竞态）。
   // 主进程在这个 handler 里也已经把它接进下载队列了。
   try {

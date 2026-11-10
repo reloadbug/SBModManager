@@ -582,6 +582,31 @@ t('功能断言：状态档 unreg / linked 各自只留对应记录', () => {
     || 'unreg=' + JSON.stringify(unreg) + ' linked=' + JSON.stringify(linked);
 });
 
+﻿
+// ---------------------------------------------------------------------------
+// J. 首屏必须是「Mod 库」（2026-11-11 用户报「默认进入是这样，点别的界面再回来才正常」）
+//    #p-installed 只是 renderInstalled() 的数据容器，它若带 .on，冷启动就显示老页面。
+// ---------------------------------------------------------------------------
+t('index.html：#p-installed 不带 .on（它只是数据容器）', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  return !html.includes('<div class="page on" id="p-installed">') || '#p-installed 还带着 .on，首屏会显示老「已安装」页';
+});
+t('index.html：#p-browse 带 .on（首屏默认页）', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  return html.includes('<div class="page on" id="p-browse">') || '#p-browse 没有 .on';
+});
+t('app.js：main() 里 refreshAll() 之后显式 switchPage(p-browse)', () => {
+  const re = /await refreshAll\(\);\s*\r?\n\s*\/\/[^\n]*\r?\n\s*\/\/[^\n]*\r?\n\s*switchPage\('p-browse'\);/;
+  return re.test(app) || 'main() 结尾没有把首屏切到 Mod 库';
+});
+t('app.js：老入口 p-installed 会被导向 p-browse 并把状态切到「已安装」', () => {
+  const i = app.indexOf('function switchPage(');
+  if (i < 0) return 'switchPage 不见了';
+  const body = app.slice(i, i + 900);
+  return (body.includes("if (id === 'p-installed')") && body.includes("setLibStatus('installed'") && body.includes("id = 'p-browse';"))
+    || 'switchPage 里缺老入口重定向';
+});
+
 // ---------------------------------------------------------------------------
 console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
 if (fail) {
