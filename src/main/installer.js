@@ -1027,12 +1027,42 @@ function sleepSync(ms) {
  * `fs.rmSync` 自带的 maxRetries 在本机实测**不够**（负载高时仍会漏），
  * 所以这里在外面再套一层自己的退避重试。重试仍失败时**打日志**，不要静默。
  */
+/**
+ * 递归去掉只读属性。
+ *
+ * 2026-11-10 实锤：data/tmp 里有个解压残留目录，里面的子目录带 ReadOnly 属性，
+ * fs.rmSync 在 Windows 上就会一直 EPERM —— 它自带的 maxRetries 不会替你去掉属性，
+ * 只是重试同一个必然失败的操作。表现是每次启动卡十几秒、日志两行「删除失败」，
+ * 窗口迟迟不出来，用户看到的就是「启动黑屏，过一会儿自己退出」。
+ * 所以删之前先把只读位清掉（只在失败后调用，正常路径不受影响）。
+ */
+function clearReadonlyTree(dir, limit = 800) {
+  let n = 0;
+  const walk = (p) => {
+    if (n > limit) return;
+    let items = [];
+    try { items = fs.readdirSync(p, { withFileTypes: true }); } catch { return; }
+    for (const it of items) {
+      if (++n > limit) return;
+      const q = path.join(p, it.name);
+      try {
+        const st = fs.lstatSync(q);
+        if (!(st.mode & 0o200)) fs.chmodSync(q, st.isDirectory() ? 0o777 : 0o666);
+      } catch { /* 单个文件改不动不影响整体 */ }
+      if (it.isDirectory()) walk(q);
+    }
+  };
+  walk(dir);
+}
+
 function rmrf(dir, opts = {}) {
   if (!dir) return true;
   // 统一用 `.trash-<时间戳>` 后缀（注意是**点**，不是连字符）——
   // 生成与识别必须用同一个正则，否则改名后的目录永远匹配不上，会一直堆着。
   const alreadyTrash = /\.trash-\d+$/.test(dir);
-  for (let attempt = 0; attempt < 5; attempt++) {
+  // 清扫任务用较小的 attempts：它们跑在启动之后的后台里，宁可不删也别卡住主进程。
+  const maxAttempt = Math.max(1, Number(opts.attempts) || 5);
+  for (let attempt = 0; attempt < maxAttempt; attempt++) {
     try {
       fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 120 });
       return true;
@@ -1043,7 +1073,9 @@ function rmrf(dir, opts = {}) {
       //    `sweepTrash()` 收不到名字（实测会让 deps 测试偶发红一条），
       //    日志里也会留一行误导的「删除失败」。
       if (!fs.existsSync(dir)) return true;
-      if (attempt === 4) {
+      // 先清只读位：只读属性正是「怎么重试都 EPERM」的那个原因。
+      clearReadonlyTree(dir);
+      if (attempt === maxAttempt - 1) {
         // 实在删不掉就**改名**。改名只需要父目录的句柄，不需要碰目录里的内容，
         // 所以「某个文件被句柄/杀软占着」这种情况改名照样能成功 ——
         // 于是目录不会原地泄漏，交给 sweepTrash() 过一会儿再清。
@@ -1088,7 +1120,7 @@ function sweepStaleTmp(maxAgeMs = 60 * 60 * 1000) {
     let mtime = 0;
     try { mtime = fs.statSync(p).mtimeMs; } catch { continue; }
     if (now - mtime < maxAgeMs) continue;
-    if (rmrf(p)) swept.push(it.name);
+    if (rmrf(p, { attempts: 2 })) swept.push(it.name);
   }
   return swept;
 }
@@ -1118,7 +1150,7 @@ function sweepTrash(maxAgeMs = 10 * 60 * 1000) {
       try { mtime = fs.statSync(p).mtimeMs; } catch { continue; }
       if (now - mtime < maxAgeMs) continue;
       // noRename：已经在垃圾桶里了，别再套一层 .trash-x.trash-y
-      if (rmrf(p, { noRename: true })) swept.push(it.name);
+      if (rmrf(p, { noRename: true, attempts: 2 })) swept.push(it.name);
     }
   }
   return swept;

@@ -398,20 +398,25 @@ if (!gotLock) {
       + ' · 数据目录=' + paths.DATA
       + ' · 用户数据目录=' + app.getPath('userData'));
 
-    // 启动时顺手扫一遍陈旧的临时目录（上次异常退出留下的 extract-* / dl-*）。
-    // 只清 1 小时以上的，绝不碰正在跑的安装。再收一遍「改名待删」的垃圾桶目录。
-    try {
-      const inst = require('./installer');
-      const swept = inst.sweepStaleTmp();
-      if (swept.length) console.log('[启动] 清理陈旧临时目录 ' + swept.length + ' 个：' + swept.join(', '));
-      const trash = inst.sweepTrash();
-      if (trash.length) console.log('[启动] 清理待删目录 ' + trash.length + ' 个：' + trash.join(', '));
-    } catch (e) {
-      console.error('[启动] 清理临时目录失败：' + e.message);
-    }
-
     require('./ipc').register();
     createWindow();
+
+    // 陈旧临时目录的清扫**必须放在窗口之后、异步做**（2026-11-10 修「启动黑屏」）。
+    // 原来它在 createWindow() 之前同步跑：data/tmp 里只要有一个删不掉的目录
+    // （只读属性 / 被杀软占着），fs.rmSync 的重试退避就能把主进程卡住十几秒 ——
+    // 窗口迟迟不建、ready-to-show 也不来，用户看到的是「启动黑屏，过一会儿自己退出」，
+    // 再点一次还会撞上单实例锁。窗口优先，清扫可以晚点慢慢做。
+    setTimeout(() => {
+      try {
+        const inst = require('./installer');
+        const swept = inst.sweepStaleTmp();
+        if (swept.length) console.log('[启动] 清理陈旧临时目录 ' + swept.length + ' 个：' + swept.join(', '));
+        const trash = inst.sweepTrash();
+        if (trash.length) console.log('[启动] 清理待删目录 ' + trash.length + ' 个：' + trash.join(', '));
+      } catch (e) {
+        console.error('[启动] 清理临时目录失败：' + e.message);
+      }
+    }, 5000).unref?.();
 
     // 注册 nxm:// 协议处理器（用户点「Mod Manager Download」时由系统调起本程序）
     const okReg = nxm.registerProtocol();
