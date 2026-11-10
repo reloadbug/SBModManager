@@ -136,7 +136,7 @@ vm.createContext(ctx);
 vm.runInContext(
   core + '\nthis.buildLibRecords=buildLibRecords; this.libFilterRecords=libFilterRecords;' +
   'this.libStatusCounts=libStatusCounts; this.libStateOf=libStateOf; this.libTypeOf=libTypeOf;' +
-  'this.libHasMark=libHasMark; this.libKindOptions=libKindOptions;' +
+  'this.libHasMark=libHasMark;' +
   'this.LIB_STATUS_CHIPS=LIB_STATUS_CHIPS; this.LIB_MARK_CHIPS=LIB_MARK_CHIPS; this.LIB_BADGE=LIB_BADGE;',
   ctx
 );
@@ -245,9 +245,9 @@ t('前置组件单独一类', () => {
   state.installedGroups = [{ key: 'mod:1', modId: 1, name: 'Dekita Framework', enabled: true, kind: 'prereq', items: [] }];
   return ctx.libTypeOf(ctx.buildLibRecords()[0]) === 'prereq';
 });
-t('类型下拉给全了档位（含「全部类型」）', () => {
-  const opts = ctx.libKindOptions();
-  return opts.length >= 6 && opts[0].v === '' && opts.some((o) => o.v === 'cns') && opts.some((o) => o.v === 'installed' || o.v === 'prereq');
+t('「全部类型」下拉已经删掉（和分类行重复），分类靠 #browseFilters 的 chip', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  return !/id="libKind"/.test(html) && !/libKindOptions/.test(app) || 'libKind 还在：' + /id="libKind"/.test(html);
 });
 
 // ---------------------------------------------------------------------------
@@ -371,8 +371,8 @@ t('没标过的记录「不含 bug」为真、标过的为假', () => {
 });
 // ---------------------------------------------------------------------------
 console.log('\n=== F. 接线：一套界面、一套多选、一套批量 ===');
-t('index.html 有状态行（#libStatus）、类型下拉（#libKind）、标记筛选（#libMarks）', () =>
-  /id="libStatus"/.test(html) && /id="libKind"/.test(html) && /id="libMarks"/.test(html));
+t('index.html 有状态行（#libStatus）与标记筛选（#libMarks），没有多余的「全部类型」下拉', () =>
+  /id="libStatus"/.test(html) && /id="libMarks"/.test(html) && !/id="libKind"/.test(html));
 t('老的三组筛选（只看未安装 / 只看喜欢 / 只看黑名单）已经撤掉', () =>
   !/id="newOnlyTabs"/.test(html) && !/id="likeTabs"/.test(html) && !/id="blockTabs"/.test(html));
 t('导航里「已安装 Mod」只剩一个「Mod 库」入口', () =>
@@ -635,6 +635,41 @@ t('app.js：compactLibHead 把成人档与批量条并进排序行，并隐藏�
   const body = app.slice(i, i + 1400);
   return (body.includes("$('#adultTabs')") && body.includes("$('#batchBar')") && body.includes("oldRow.style.display = 'none'"))
     || 'compactLibHead 没把 adultTabs/batchBar 并进来';
+});
+
+﻿
+// ---------------------------------------------------------------------------
+// L. 布局收拾（2026-11-11 用户点出两处重复/错位）
+//    ① 「全部类型」下拉与下面的分类 chip 重复 → 删掉下拉；
+//    ② 「在浏览器中打开 Nexus」挪到顶栏，和「启动游戏」并列。
+// ---------------------------------------------------------------------------
+t('index.html：顶栏有 #btnOpenSite，且它就排在 #btnLaunch 后面', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  const a = html.indexOf('id="btnLaunch"');
+  const b = html.indexOf('id="btnOpenSite"');
+  if (a < 0 || b < 0) return '顶栏缺 btnLaunch 或 btnOpenSite';
+  if (b < a) return 'btnOpenSite 跑到 btnLaunch 前面了';
+  const between = html.slice(a, b);
+  return between.indexOf('</button>') >= 0 || 'btnOpenSite 挤在 btnLaunch 标签内部';
+});
+t('index.html：排序条里不再有 #btnOpenSite（已搬去顶栏）', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  const i = html.indexOf('id="sortTabs"');
+  if (i < 0) return 'sortTabs 不见了';
+  const seg = html.slice(i, i + 900);
+  return !/id="btnOpenSite"/.test(seg) || '排序条里还留着一颗 btnOpenSite';
+});
+t('app.js：顶栏那颗只在 Mod 库显示（switchPage 里按 p-browse 显隐）', () => {
+  const i = app.indexOf('function switchPage(');
+  const body = app.slice(i, i + 2200);
+  return body.includes("$('#btnOpenSite')") && body.includes("(id === 'p-browse')") || 'switchPage 没管 btnOpenSite';
+});
+t('app.js：类型筛选的代码已清干净（没有 libKind / state.lib.kind 的残留判断）', () => {
+  if (app.includes('libKindOptions')) return 'libKindOptions 还在';
+  if (app.includes("state.lib.kind")) return 'state.lib.kind 还在';
+  const i = app.indexOf('function libFilterRecords(');
+  const body = app.slice(i, i + 2600);
+  return !body.includes('libTypeOf(rec) !== kind') || '筛选里还在按 kind 过滤';
 });
 
 // ---------------------------------------------------------------------------

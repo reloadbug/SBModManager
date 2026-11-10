@@ -1,5 +1,22 @@
 # 更新日志
 
+## [0.5.9] - 2026-11-11
+
+### 修改
+
+- **删掉「全部类型」下拉**：它和下面分类行里的 chip 是同一件事，两处并存只会让人怀疑哪个才管用。
+  类型筛选的代码也一并清掉了（`libKindOptions` / `state.lib.kind` / `libFilterRecords` 里的 kind 分支），
+  分类统一走 `#browseFilters` 的 chip。
+- **「在浏览器中打开 Nexus」搬到顶栏**，和「启动游戏」并排；它只在 Mod 库页出现（`switchPage()` 里按页显隐），
+  排序条那一行因此少一颗按钮。
+
+### 测试
+
+- `_probe/libmerge-test.js` 加 L 段 4 条（顶栏里 #btnOpenSite 紧跟 #btnLaunch、排序条里不再有它、
+  switchPage 按 p-browse 显隐、类型筛选代码无残留）；类型下拉那条旧断言改成「已经删掉」。
+- 真机（dev，329 张卡）：顶栏顺序 `启动游戏 → 在浏览器中打开 Nexus → v1.4.1 → 刷新 → Nexus 账号 → 批量解析 → 导入 Mod`；
+  `#libKind` 已不存在、`#libSort` 保留；顶栏那颗在下载页/设置页隐藏、回 Mod 库又出现；吸顶区仍是 154px。
+
 ## [0.5.8] - 2026-11-11
 
 ### 修改

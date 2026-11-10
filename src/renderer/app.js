@@ -329,6 +329,8 @@ function switchPage(id) {
   $('#btnImport').style.display = (id === 'p-browse' || id === 'p-download') ? '' : 'none';
   const btnLk = $('#btnLinker');
   if (btnLk) btnLk.style.display = (id === 'p-browse') ? '' : 'none';
+  const btnSite = $('#btnOpenSite');
+  if (btnSite) btnSite.style.display = (id === 'p-browse') ? '' : 'none';
   $('#btnRefresh').style.display = id === 'p-prereq' ? 'none' : '';
   // 第一次进某页才置顶；来过的恢复到离开时的位置（display:none → block 后要等一帧才设得进）
   const back = pageScroll.get(id);
@@ -2893,19 +2895,6 @@ function libTypeOf(rec) {
   return 'outfit';
 }
 
-/** 类型下拉的选项（用完即弃，不占 i18n） */
-function libKindOptions() {
-  return [
-    { v: '', label: '全部类型' },
-    { v: 'outfit', label: '服装 / 外观' },
-    { v: 'cns', label: 'CNS 换装' },
-    { v: 'prereq', label: '前置组件' },
-    { v: 'script', label: '脚本' },
-    { v: 'builtin', label: '内置' },
-    { v: 'online', label: '在线' }
-  ];
-}
-
 /**
  * 拼出全部记录。
  * 顺序有讲究：先已安装、再已下载、最后在线 —— 同一个 modId 只留第一条（本地优先），
@@ -3069,7 +3058,6 @@ function libRecordMatches(rec, q) {
 function libFilterRecords(recs) {
   const st = state.lib.status || 'all';
   const marks = state.lib.marks || {};
-  const kind = state.lib.kind || '';
   // 顶栏搜索框与老「已安装」搜索框共用一个关键词（用户在 Mod 库里只有一个搜索框）
   const q = String(state.browse.search || state.instFilters.q || '').trim().toLowerCase();
   const hideBlocked = state.browse.blockMode === 'hide';
@@ -3126,7 +3114,6 @@ function libFilterRecords(recs) {
       && !tags.some(t => rec.tags.indexOf(t) >= 0)) return false;
     // UE4SS 自带脚本：默认藏起来（和老「已安装」页的开关同一个口径）
     if (!state.showBuiltin && rec.builtin) return false;
-    if (kind && libTypeOf(rec) !== kind) return false;
     if (!libRecordMatches(rec, q)) return false;   // 不命中就剔掉
     return true;
   });
@@ -3166,13 +3153,6 @@ function paintLibHead(recs) {
       const num = typeof n === 'number' && c.v !== 'all' ? `<span class="dir">${fmtNum(n)}</span>` : '';
       return `<button data-libst="${c.v}" class="${st === c.v ? 'on' : ''}">${c.label}${num}</button>`;
     }).join('');
-  }
-  const kindSel = $('#libKind');
-  if (kindSel) {
-    const cur = state.lib.kind || '';
-    kindSel.innerHTML = libKindOptions().map(o =>
-      `<option value="${o.v}"${cur === o.v ? ' selected' : ''}>${esc(o.label)}</option>`
-    ).join('');
   }
   const marks = $('#libMarks');
   if (marks) {
@@ -7933,8 +7913,6 @@ function bindEvents() {
   $('#btnBatchOff').addEventListener('click', () => { libBatchToggleSel(false).catch(() => {}); });
   $('#btnBatchUninstall').addEventListener('click', () => { libBatchUninstallSel().catch(() => {}); });
   // 类型下拉：本地判定，不联网
-  const libKindSel = $('#libKind');
-  if (libKindSel) libKindSel.addEventListener('change', () => { state.lib.kind = libKindSel.value || ''; renderBrowse(); });
     // 排序下拉（0.5.3）：放在类型筛选旁边，切换即重排，不需要重新拉列表
     const libSortSel = $('#libSort');
     // 批量标记（0.5.4）：智能开关，全标过再点就是取消；「未验证」是明确取消已验证

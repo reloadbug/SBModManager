@@ -60,6 +60,7 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
         启动游戏
       </button>
+      <button class="btn" id="btnOpenSite" title="在浏览器里打开 Nexus 的星刃 Mod 列表（想看评论、更新日志就去网页）" style="display:none">在浏览器中打开 Nexus</button>
       <span class="verchip" id="gameVer" title="当前游戏版本（读自主程序 SB-Win64-Shipping.exe 的版本信息）" data-i18n-skip style="display:none">—</span>
       <button class="btn" id="btnRefresh">刷新</button>
       <button class="btn" id="btnNexusAccount">Nexus 账号</button>
@@ -84,7 +85,6 @@
                右边三颗是「用户标记」筛选，可以和状态叠加。 -->
           <div class="librow">
             <div class="tabs libst" id="libStatus"></div>
-            <select class="libkind" id="libKind" title="按类型筛选（本地判定）"></select>
             <select class="libkind" id="libSort" title="排序方式（「开启时间」用来排查新装的 Mod）">
               <option value="">默认</option>
               <option value="on-desc">开启时间 ↓</option>
@@ -103,7 +103,6 @@
               <button data-sort="newest">最新发布</button>
               <button data-sort="updated">最近更新</button>
             </div>
-            <button class="btn sm" id="btnOpenSite">在浏览器中打开 Nexus</button>
             <div class="tabs adult" id="adultTabs" title="成人内容显示范围">
               <button data-adult="hide">隐藏成人内容</button>
               <button data-adult="all" class="on">全部内容</button>
