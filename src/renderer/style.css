@@ -689,3 +689,20 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 .tabs.libmarks button.tone-ver.on{background:rgba(38,110,190,.3);color:#eaf6ff;box-shadow:inset 0 0 0 1px rgba(76,160,255,.7)}
 .tabs.libmarks button.tone-dim{color:var(--dim2)}
 .tabs.libmarks button.tone-dim.on{background:var(--panel2);color:var(--text);font-weight:600}
+
+/* 2026-11-11：顶部条太高（254px，占掉半个窗口），而且每个筛选组各自换行后才堆出这么多行，
+   用户报「控件有重叠」。这里把「状态档 + 标记」压成一条不换行的横向滚动条，
+   排序/成人/类型/内置脚本挤进同一条，分类行同样不换行 —— 高度从 254px 降到 ~150px。 */
+.bhead{padding-bottom:6px}
+.bhead .toolbar{margin-bottom:6px}
+.bhead .filters{margin-bottom:6px}
+.bhead .stats{margin-bottom:2px}
+.librow{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+  margin-bottom:6px;padding-bottom:2px;scrollbar-width:none}
+.librow::-webkit-scrollbar{height:0}
+.librow>.tabs{flex:0 0 auto;flex-wrap:nowrap}
+.librow>.libkind{flex:0 0 auto}
+.tabs.libst button,.tabs.libmarks button{font-size:11px;padding:4px 9px}
+.tabs button{font-size:11.5px;padding:5px 11px}
+.filters .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.filters .tabs::-webkit-scrollbar{height:0}

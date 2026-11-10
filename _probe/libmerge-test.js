@@ -607,6 +607,36 @@ t('app.js：老入口 p-installed 会被导向 p-browse 并把状态切到「已
     || 'switchPage 里缺老入口重定向';
 });
 
+﻿
+// ---------------------------------------------------------------------------
+// K. 顶部条不许再堆成五行（2026-11-11 用户报「控件有重叠」）
+//    做法：状态+标记压成一条横向滚动（不换行），排序/成人/批量挤同一行。
+// ---------------------------------------------------------------------------
+t('style.css：.librow 不换行 + 横向滚动', () => {
+  const css = fs.readFileSync('src/renderer/style.css', 'utf8');
+  const i = css.lastIndexOf('.librow{');
+  if (i < 0) return '.librow 不见了';
+  const body = css.slice(i, css.indexOf('}', i));
+  return (body.includes('flex-wrap:nowrap') && body.includes('overflow-x:auto')) || 'librow 还会换行：' + body;
+});
+t('style.css：#libStatus / #libMarks 的 chip 尺寸被压小', () => {
+  const css = fs.readFileSync('src/renderer/style.css', 'utf8');
+  return css.includes('.tabs.libst button,.tabs.libmarks button{font-size:11px') || 'chip 没压小';
+});
+t('app.js：有 compactLibHead() 且 renderLibMerged 开头就调用', () => {
+  if (!app.includes('function compactLibHead(')) return 'compactLibHead 不见了';
+  const i = app.indexOf('function renderLibMerged(');
+  const open = app.indexOf('{', i);
+  const head = app.slice(i, open + 260);
+  return head.includes('compactLibHead()') || 'renderLibMerged 没有调用 compactLibHead';
+});
+t('app.js：compactLibHead 把成人档与批量条并进排序行，并隐藏空行', () => {
+  const i = app.indexOf('function compactLibHead(');
+  const body = app.slice(i, i + 1400);
+  return (body.includes("$('#adultTabs')") && body.includes("$('#batchBar')") && body.includes("oldRow.style.display = 'none'"))
+    || 'compactLibHead 没把 adultTabs/batchBar 并进来';
+});
+
 // ---------------------------------------------------------------------------
 console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
 if (fail) {

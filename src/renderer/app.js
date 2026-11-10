@@ -3348,7 +3348,34 @@ function renderLibFilters(recs) {
     + '</div>';
 }
 
+let libHeadPacked = false;
+
+// 2026-11-11：合并页顶部条挤了五行（状态/标记、排序、成人、分类、统计），高 254px，
+// 用户报「控件有重叠」。这里把「成人内容」并进排序那条、并让每条不换行横向滚动，
+// 高度压到 ~150px。只搬一次节点（renderLibMerged 每次重画都会调用）。
+function compactLibHead() {
+  if (libHeadPacked) return;
+  const sortRow = $('#sortTabs') ? $('#sortTabs').parentElement : null;
+  if (!sortRow) return;
+  sortRow.style.flexWrap = 'nowrap';
+  sortRow.style.overflowX = 'auto';
+  // 成人三档原本就和排序同一行；批量条（默认只有「多选」一颗）原本独占一行，
+  // 也拖过来 —— 窗口矮的时候这一行就是白占 32px。
+  const adult = $('#adultTabs');
+  if (adult && adult.parentElement !== sortRow) sortRow.appendChild(adult);
+  const batch = $('#batchBar');
+  if (batch) {
+    const oldRow = batch.parentElement;
+    if (oldRow && oldRow !== sortRow) {
+      sortRow.appendChild(batch);
+      if (!oldRow.children.length) oldRow.style.display = 'none';
+    }
+  }
+  libHeadPacked = true;
+}
+
 function renderLibMerged() {
+  compactLibHead();
   const area = $('#browseArea');
   if (!area) return;
   // 这两份数据以前都是别的页面顺手准备好的（已安装页 / 下载页）；
