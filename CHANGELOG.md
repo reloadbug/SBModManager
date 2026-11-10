@@ -1,5 +1,23 @@
 # 更新日志
 
+## [0.5.2] - 2026-11-10
+
+### 新增
+
+- Mod 库顶部多了「✓ 已验证 / 未验证」两颗筛选：实际装进游戏玩过、确认能用的 Mod 可以标「已验证」，之后按它筛；和「有 bug」一样是跟着 Mod ID 走的个人标记。
+- 卡片、Nexus 详情抽屉、已安装详情抽屉里都有「标记已验证 / ✓ 已验证」按钮，点一下切换（蓝底白字，和「不含 bug」的绿、「有 bug」的红区分开）。
+- 多选模式下支持 Shift 连选一段、Ctrl 单选一张：本地记录和在线记录混在一张列表里也能整段勾。
+
+### 修改
+
+- `src/renderer/index.html`：修掉吸顶区多出来的两个闭包标签——之前它把 `#browseArea` 挤出了页面容器，切成「已安装」时右侧会剩一条列表被压成两列。现在列表在任何状态下都占满整行。
+
+### 测试
+
+- `_probe/libmerge-test.js` 扩到 71 条：已验证/未验证筛选与互斥、`data-libver` 接线、蓝色角标与按钮样式、Shift/Ctrl 选择、以及两条 index.html 结构断言（吸顶区 div 配平、`#browseArea` 必须在 `#p-browse` 内）。
+- 新增 mark 相关数据文件 `verified.json` 的探针（跟着游戏走，和 `bugs.json` 同一条路径）。
+- 全量探针 58 个脚本全绿。
+
 本项目的所有重要变更都记录在这里。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。

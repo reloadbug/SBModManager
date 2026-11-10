@@ -77,11 +77,14 @@ fs.mkdirSync(paths.gameHomeOf(GAME), { recursive: true });
 writeState(paths.gameHomeOf(GAME), 'config.json', { gameRoot: GAME });
 t('有 config.json 时 gameHomeReady=true', () => (paths.gameHomeReady(GAME) === true ? true : '没认出来'));
 
-t('STATE_NAMES 覆盖 8 个状态文件', () => {
-  const want = ['config.json', 'mods.json', 'mod-links.json', 'blacklist.json', 'favorites.json', 'downloads.json', 'watch-seen.json', 'ledger.json'];
+t('STATE_NAMES 覆盖 10 个状态文件（含 bugs.json / verified.json —— 用户标记跟着游戏走）', () => {
+  const want = ['config.json', 'mods.json', 'mod-links.json', 'blacklist.json', 'favorites.json', 'downloads.json', 'watch-seen.json', 'ledger.json', 'bugs.json', 'verified.json'];
   const miss = want.filter(n => !paths.STATE_NAMES.includes(n));
   return miss.length ? ('缺 ' + miss.join(',')) : true;
 });
+t('verifiedFile 指向 <数据目录>/verified.json（和 bugsFile 同一条路）', () => (
+  /[\\/]verified\.json$/.test(paths.verifiedFile) || ('不对：' + paths.verifiedFile)
+));
 t('缓存文件名不在 STATE_NAMES 里', () => (
   !paths.STATE_NAMES.includes('nexus-catalog.json') && !paths.STATE_NAMES.includes('translate.json')
     ? true : '把缓存也当成状态文件了'));

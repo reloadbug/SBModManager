@@ -39,6 +39,68 @@ function t(name, fn) {
   else { fail++; fails.push(name + ' → ' + why); console.log('✗ ' + name + ' → ' + why); }
 }
 
+
+﻿  /* ---------- G. 「已验证」标记（用户 2026-11-10） ---------- */
+  t('标记 chip 里有「已验证」和「未验证」两颗', () =>
+    app.includes("{ k: 'verified', label: '✓ 已验证', tone: 'ver' }") && app.includes("{ k: 'unverified', label: '未验证', tone: 'dim' }"));
+  t('libMarkSet 认 verified', () => app.includes("if (k === 'verified') return state.verifiedIds;"));
+  t('libHasMark 里「未验证」= 已否定的已验证', () => app.includes("if (k === 'unverified') return !libHasMark(rec, 'verified');"));
+  t('筛选按已验证剔 / 留两个方向', () =>
+    app.includes("if (marks.verified && !libHasMark(rec, 'verified')) return false;") &&
+    app.includes("if (marks.unverified && libHasMark(rec, 'verified')) return false;"));
+  t('已验证 / 未验证 两颗 chip 互斥', () =>
+    app.includes("if (k === 'verified' && state.lib.marks.verified) state.lib.marks.unverified = false;") &&
+    app.includes("if (k === 'unverified' && state.lib.marks.unverified) state.lib.marks.verified = false;"));
+  t('卡片上有「标记已验证」按钮（data-libver）', () =>
+    app.includes('data-libver="${rec.modId}"') && app.includes("${isVer ? '✓ 已验证' : '标记已验证'}"));
+  t('index.html：吸顶区 #browseHead 的 div 是配平的（多删一行就会把 #browseArea 挤出 .main）', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8').split(/\r?\n/);
+  const start = html.findIndex(l => l.includes('class="bhead"'));
+  if (start < 0) return '#browseHead 不见了';
+  let depth = 0;
+  for (let i = start; i < html.length; i++) {
+    depth += (html[i].match(/<div\b/g) || []).length - (html[i].match(/<\/div>/g) || []).length;
+    if (depth === 0) {
+      const areaLine = html.findIndex(l => l.includes('id="browseArea"'));
+      return areaLine > i || 'browseArea 落在了 #browseHead 里面';
+    }
+  }
+  return '#browseHead 没有闭合';
+});
+t('index.html：#browseArea 在 #p-browse 里面', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  const a = html.indexOf('id="p-browse"'), b = html.indexOf('id="p-download"');
+  const area = html.indexOf('id="browseArea"');
+  return (a > -1 && area > a && area < b) || '#browseArea 不在 p-browse 区间里';
+});
+t('卡片封面上有蓝色「✓ 已验证」标签（合并卡 libCard 里也要有，不只是在线卡）', () => {
+  const i = app.indexOf('function libCard(');
+  if (i < 0) return 'libCard 不见了';
+  const body = app.slice(i, i + 4200);
+  return body.includes('class="tag ver"') || 'libCard 封面缺 tag ver';
+});
+  t('已安装抽屉底部有「标为已验证」', () => app.includes('data-gver="${esc(g.key)}"'));
+  t('Nexus 抽屉动作里有「标为已验证」', () => app.includes('data-vername='));
+  t('已验证用蓝色，不和绿的「不含 bug」撞色', () =>
+    css.includes('.cover .tag.ver') && css.includes('.btn.ver.on') && css.includes('tone-ver'));
+  t('toggleVerified 走 verified:add / verified:remove', () =>
+    app.includes('window.api.verified.remove(id)') && app.includes('window.api.verified.add(id'));
+  t('启动时 loadVerified 紧跟 loadBugs 调用', () => {
+    const i0 = app.lastIndexOf('await loadBugs();');
+    return i0 >= 0 && app.slice(i0, i0 + 220).includes('await loadVerified();');
+  });
+  t('verifyToggle 会刷新列表并提示', () => app.includes('已标记为已验证') && app.includes('已取消「已验证」标记'));
+
+  /* ---------- H. 多选 Shift / Ctrl（用户 2026-11-10） ---------- */
+  t('libRangeTo 按屏幕顺序取区间', () => app.includes('function libRangeTo(key, additive)') && app.includes('const order = libOrderKeys();'));
+  t('libOrderKeys 用 libShownRecords（含本地记录的 key）', () => {
+    const i = app.indexOf('function libOrderKeys()');
+    return i >= 0 && app.slice(i, i + 260).includes('libShownRecords');
+  });
+  t('Shift 走连选、Ctrl 走追加', () => app.includes('if (e && e.shiftKey) { libRangeTo(k, !!(e.ctrlKey || e.metaKey)); return; }'));
+  t('Shift 连选后统一同步卡片外观', () => app.includes('function libSyncCards()'));
+  t('锚点记在 state.libAnchor', () => app.includes('state.libAnchor = k;'));
+  t('共享导入 已验证 存到 state.verifiedIds', () => app.includes('verifiedIds: new Set(),'));
 // ---------------------------------------------------------------------------
 // 把「记录拼装 + 状态派生 + 过滤」整段切出来（从 LIB_STATUS_CHIPS 到 paintLibHead 之前）
 // ---------------------------------------------------------------------------
@@ -335,7 +397,7 @@ t('点卡片按记录键打开详情（装着→已安装抽屉，有 modId→Ne
   app.includes("if (lkey) { libOpenRecord(lkey); return; }") &&
   /function libOpenRecord\(key\)[\s\S]{0,400}openInstalledDrawer\(rec\.group\)[\s\S]{0,200}openNexusDrawer\(Number\(rec\.modId\)\)/.test(app));
 t('多选态点卡片 = 勾选（不弹抽屉）', () =>
-  /if \(state\.sel\.on\) \{\r?\n\s*if \(lkey\) \{ libToggleSelect\(lkey\); return; \}/.test(app));
+  app.includes('if (state.sel.on) {') && app.includes('if (lkey) { libClickSelect(lkey, e); return; }'));
 t('卡片就绪三种状态的主按钮各不相同', () =>
   app.includes('data-lib-install="${rec.modId}"') && app.includes('data-libdel="${rec.modId}"') && app.includes('data-dl-add="${rec.modId}"'));
 t('用户标记（喜欢 / 不感兴趣 / 有 bug）都挂在 modId 上，卡片上有投票按钮', () =>

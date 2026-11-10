@@ -675,3 +675,17 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
   background:rgba(58,190,110,.18); color:#eafff2; font-weight:600;
   box-shadow:inset 0 0 0 1px rgba(58,190,110,.7);
 }
+
+/* ---------------- 「已验证」标记（用户 2026-11-10） ----------------
+ * 有 bug 是红的（坏事），「不含 bug」是绿的（过滤掉坏的那些），
+ * 「已验证」用蓝色：它不是「没有 bug」，而是「我亲自跑通过」的另一种肯定，
+ * 颜色必须和绿分开，否则一眼分不出这两颗 chip 说的是不同的事。 */
+.cover .tag.ver{top:auto;bottom:8px;left:8px;color:#8fd3ff;border-color:rgba(76,160,255,.5);background:rgba(38,110,190,.22)}
+.cover .tag.nfile + .tag.ver,.cover .tag.bug + .tag.ver{left:auto;right:8px}
+.btn.ver{border-color:rgba(76,160,255,.4);color:#8fd3ff;background:rgba(38,110,190,.12)}
+.btn.ver:hover{background:rgba(38,110,190,.22)}
+.btn.ver.on{color:#eaf6ff;background:rgba(38,110,190,.42);border-color:rgba(76,160,255,.75);font-weight:600}
+.tabs.libmarks button.tone-ver{color:#8fd3ff;border-color:rgba(76,160,255,.4)}
+.tabs.libmarks button.tone-ver.on{background:rgba(38,110,190,.3);color:#eaf6ff;box-shadow:inset 0 0 0 1px rgba(76,160,255,.7)}
+.tabs.libmarks button.tone-dim{color:var(--dim2)}
+.tabs.libmarks button.tone-dim.on{background:var(--panel2);color:var(--text);font-weight:600}

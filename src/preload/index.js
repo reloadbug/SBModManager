@@ -148,6 +148,13 @@ contextBridge.exposeInMainWorld('api', {
     add: (modId, meta) => invoke('bugs:add', modId, meta),
     remove: (modId) => invoke('bugs:remove', modId)
   },
+  // 「已验证」标记：用户实测过能用的 Mod（与 bugs 平级、同样以 modId 为键）
+  verified: {
+    list: () => invoke('verified:list'),
+    ids: () => invoke('verified:ids'),
+    add: (modId, meta) => invoke('verified:add', modId, meta),
+    remove: (modId) => invoke('verified:remove', modId)
+  },
 
   nxm: {
     status: () => invoke('nxm:status'),

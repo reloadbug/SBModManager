@@ -1465,6 +1465,28 @@ const TABLE = [
   ['把标记过「有 bug」的 Mod 藏起来', [
     '把標記過「有 bug」的 Mod 藏起來','Hide the mods you marked as buggy','「バグあり」に印を付けた Mod を隠す','버그 있음으로 표시한 Mod 숨기기','Скрыть моды с отметкой «есть баг»','Als fehlerhaft markierte Mods ausblenden','Masquer les mods marqués comme bugués','Ocultar los mods marcados como defectuosos','Ocultar os mods marcados como com falha','Nascondi i mod segnati come con bug','Ukryj mody oznaczone jako błędne','Hatalı olarak işaretlenenleri gizle','ซ่อน Mod ที่ทำเครื่องหมายว่ามีบั๊ก'
   ]],
+﻿  // ㉒「已验证」标记（用户 2026-11-10：实测好用的可以标为已验证）
+  ['✓ 已验证', [
+    '✓ 已驗證','✓ Verified','✓ 検証済み','✓ 검증됨','✓ Проверено','✓ Geprüft','✓ Vérifié','✓ Verificado','✓ Verificado','✓ Verificato','✓ Sprawdzony','✓ Doğrulandı','✓ ยืนยันแล้ว'
+  ]],
+  ['未验证', [
+    '未驗證','Not verified','未検証','미검증','Не проверено','Nicht geprüft','Non vérifié','No verificado','Não verificado','Non verificato','Niezweryfikowane','Doğrulanmadı','ยังไม่ยืนยัน'
+  ]],
+  ['标记已验证', [
+    '標記已驗證','Mark as verified','検証済みにする','검증됨으로 표시','Отметить как проверенный','Als geprüft markieren','Marquer comme vérifié','Marcar como verificado','Marcar como verificado','Segna come verificato','Oznacz jako sprawdzony','Doğrulandı olarak işaretle','ทำเครื่องหมายว่ายืนยันแล้ว'
+  ]],
+  ['✓ 标为已验证', [
+    '✓ 標為已驗證','✓ Mark verified','✓ 検証済みにする','✓ 검증 표시','✓ Отметить','✓ Als geprüft markieren','✓ Marquer vérifié','✓ Marcar verificado','✓ Marcar verificado','✓ Segna verificato','✓ Oznacz','✓ İşaretle','✓ ทำเครื่องหมาย'
+  ]],
+  ['点一下取消「已验证」标记', [
+    '點一下取消「已驗證」標記','Click to remove the "verified" mark','クリックで「検証済み」を解除','클릭하면 「검증됨」 표시가 해제됩니다','Нажмите, чтобы снять отметку «проверено»','Klicken, um die Markierung „Geprüft“ zu entfernen','Cliquez pour retirer la marque « vérifié »','Haz clic para quitar la marca «verificado»','Clique para remover a marca «verificado»','Clicca per togliere il segno «verificato»','Kliknij, aby usunąć oznaczenie „sprawdzony”','«Doğrulandı» işaretini kaldırmak için tıkla','คลิกเพื่อยกเลิกเครื่องหมาย «ยืนยันแล้ว»'
+  ]],
+  ['我实测过它能用 —— 打上「已验证」，之后可以按这个筛', [
+    '我實測過它能用 —— 打上「已驗證」，之後可以按這個篩','I tested it and it works — mark it verified so you can filter by it later','実際に動いたので「検証済み」を付けます（後で絞り込めます）','직접 써 보고 정상 작동해서 「검증됨」으로 표시합니다(나중에 필터 가능)','Я проверил, всё работает — отметить как проверенный, чтобы потом фильтровать','Selbst getestet und läuft — als geprüft markieren, um später danach zu filtern','Testé et fonctionnel — marquez-le vérifié pour pouvoir filtrer ensuite','Lo probé y funciona: márcalo como verificado para poder filtrar después','Testei e funciona — marque como verificado para filtrar depois','Provato e funziona: segnalo come verificato per filtrare dopo','Sprawdziłem, działa — oznacz jako sprawdzony, by później filtrować','Kendim denedim, çalışıyor — doğrulandı olarak işaretle, sonra filtreleyebilirsin','ฉันลองแล้วใช้งานได้ — ทำเครื่องหมายว่ายืนยันแล้ว เพื่อกรองภายหลัง'
+  ]],
+  ['把标记过「已验证」的 Mod 藏起来', [
+    '把標記過「已驗證」的 Mod 藏起來','Hide the mods you marked as verified','「検証済み」に印を付けた Mod を隠す','검증됨으로 표시한 Mod 숨기기','Скрыть моды с отметкой «проверено»','Als geprüft markierte Mods ausblenden','Masquer les mods marqués comme vérifiés','Ocultar los mods marcados como verificados','Ocultar os mods marcados como verificados','Nascondi i mod segnati come verificati','Ukryj mody oznaczone jako sprawdzone','Doğrulanmış olarak işaretlenenleri gizle','ซ่อน Mod ที่ทำเครื่องหมายว่ายืนยันแล้ว'
+  ]],
 ];
 
 /**

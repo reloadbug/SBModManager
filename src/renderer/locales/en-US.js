@@ -1241,5 +1241,12 @@
     '不含 bug': 'No bugged mods',
     '只看标记过「有 bug」的 Mod': 'Only show mods you marked as buggy',
     '把标记过「有 bug」的 Mod 藏起来': 'Hide the mods you marked as buggy',
+    '✓ 已验证': '✓ Verified',
+    '未验证': 'Not verified',
+    '标记已验证': 'Mark as verified',
+    '✓ 标为已验证': '✓ Mark verified',
+    '点一下取消「已验证」标记': 'Click to remove the "verified" mark',
+    '我实测过它能用 —— 打上「已验证」，之后可以按这个筛': 'I tested it and it works — mark it verified so you can filter by it later',
+    '把标记过「已验证」的 Mod 藏起来': 'Hide the mods you marked as verified',
   });
 })();

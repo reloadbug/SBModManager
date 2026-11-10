@@ -1241,5 +1241,12 @@
     '不含 bug': 'Sans mods bugués',
     '只看标记过「有 bug」的 Mod': 'Afficher uniquement les mods marqués comme bugués',
     '把标记过「有 bug」的 Mod 藏起来': 'Masquer les mods marqués comme bugués',
+    '✓ 已验证': '✓ Vérifié',
+    '未验证': 'Non vérifié',
+    '标记已验证': 'Marquer comme vérifié',
+    '✓ 标为已验证': '✓ Marquer vérifié',
+    '点一下取消「已验证」标记': 'Cliquez pour retirer la marque « vérifié »',
+    '我实测过它能用 —— 打上「已验证」，之后可以按这个筛': 'Testé et fonctionnel — marquez-le vérifié pour pouvoir filtrer ensuite',
+    '把标记过「已验证」的 Mod 藏起来': 'Masquer les mods marqués comme vérifiés',
   });
 })();

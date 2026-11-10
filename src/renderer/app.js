@@ -52,6 +52,9 @@ const state = {
   // 「这个 Mod 有 bug」标记（Nexus modId 字符串集合）。和黑名单不同：它**不影响**
   // 浏览页显示，只在安装路径上拦一道（批量安装先问一句）。
   bugIds: new Set(),
+  // 「已验证」标记（用户实测过能用的 Nexus modId 集合）。和「有 bug」是同一类**个人实测结论**：
+  // 那个说「装进去会出事」，这个说「我确认真能跑」。两者互不排斥，只跟「未验证」这颗筛选互斥。
+  verifiedIds: new Set(),
   modalTask: null,   // 「选择要安装哪些内容」对话框对应的下载任务 id
   pick: new Set(),   // 该对话框里已勾选的候选目录（归档内相对路径）
   pickGroups: null,  // dir → 同组目录数组（同一件东西的不同版本，组内单选）
@@ -1657,6 +1660,11 @@ function openInstalledDrawer(g) {
         ? '点一下取消标记（之后批量安装不会再提示）'
         : '打个记号：这个 Mod 装了会出问题。浏览页照常显示，批量安装前会先问你跳过它'
     }">${state.bugIds.has(String(srcModId)) ? '⚠ 已标有 bug' : '⚠ 标为有 bug'}</button>` : ''}
+    ${srcModId ? `<button class="btn ver${state.verifiedIds.has(String(srcModId)) ? ' on' : ''}" data-gver="${esc(g.key)}" title="${
+      state.verifiedIds.has(String(srcModId))
+        ? '点一下取消「已验证」标记'
+        : '我实测过它能用：打上「已验证」，之后在 Mod 库里能直接筛出来'
+    }">${state.verifiedIds.has(String(srcModId)) ? '✓ 已验证' : '✓ 标为已验证'}</button>` : ''}
   `;
 
   showDrawer();
@@ -2134,6 +2142,7 @@ function browseCard(n) {
   const st = n.local ? LOCAL_UI[n.local.state] : null;
   // 标过「有 bug」的 Mod 在在线列表里也要红着（免得手滑又下一遍）
   const isBug = installedIsBug(n);
+  const isVer = !!(n.modId && state.verifiedIds && typeof state.verifiedIds.has === 'function' && state.verifiedIds.has(String(n.modId)));
   let action;
   if (!st) {
     action = `<button class="btn sm" data-dl-add="${n.modId}" title="加入下载队列（之后自动下载并安装）">⬇ 下载</button>`;
@@ -2159,6 +2168,7 @@ function browseCard(n) {
       <div class="ck${state.sel.ids.has(String(n.modId)) ? ' on' : ''}" data-ck="${n.modId}">✓</div>
       ${st ? `<span class="lb ${st.cls}">${st.badge}</span>` : ''}
       ${isBug ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>' : ''}
+      ${isVer ? '<span class="tag ver" title="我实测过它能用">✓ 已验证</span>' : ''}
       ${n.categoryZh ? `<span class="cat">${esc(n.categoryZh)}</span>` : ''}
       ${n.adult ? `<span class="tag" style="color:#E88;border-color:#5A2A28;background:rgba(217,83,79,.16)">成人内容</span>` : ''}
     </div>
@@ -2690,7 +2700,10 @@ const LIB_MARK_CHIPS = [
   { k: 'blocked', label: '👎 不感兴趣' },
   // 用户 2026-11-10：有 bug 的要**红**，没 bug 的要**绿** —— 两颗 chip 说相反的话，因而互斥
   { k: 'bug', label: '⚠ 有 bug', tone: 'bad' },
-  { k: 'nobug', label: '不含 bug', tone: 'good' }
+  { k: 'nobug', label: '不含 bug', tone: 'good' },
+  // 用户 2026-11-10：实测过能用的打个「已验证」，反向那颗叫「未验证」（同样互斥）
+  { k: 'verified', label: '✓ 已验证', tone: 'ver' },
+  { k: 'unverified', label: '未验证', tone: 'dim' }
 ];
 
 /** 记录的状态徽标 */
@@ -2709,6 +2722,7 @@ function libMarkSet(k) {
   if (k === 'liked') return state.browse.liked;
   if (k === 'blocked') return state.browse.blocked;
   if (k === 'bug') return state.bugIds;
+  if (k === 'verified') return state.verifiedIds;
   return null;
 }
 
@@ -2717,6 +2731,7 @@ function libHasMark(rec, k) {
   if (!rec || !rec.modId) return false;
   // 「不含 bug」不是一个开关，而是「有没有 bug 标记」的取反 —— 别去 libMarkSet 里找它
   if (k === 'nobug') return !libHasMark(rec, 'bug');
+  if (k === 'unverified') return !libHasMark(rec, 'verified');
   const s = libMarkSet(k);
   return !!(s && typeof s.has === 'function' && s.has(String(rec.modId)));
 }
@@ -2880,6 +2895,8 @@ function libFilterRecords(recs) {
     if (marks.blocked && !libHasMark(rec, 'blocked')) return false;
     if (marks.bug && !libHasMark(rec, 'bug')) return false;
     if (marks.nobug && libHasMark(rec, 'bug')) return false;
+    if (marks.verified && !libHasMark(rec, 'verified')) return false;
+    if (marks.unverified && libHasMark(rec, 'verified')) return false;
     // 黑名单默认不显示（老行为），除非用户自己点开「不感兴趣」这一档看
     if (hideBlocked && !marks.blocked && libHasMark(rec, 'blocked')) return false;
 
@@ -2926,11 +2943,19 @@ function paintLibHead(recs) {
   const marks = $('#libMarks');
   if (marks) {
     const cur = state.lib.marks || {};
-    const bugged = (recs || []).filter(r => libHasMark(r, 'bug')).length;
+    // 反向档（不含 bug / 未验证）= 总数 − 正向档的条数：它们不是一个真开关
+    const MK_TIP = {
+      nobug: '把标记过「有 bug」的 Mod 藏起来',
+      unverified: '把标记过「已验证」的 Mod 藏起来'
+    };
+    const MK_INVERSE = { nobug: 'bug', unverified: 'verified' };
     marks.innerHTML = LIB_MARK_CHIPS.map(c => {
-      const total = c.k === 'nobug' ? (recs || []).length - bugged : (recs || []).filter(r => libHasMark(r, c.k)).length;
+      const inv = MK_INVERSE[c.k];
+      const total = inv
+        ? (recs || []).length - (recs || []).filter(r => libHasMark(r, inv)).length
+        : (recs || []).filter(r => libHasMark(r, c.k)).length;
       const tone = c.tone ? ` tone-${c.tone}` : '';
-      const tip = c.k === 'nobug' ? '把标记过「有 bug」的 Mod 藏起来' : `只看${c.label}的 Mod`;
+      const tip = MK_TIP[c.k] || `只看${c.label}的 Mod`;
       return `<button data-libmk="${c.k}" class="${cur[c.k] ? 'on' : ''}${tone}" title="${tip}">${c.label}${total ? `<span class="dir">${fmtNum(total)}</span>` : ''}</button>`;
     }).join('');
   }
@@ -2943,6 +2968,7 @@ function libCard(rec) {
   const key = rec.key;
   const selOn = state.sel.ids.has(key);
   const isBug = libHasMark(rec, 'bug');
+  const isVer = libHasMark(rec, 'verified');
   const img = rec.image || (rec.modId && typeof coverForMod === 'function' ? coverForMod(rec.modId) : '');
   const nfiles = rec.kind === 'installed'
     ? (rec.files ? `<span class="tag nfile" title="这个 Mod 装了 ${rec.files} 个文件">${rec.files} 个已装文件</span>` : '')
@@ -2964,6 +2990,11 @@ function libCard(rec) {
   } else {
     acts = `<button class="btn sm" data-dl-add="${rec.modId}" title="加入下载队列（之后自动下载并安装）">⬇ 下载</button>`;
   }
+  // 「已验证」那颗按钮：只有认得出 Nexus modId 的条目才标得上（标记靠 modId 认人）
+  const verBtn = rec.modId
+    ? `<button class="btn sm ver${isVer ? ' on' : ''}" data-libver="${rec.modId}" title="${isVer ? '点一下取消「已验证」标记' : '我实测过它能用 —— 打上「已验证」，之后可以按这个筛'}">${isVer ? '✓ 已验证' : '标记已验证'}</button>`
+    : '';
+  if (verBtn) acts += verBtn;
   const vote = rec.modId ? voteHtml({ modId: rec.modId }) : '';
   const sw = rec.kind === 'installed' && rec.groupKind !== 'prereq'
     ? `<button class="sw${rec.enabled ? '' : ' off'}${rec.partial ? ' part' : ''}" data-gtoggle="${esc(key)}" title="${rec.partial ? '部分文件已启用 —— 点击全部启用' : (rec.enabled ? '点击禁用' : '点击启用')}"></button>`
@@ -2978,6 +3009,7 @@ function libCard(rec) {
       <span class="lb ${b.c}">${b.t}</span>
       ${nfiles}
       ${isBug ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>' : ''}
+      ${isVer ? '<span class="tag ver" title="我实测过它能用">✓ 已验证</span>' : ''}
       ${typeTag}
       ${sw}
     </div>
@@ -3064,16 +3096,91 @@ function setLibStatus(v, opts = {}) {
 }
 
 /** 标记筛选开 / 关 */
+/**
+ * 切换某个 Mod 的「已验证」标记（用户 2026-11-10：实测好用的可以标为已验证）。
+ * 与「有 bug」同一套存法（主进程 verified.json，键只有 Nexus modId），
+ * 所以删掉 Mod 文件也不会丢标记 —— 那条数据跟文件无关。
+ */
+async function toggleVerified(modId, name) {
+  const id = Number(modId) || 0;
+  if (!id) { toast('这个条目没有 Nexus Mod ID，没法标记（标记靠 Mod ID 认人）', 'warn'); return; }
+  const on = state.verifiedIds.has(String(id));
+  try {
+    if (on) await call(window.api.verified.remove(id));
+    else await call(window.api.verified.add(id, { name: name || '' }));
+  } catch { return; /* call() 已提示 */ }
+  await loadVerified();
+  toast(on ? `已取消「已验证」标记${name ? '：' + name : ''}` : `已标记为已验证${name ? '：' + name : ''} —— 之后可以按「已验证」筛`, 'ok');
+  renderBrowse();
+}
+
+/** 已安装抽屉底部那颗「标为已验证」（与「有 bug」并排） */
+async function doVerifyToggleGroup(key) {
+  const g = groupOf(key);
+  if (!g) return;
+  const meta = g.meta || {};
+  const src = meta.source || {};
+  const modId = Number(g.modId || src.modId || meta.modId || 0) || 0;
+  await toggleVerified(modId, g.name);
+  reopenInstalledDrawer(key);
+}
+
 function toggleLibMark(k) {
   if (!state.lib.marks) state.lib.marks = { liked: false, blocked: false, bug: false, nobug: false };
   state.lib.marks[k] = !state.lib.marks[k];
   // 「有 bug」和「不含 bug」说的是相反的话：点亮一个必须关掉另一个，否则列表永远是空的
   if (k === 'bug' && state.lib.marks.bug) state.lib.marks.nobug = false;
   if (k === 'nobug' && state.lib.marks.nobug) state.lib.marks.bug = false;
+  // 「已验证 / 未验证」同理：说的是相反的话，必须互斥
+  if (k === 'verified' && state.lib.marks.verified) state.lib.marks.unverified = false;
+  if (k === 'unverified' && state.lib.marks.unverified) state.lib.marks.verified = false;
   renderBrowse();
 }
 
 /** 多选：按记录键（mod:<id> / lib:<id> / 在线就是 modId 字符串） */
+/**
+ * 多选态点卡片：Shift = 选中一段（按当前列表顺序），Ctrl/Cmd = 追加，普通点 = 反选自己。
+ * 合并列表里既有本地记录（data-lkey）也有在线卡，所以顺序表也按同一个键取。
+ */
+function libClickSelect(key, e) {
+  const k = String(key);
+  if (e && e.shiftKey) { libRangeTo(k, !!(e.ctrlKey || e.metaKey)); return; }
+  state.libAnchor = k;
+  libToggleSelect(k);
+}
+
+/** 当前列表里可选的键，按屏幕上看到的顺序（Shift 连选靠它算区间） */
+function libOrderKeys() {
+  const recs = (state.libShownRecords && state.libShownRecords.length) ? state.libShownRecords : [];
+  return recs.map(r => (r.kind === 'online' ? String(r.modId) : r.key));
+}
+
+/** 把卡片的勾选外观跟 state.sel.ids 对齐（Shift 一次选一片时用） */
+function libSyncCards() {
+  document.querySelectorAll('#browseArea .card').forEach(c => {
+    const k = String(c.getAttribute('data-lkey') || c.getAttribute('data-modid') || '');
+    const on = state.sel.ids.has(k);
+    c.classList.toggle('sel', on);
+    const box = c.querySelector('.ck');
+    if (box) box.classList.toggle('on', on);
+  });
+}
+
+/** Shift 连选：从上次点的锚点到这一张，整段选中（additive=true 时不清空原有选择） */
+function libRangeTo(key, additive) {
+  const order = libOrderKeys();
+  const to = order.indexOf(String(key));
+  if (to < 0) return;
+  const at = order.indexOf(String(state.libAnchor || ''));
+  if (at < 0) { state.libAnchor = String(key); libToggleSelect(key); return; }
+  if (!additive) state.sel.ids.clear();
+  const a = Math.min(at, to), b = Math.max(at, to);
+  for (let i = a; i <= b; i++) state.sel.ids.add(order[i]);
+  state.sel.all = false;
+  libSyncCards();
+  selUpdateBar();
+}
+
 function libToggleSelect(key) {
   const k = String(key);
   if (state.sel.ids.has(k)) state.sel.ids.delete(k); else state.sel.ids.add(k);
@@ -3360,6 +3467,14 @@ async function loadBugs() {
     const ids = await call(window.api.bugs.ids(), { silent: true });
     state.bugIds = new Set((ids || []).map(String));
   } catch { /* 同上：静默当作没有标记 */ }
+}
+
+/** 「已验证」标记：主进程 verified.json 里的 modId 列表，渲染层只用 Set */
+async function loadVerified() {
+  try {
+    const ids = await call(window.api.verified.ids(), { silent: true });
+    state.verifiedIds = new Set((ids || []).map(String));
+  } catch { /* 静默当作没有标记 */ }
 }
 
 /** 同步顶部「只看喜欢」按钮的选中态 */
@@ -3821,6 +3936,7 @@ async function openNexusDrawer(modId) {
       <button class="btn" data-gallery="${m.modId}">刷新图集</button>
       <button class="btn" data-install="${m.modId}">手动安装</button>
       ${libOne ? `<button class="btn" data-lib-install="${m.modId}" title="管理器里已经有这份安装包（${esc(libOne.filename)}），直接装进当前游戏目录">装进游戏</button>` : ''}
+      ${m.modId ? `<button class="btn ver${state.verifiedIds.has(String(m.modId)) ? ' on' : ''}" data-libver="${m.modId}" data-vername="${esc(m.name || '')}" title="${state.verifiedIds.has(String(m.modId)) ? '点一下取消「已验证」标记' : '我实测过它能用 —— 打上「已验证」'}">${state.verifiedIds.has(String(m.modId)) ? '✓ 已验证' : '✓ 标为已验证'}</button>` : ''}
       <button class="btn p" data-dl-add="${m.modId}">⬇ 加入下载队列</button>
     `;
     loadFiles(m.modId);
@@ -8002,6 +8118,11 @@ function bindEvents() {
     if (libSt) { setLibStatus(libSt.dataset.libst); return; }
     const libMk = t.closest('[data-libmk]');
     if (libMk) { toggleLibMark(libMk.dataset.libmk); return; }
+    // 「已验证」开关（卡片、Nexus 抽屉、已安装抽屉都用同一颗）
+    const libVer = t.closest('[data-libver]');
+    if (libVer) { e.stopPropagation(); await toggleVerified(libVer.dataset.libver, libVer.dataset.vername || ''); return; }
+    const gver = t.closest('[data-gver]');
+    if (gver) { e.stopPropagation(); await doVerifyToggleGroup(gver.dataset.gver); return; }
     if (t.closest('[data-dl-cleardone]')) { await dlClearDone(); return; }
     if (t.closest('[data-dl-refreshplans]')) { await dlRefreshPlans(); return; }
 
@@ -8010,7 +8131,7 @@ function bindEvents() {
       const lkey = card.dataset.lkey || '';
       // 多选模式：点卡片 = 勾选/取消，不弹详情抽屉（要下载的那颗按钮仍单独生效）
       if (state.sel.on) {
-        if (lkey) { libToggleSelect(lkey); return; }
+        if (lkey) { libClickSelect(lkey, e); return; }
         if (card.dataset.modid) { selClick(card.dataset.modid, e); return; }
         return;
       }
@@ -8903,6 +9024,8 @@ window.__refreshAll = refreshAll;
   await loadFavorites();
   // 「有 bug」标记也要先拿到：卡片角标与批量安装的提示都靠它
   await loadBugs();
+  // 「已验证」标记同样要先拿到：卡片标签与顶部筛选都靠它
+  await loadVerified();
 
   await refreshAll();
 

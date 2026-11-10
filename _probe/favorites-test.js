@@ -282,7 +282,7 @@ async function main() {
 
     // ---- 卡片按钮 ----
     t('browseCard 用 voteHtml(n) 画投票按钮', () =>
-      /function browseCard\(n\)[\s\S]{0,2600}\$\{voteHtml\(n\)\}/.test(code) || '缺失');
+      /function browseCard\(n\)[\s\S]{0,3200}\$\{voteHtml\(n\)\}/.test(code) || '缺失');
     t('旧的「🚫 不喜欢」文字按钮已移除', () => !/🚫 不喜欢</.test(code) || '还残留文字按钮');
     t('旧的 noBtn 变量已移除', () => !/const noBtn = /.test(code) || '还残留 noBtn');
     // 第三十一轮：投票按钮与下载按钮同处一个 .acts 容器，且不再画在封面里。
@@ -335,7 +335,7 @@ async function main() {
     t('loadFavorites 取不到时不把 mod 藏掉（只当没置顶）', () =>
       /async function loadFavorites[\s\S]{0,600}catch \{[\s\S]{0,200}\}/.test(code) || '缺失');
     t('updateLikeTabs 同步选中态', () => /function updateLikeTabs\(\)[\s\S]{0,300}onlyLiked/.test(code) || '缺失');
-  t('点喜欢 chip 只筛喜欢过的', () => /function toggleLibMark\([\s\S]{0,400}renderBrowse\(\);/.test(code) && code.includes("marks.liked && !libHasMark(rec, 'liked')") || '缺失');
+  t('点喜欢 chip 只筛喜欢过的', () => /function toggleLibMark\([\s\S]{0,900}renderBrowse\(\);/.test(code) && code.includes("marks.liked && !libHasMark(rec, 'liked')") || '缺失');
     t('「只看喜欢」与「只看黑名单」互斥（点一个关掉另一个）', () =>
       /if \(mode === 'only' && state\.browse\.onlyLiked\)/.test(code) || '缺失');
     t('空态有「只看喜欢」的专门文案', () => /还没有点过喜欢的 Mod/.test(code) || '缺失');

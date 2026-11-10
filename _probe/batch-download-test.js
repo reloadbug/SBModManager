@@ -310,7 +310,7 @@ t('CSS 有多选态复选框（默认隐藏，body.sel 才显示）', () => /\.c
 t('CSS 给选中卡片加边框', () => /body\.sel \.card\.sel\{border-color:var\(--accent\)/.test(css));
 t('CSS 让「成人内容」角标给复选框让位', () => /body\.sel \.cover \.tag\{left:38px\}/.test(css));
 t('卡片渲染带复选框与选中类', () => /class="card\$\{state\.sel\.ids\.has\(String\(n\.modId\)\) \? ' sel' : ''\}/.test(code) && /class="ck\$\{state\.sel\.ids\.has\(String\(n\.modId\)\) \? ' on' : ''\}" data-ck=/.test(code));
-t('多选态下点卡片 = 勾选，不弹抽屉', () => code.includes('if (lkey) { libToggleSelect(lkey); return; }') && code.includes('if (card.dataset.modid) { selClick(card.dataset.modid, e); return; }'));
+t('多选态下点卡片 = 勾选，不弹抽屉', () => code.includes('if (lkey) { libClickSelect(lkey, e); return; }') && code.includes('if (card.dataset.modid) { selClick(card.dataset.modid, e); return; }'));
 t('Shift 连选 / Ctrl 单张：selClick 把修饰键交给 selRangeTo（2026-11-10 用户要求）', () =>
   /function selClick\(modId, e\) \{[\s\S]{0,240}shiftKey && selRangeTo\(k, !!\(e\.ctrlKey \|\| e\.metaKey\)\)/.test(code) &&
   /function selRangeTo\(modId, additive\) \{[\s\S]{0,400}if \(!additive\) state\.sel\.ids\.clear\(\);/.test(code) &&

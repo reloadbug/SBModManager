@@ -1241,5 +1241,12 @@
     '不含 bug': 'Hatalı olmayanlar',
     '只看标记过「有 bug」的 Mod': 'Yalnızca hatalı olarak işaretlediklerini göster',
     '把标记过「有 bug」的 Mod 藏起来': 'Hatalı olarak işaretlenenleri gizle',
+    '✓ 已验证': '✓ Doğrulandı',
+    '未验证': 'Doğrulanmadı',
+    '标记已验证': 'Doğrulandı olarak işaretle',
+    '✓ 标为已验证': '✓ İşaretle',
+    '点一下取消「已验证」标记': '«Doğrulandı» işaretini kaldırmak için tıkla',
+    '我实测过它能用 —— 打上「已验证」，之后可以按这个筛': 'Kendim denedim, çalışıyor — doğrulandı olarak işaretle, sonra filtreleyebilirsin',
+    '把标记过「已验证」的 Mod 藏起来': 'Doğrulanmış olarak işaretlenenleri gizle',
   });
 })();
