@@ -1269,5 +1269,8 @@
     '已标记「已验证」：%s 个': '«Doğrulandı» işaretlendi: %s',
     '已取消「已验证」：%s 个': '«Doğrulandı» işareti kaldırıldı: %s',
     '（失败 %s 个）': '(%s başarısız)',
+    '显示内置脚本': 'Yerleşik betikleri göster',
+    '显示 UE4SS 自带的 10 个内置脚本模组（默认藏起来，免得和真 Mod 混在一起）': 'UE4SS ile gelen 10 betik modunu göster (gerçek modlarla karışmaması için varsayılan olarak gizli)',
+    '本地记录的分类要等 Nexus 信息补全后才出现': 'Yerel kayıtların kategorileri Nexus bilgileri tamamlanınca görünür',
   });
 })();

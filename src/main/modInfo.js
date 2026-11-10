@@ -48,6 +48,12 @@ function fromCatalog(entry) {
     pictureUrl: pic,
     url: entry.url || '',
     downloads: Number(entry.downloads) || 0,
+    endorsements: Number(entry.endorsements) || 0,
+    // 分类 / 更新时间只在目录里有，老档案没存过 —— 一起补上并落盘，
+    // 这样「按分类筛」「按最近更新排」在纯本地状态下也能用。
+    category: entry.category || '',
+    categoryZh: entry.categoryZh || '',
+    updatedAt: entry.updatedAt || '',
     adult: !!entry.adult,
     source: 'catalog'
   };

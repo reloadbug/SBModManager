@@ -454,6 +454,133 @@ t('selUpdateBar 里同步这五颗：全标过时点亮并换成「取消…」�
   app.includes("m.el.classList.toggle('on', allHas);") &&
   app.includes("on: '取消喜欢', off: '👍 喜欢'") &&
   app.includes("on: '取消「已验证」', off: '✓ 已验证'"));
+/* ---------- I. 恢复「Mod 库」缺的功能（用户 2026-11-11） ---------- */
+t('顶部有「显示内置脚本」开关（data-libbuiltin）', () =>
+  html.includes('data-libbuiltin="1"') && html.includes('显示内置脚本') && app.includes("t.closest('[data-libbuiltin]')"));
+t('开关点了会写回 config 并重画', () =>
+  /state\.showBuiltin = !state\.showBuiltin;[\s\S]{0,260}api\.config\.set\(/.test(app) &&
+  /state\.showBuiltin = !state\.showBuiltin;[\s\S]{0,400}renderBrowse\(\);/.test(app));
+t('状态档补了「未登记」「已关联」', () =>
+  app.includes("{ v: 'unreg', label: '未登记' }") && app.includes("{ v: 'linked', label: '已关联' }") &&
+  app.includes("else if (st === 'unreg') { if (rec.modId) return false; }") &&
+  app.includes("else if (st === 'linked') { if (!rec.link) return false; }"));
+t('libStatusCounts 统计未登记 / 已关联', () =>
+  /if \(!rec\.modId\) c\.unreg\+\+;\s*else if \(rec\.link\) c\.linked\+\+;/.test(app));
+t('分类词表转译：英文 value 先翻成中文再比', () =>
+  app.includes('const hit = f.categories.find(c => String(c.value) === catRaw);') &&
+  app.includes('if (hit && hit.zh) return String(hit.zh);'));
+t('分类筛选只在「在线」档位或用户主动选过时生效（catSet）', () =>
+  app.includes("const catRaw = String((st === 'online' || state.lib.catSet) ? (state.browse.category || '') : '');") &&
+  app.includes('state.lib.catSet = true;') && app.includes('state.lib.catSet = false;'));
+t('分类一条都匹配不上时当作没选（不至于把列表筛空）', () =>
+  app.includes('const catActive = !!catRaw && (recs || []).some(catOk);') &&
+  app.includes('if (catActive && !catOk(rec)) return false;'));
+t('成人内容三档生效', () =>
+  app.includes("if (am === 'hide' && rec.adult) return false;") &&
+  app.includes("if (am === 'only' && !rec.adult) return false;"));
+t('内置脚本默认藏起来（showBuiltin 关闭时剔掉 builtin）', () =>
+  app.includes('if (!state.showBuiltin && rec.builtin) return false;'));
+t('合并态也有分类筛选条（renderLibFilters）', () =>
+  app.includes('function renderLibFilters(recs)') && app.includes('renderLibFilters(recs);') &&
+  app.includes('本地记录的分类要等 Nexus 信息补全后才出现'));
+t('本地记录的元信息靠 info.local 一次性补齐（不联网）', () =>
+  app.includes('function libPrefetchInfo(recs)') && app.includes('window.api.info.local(') &&
+  app.includes('const want = [];') && app.includes('state.libInfoAsked'));
+t('在线四档排序已接进 applyLibSort', () =>
+  app.includes("online === 'downloads' || online === 'endorsements'") &&
+  app.includes("online === 'newest' || online === 'updated'") &&
+  app.includes('if (!fa) return 1;'));
+t('paintLibHead 用 $$ 选按钮（单个 $ 没有 forEach）', () => {
+  const i = app.indexOf('function paintLibHead(');
+  if (i < 0) return 'paintLibHead 不见了';
+  const body = app.slice(i, i + 2400);
+  const bad = /(^|[^$])\$\('#(sortTabs|adultTabs) button'\)\s*\.forEach/.test(body);
+  return !bad || '还在用单元素选择器选按钮';
+});
+t('$$ 助手对空容器容错', () => app.includes('const $$ = (s, r = document) => (r ? [...r.querySelectorAll(s)] : []);'));
+t('合并档位的排序 / 成人 / 分类 / 标签委托走就地重画', () =>
+  app.includes('if (merged) { renderBrowse(); return; }') &&
+  app.includes("(state.lib.status || 'all') !== 'online'"));
+t('功能断言：用户选过分类后，英文 value 能命中中文档案的记录', () => {
+  state.lib.catSet = true;
+  state.browse.category = 'Outfits';
+  state.browse.facets = { categories: [{ value: 'Outfits', zh: '服装' }] };
+  state.showBuiltin = true;
+  const recs = [
+    { key: 'a', kind: 'downloaded', modId: 1, categoryZh: '服装' },
+    { key: 'b', kind: 'downloaded', modId: 2, categoryZh: '杂项' },
+    { key: 'c', kind: 'downloaded', modId: 3 }
+  ];
+  const got = ctx.libFilterRecords(recs).map(r => r.key);
+  state.browse.category = '';
+  state.lib.catSet = false;
+  return JSON.stringify(got) === JSON.stringify(['a']) || '实际 ' + JSON.stringify(got);
+});
+t('功能断言：上次会话带回来的分类不作用于合并档位（只有在线档位认）', () => {
+  state.lib.catSet = false;
+  state.browse.category = 'Outfits';
+  state.browse.facets = { categories: [{ value: 'Outfits', zh: '服装' }] };
+  const recs = [
+    { key: 'a', kind: 'downloaded', modId: 1, categoryZh: '服装' },
+    { key: 'b', kind: 'downloaded', modId: 2, categoryZh: '杂项' }
+  ];
+  const local = ctx.libFilterRecords(recs).map(r => r.key);
+  state.lib.status = 'online';
+  const online = ctx.libFilterRecords(recs.map(r => Object.assign({}, r, { kind: 'online' }))).map(r => r.key);
+  state.lib.status = 'all';
+  state.browse.category = '';
+  return (JSON.stringify(local) === JSON.stringify(['a', 'b']) && JSON.stringify(online) === JSON.stringify(['a']))
+    || 'local=' + JSON.stringify(local) + ' online=' + JSON.stringify(online);
+});
+t('功能断言：分类词表对不上时不过滤（不至于整页空）', () => {
+  state.lib.catSet = true;
+  state.browse.category = 'Outfits';
+  state.browse.facets = null;
+  const recs = [{ key: 'a', kind: 'downloaded', modId: 1, categoryZh: '服装' }];
+  const got = ctx.libFilterRecords(recs).map(r => r.key);
+  state.browse.category = '';
+  state.lib.catSet = false;
+  return JSON.stringify(got) === JSON.stringify(['a']) || '实际 ' + JSON.stringify(got);
+});
+t('功能断言：成人「隐藏」剔掉成人条目、「只看成人」只留成人', () => {
+  const recs = [
+    { key: 'a', kind: 'online', modId: 1, adult: true },
+    { key: 'b', kind: 'online', modId: 2, adult: false }
+  ];
+  state.browse.adultMode = 'hide';
+  const hide = ctx.libFilterRecords(recs).map(r => r.key);
+  state.browse.adultMode = 'only';
+  const only = ctx.libFilterRecords(recs).map(r => r.key);
+  state.browse.adultMode = 'all';
+  return (JSON.stringify(hide) === JSON.stringify(['b']) && JSON.stringify(only) === JSON.stringify(['a']))
+    || 'hide=' + JSON.stringify(hide) + ' only=' + JSON.stringify(only);
+});
+t('功能断言：内置脚本开关控制 builtin 记录的去留', () => {
+  const recs = [
+    { key: 'a', kind: 'installed', modId: 1, builtin: true },
+    { key: 'b', kind: 'installed', modId: 2 }
+  ];
+  state.showBuiltin = false;
+  const off = ctx.libFilterRecords(recs).map(r => r.key);
+  state.showBuiltin = true;
+  const on = ctx.libFilterRecords(recs).map(r => r.key);
+  return (JSON.stringify(off) === JSON.stringify(['b']) && JSON.stringify(on) === JSON.stringify(['a', 'b']))
+    || 'off=' + JSON.stringify(off) + ' on=' + JSON.stringify(on);
+});
+t('功能断言：状态档 unreg / linked 各自只留对应记录', () => {
+  const recs = [
+    { key: 'a', kind: 'installed', modId: 0 },
+    { key: 'b', kind: 'installed', modId: 5, link: { modId: 5 } },
+    { key: 'c', kind: 'installed', modId: 6 }
+  ];
+  state.lib.status = 'unreg';
+  const unreg = ctx.libFilterRecords(recs).map(r => r.key);
+  state.lib.status = 'linked';
+  const linked = ctx.libFilterRecords(recs).map(r => r.key);
+  state.lib.status = 'all';
+  return (JSON.stringify(unreg) === JSON.stringify(['a']) && JSON.stringify(linked) === JSON.stringify(['b']))
+    || 'unreg=' + JSON.stringify(unreg) + ' linked=' + JSON.stringify(linked);
+});
 
 // ---------------------------------------------------------------------------
 console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');

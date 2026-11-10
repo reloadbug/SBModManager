@@ -1269,5 +1269,8 @@
     '已标记「已验证」：%s 个': 'Oznaczono „sprawdzony”: %s',
     '已取消「已验证」：%s 个': 'Usunięto „sprawdzony” z: %s',
     '（失败 %s 个）': '(nie udało się: %s)',
+    '显示内置脚本': 'Pokaż wbudowane skrypty',
+    '显示 UE4SS 自带的 10 个内置脚本模组（默认藏起来，免得和真 Mod 混在一起）': 'Pokaż 10 modów skryptowych dołączonych do UE4SS (domyślnie ukryte, aby nie mieszały się z prawdziwymi modami)',
+    '本地记录的分类要等 Nexus 信息补全后才出现': 'Kategorie lokalnych wpisów pojawią się po uzupełnieniu informacji z Nexusa',
   });
 })();

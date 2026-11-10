@@ -127,9 +127,11 @@ async function infoLocal(ids) {
   const cat = catalogById();
   for (const id of want.slice(0, 500)) {
     let rec = store.get(id);
-    if (!rec) {
-      const entry = cat.get(id);
-      if (entry) rec = store.put(fromCatalog(entry));
+    const entry = cat.get(id);
+    // 老档案只存过名字/作者/封面；分类、点赞数、更新时间是后来加的字段，
+    // 目录里有就顺手补齐并落盘 —— 下次纯本地也带得出来。
+    if (entry && (!rec || !rec.category || !rec.categoryZh || !rec.updatedAt || !rec.endorsements)) {
+      rec = store.put(fromCatalog(entry));
     }
     if (!rec) continue;
     out[id] = { ...rec, coverLocal: store.coverUrlOf(rec) };
@@ -2045,6 +2047,13 @@ function register() {
           summary: rec.summary || '',
           image: rec.pictureUrl || '',
           coverLocal: store.coverUrlOf(rec) || '',
+          url: rec.url || '',
+          category: rec.category || '',
+          categoryZh: rec.categoryZh || '',
+          adult: !!rec.adult,
+          downloads: Number(rec.downloads) || 0,
+          endorsements: Number(rec.endorsements) || 0,
+          updatedAt: rec.updatedAt || '',
           fromCache: true
         };
       }

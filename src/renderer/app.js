@@ -2,7 +2,7 @@
 /* 剑星 Mod 管理器 · 渲染层 */
 
 const $ = (s, r = document) => r.querySelector(s);
-const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const $$ = (s, r = document) => (r ? [...r.querySelectorAll(s)] : []);
 
 const state = {
   config: null,
@@ -45,7 +45,7 @@ const state = {
    *        / downloaded（下好了没装）/ installed（装着）/ enabled / disabled / partial
    * marks 三个布尔是**叠加**筛选，与 status 不冲突；kind 是本地类型（服装 / CNS / 前置 / 脚本…）。
    */
-  lib: { status: 'all', marks: { liked: false, blocked: false, bug: false, nobug: false }, kind: '', sort: '' },
+  lib: { status: 'all', marks: { liked: false, blocked: false, bug: false, nobug: false }, kind: '', sort: '', catSet: false },
   libRecords: [],       // 最近一次拼出来的统一记录（全选 / 计数都走它）
   libShownRecords: [],  // 过滤之后真正显示的记录
   installedShown: [],   // 本次渲染后**真正显示出来**的分组（筛选之后），全选用它
@@ -2823,7 +2823,9 @@ const LIB_STATUS_CHIPS = [
   { v: 'installed', label: '已安装' },
   { v: 'enabled', label: '已启用' },
   { v: 'disabled', label: '已禁用' },
-  { v: 'partial', label: '部分启用' }
+  { v: 'partial', label: '部分启用' },
+  { v: 'unreg', label: '未登记' },
+  { v: 'linked', label: '已关联' }
 ];
 
 /** 标记 chip（可叠加，与状态同时生效） */
@@ -2909,6 +2911,45 @@ function libKindOptions() {
  * 顺序有讲究：先已安装、再已下载、最后在线 —— 同一个 modId 只留第一条（本地优先），
  * 在线那条只把「下载量 / 点赞数 / 分类」补进来，不会盖掉本地的体积、文件数、开关状态。
  */
+/** 本地档案里的「分类 / 点赞 / 更新时间」：modId → 档案（整页只取一次，纯本地） */
+function libInfoOf(modId) {
+  const id = Number(modId) || 0;
+  if (!id) return null;
+  if (!state.libInfo) state.libInfo = new Map();
+  return state.libInfo.get(String(id)) || null;
+}
+
+/**
+ * 给已安装 / 已下载的记录补基本信息。
+ * 走主进程的 info:local —— 只读本地档案与 Nexus 目录缓存，绝不联网。
+ */
+function libPrefetchInfo(recs) {
+  if (!state.libInfo) state.libInfo = new Map();
+  if (!state.libInfoAsked) state.libInfoAsked = new Set();
+  const want = [];
+  for (const r of (recs || [])) {
+    const id = Number(r.modId) || 0;
+    if (!id) continue;
+    if (r.category || libInfoOf(id)) continue;
+    const k = String(id);
+    if (state.libInfoAsked.has(k)) continue;
+    state.libInfoAsked.add(k);
+    want.push(id);
+    if (want.length >= 120) break;
+  }
+  if (!want.length) return;
+  call(window.api.info.local(want), { silent: true }).then(map => {
+    if (!map) return;
+    let got = 0;
+    for (const k of Object.keys(map)) {
+      if (!map[k]) continue;
+      state.libInfo.set(String(k), map[k]);
+      got++;
+    }
+    if (got && (state.lib.status || 'all') !== 'online') renderBrowse();
+  }).catch(() => {});
+}
+
 function buildLibRecords() {
   const out = [];
   const byMod = new Map();
@@ -2917,6 +2958,7 @@ function buildLibRecords() {
   // ① 已安装（磁盘上装着的；分组键 mod:<modId> / one:<磁盘 id>）
   for (const g of (state.installedGroups || [])) {
     const modId = Number(g.modId) || 0;
+    const info = modId ? libInfoOf(modId) : null;
     const rec = {
       key: g.key,
       kind: 'installed',
@@ -2926,6 +2968,12 @@ function buildLibRecords() {
       version: g.version,
       image: g.image,
       summary: g.zh,
+      category: (info && (info.categoryZh || info.category)) || '',
+      adult: !!(info && info.adult),
+      downloads: (info && Number(info.downloads)) || 0,
+      endorsements: (info && Number(info.endorsements)) || 0,
+      updatedAt: (info && info.updatedAt) || '',
+      link: g.link || null,
       size: g.size,
       files: g.fileCount,
       enabled: !!g.enabled,
@@ -2957,6 +3005,13 @@ function buildLibRecords() {
       version: meta.version || it.version || '',
       image: meta.coverLocal || meta.image || (typeof coverForMod === 'function' ? coverForMod(modId) : ''),
       summary: meta.summary || '',
+      category: (meta.categoryZh || meta.category)
+        || ((libInfoOf(modId) || {}).categoryZh) || ((libInfoOf(modId) || {}).category) || '',
+      adult: !!(meta.adult || (libInfoOf(modId) || {}).adult),
+      downloads: Number(meta.downloads || (libInfoOf(modId) || {}).downloads) || 0,
+      endorsements: Number(meta.endorsements || (libInfoOf(modId) || {}).endorsements) || 0,
+      updatedAt: meta.updatedAt || (libInfoOf(modId) || {}).updatedAt || '',
+      link: null,
       size: it.size,
       filename: it.filename,
       archivePath: it.archivePath,
@@ -2985,7 +3040,9 @@ function buildLibRecords() {
       downloads: n.downloads,
       endorsements: n.endorsements,
       adult: n.adult,
-      categoryZh: n.categoryZh,
+      category: n.category || '',
+      categoryZh: n.categoryZh || '',
+      updatedAt: n.updatedAt || '',
       online: n,
       task: taskOf(modId)
     };
@@ -3017,6 +3074,26 @@ function libFilterRecords(recs) {
   const q = String(state.browse.search || state.instFilters.q || '').trim().toLowerCase();
   const hideBlocked = state.browse.blockMode === 'hide';
 
+  // 分类筛选：在线档位记的是 Nexus facets 的英文 value，本地记录是档案里的中文名，
+  // 两套词表不能直接比 —— 先翻译，翻不出且一条都匹配不上就当作没选分类。
+  // 上次会话带回来的分类只对「在线」档位生效：合并档位要等用户自己点过分类 chip（catSet），
+  // 否则一进 Mod 库就被旧分类筛成几十个，看起来像「少了很多 Mod」。
+  const catRaw = String((st === 'online' || state.lib.catSet) ? (state.browse.category || '') : '');
+  const catZh = (function () {
+    if (!catRaw) return '';
+    const f = state.browse.facets;
+    if (f && Array.isArray(f.categories)) {
+      const hit = f.categories.find(c => String(c.value) === catRaw);
+      if (hit && hit.zh) return String(hit.zh);
+    }
+    return catRaw;
+  })();
+  const catOk = (rec) => {
+    const v = String(rec.categoryZh || rec.category || '');
+    return v === catZh || v === catRaw;
+  };
+  const catActive = !!catRaw && (recs || []).some(catOk);
+
   return (recs || []).filter(rec => {
     const s = libStateOf(rec);
     if (st === 'online') { if (rec.kind !== 'online' && !rec.online) return false; }
@@ -3025,6 +3102,8 @@ function libFilterRecords(recs) {
     else if (st === 'enabled') { if (s !== 'enabled') return false; }
     else if (st === 'disabled') { if (s !== 'disabled') return false; }
     else if (st === 'partial') { if (s !== 'partial') return false; }
+    else if (st === 'unreg') { if (rec.modId) return false; }
+    else if (st === 'linked') { if (!rec.link) return false; }
 
     if (marks.liked && !libHasMark(rec, 'liked')) return false;
     if (marks.blocked && !libHasMark(rec, 'blocked')) return false;
@@ -3035,6 +3114,18 @@ function libFilterRecords(recs) {
     // 黑名单默认不显示（老行为），除非用户自己点开「不感兴趣」这一档看
     if (hideBlocked && !marks.blocked && libHasMark(rec, 'blocked')) return false;
 
+    // 分类（本地记录靠 Nexus 档案补，补不到就不参与分类筛）
+    if (catActive && !catOk(rec)) return false;
+    // 成人内容三档
+    const am = state.browse.adultMode || 'all';
+    if (am === 'hide' && rec.adult) return false;
+    if (am === 'only' && !rec.adult) return false;
+    // 标签（本地记录一般没有标签数据，没数据就不参与这层筛选）
+    const tags = Array.isArray(state.browse.tags) ? state.browse.tags : [];
+    if (tags.length && Array.isArray(rec.tags) && rec.tags.length
+      && !tags.some(t => rec.tags.indexOf(t) >= 0)) return false;
+    // UE4SS 自带脚本：默认藏起来（和老「已安装」页的开关同一个口径）
+    if (!state.showBuiltin && rec.builtin) return false;
     if (kind && libTypeOf(rec) !== kind) return false;
     if (!libRecordMatches(rec, q)) return false;   // 不命中就剔掉
     return true;
@@ -3043,7 +3134,7 @@ function libFilterRecords(recs) {
 
 /** 状态 chip 后面的计数（各档有多少条） */
 function libStatusCounts(recs) {
-  const c = { all: recs.length, online: 0, downloaded: 0, installed: 0, enabled: 0, disabled: 0, partial: 0 };
+  const c = { all: recs.length, online: 0, downloaded: 0, installed: 0, enabled: 0, disabled: 0, partial: 0, unreg: 0, linked: 0 };
   for (const rec of recs) {
     const s = libStateOf(rec);
     if (rec.kind === 'installed') c.installed++;
@@ -3052,6 +3143,8 @@ function libStatusCounts(recs) {
     if (s === 'enabled') c.enabled++;
     else if (s === 'disabled') c.disabled++;
     else if (s === 'partial') c.partial++;
+    if (!rec.modId) c.unreg++;
+    else if (rec.link) c.linked++;
   }
   return c;
 }
@@ -3059,6 +3152,11 @@ function libStatusCounts(recs) {
 /** 画顶部状态行（chip + 类型下拉 + 标记 chip） */
 function paintLibHead(recs) {
   { const s = $('#libSort'); if (s) s.style.display = ''; }
+  // 顶部这几组控件（在线排序 / 成人范围 / 打开 Nexus）合并后仍然留着，
+  // 选中态在这里统一同步 —— 老浏览页那套只在自己的渲染路径里同步。
+  $$('#sortTabs button').forEach(x => x.classList.toggle('on', x.dataset.sort === (state.browse.sort || 'downloads')));
+  $$('#adultTabs button').forEach(x => x.classList.toggle('on', x.dataset.adult === (state.browse.adultMode || 'all')));
+  { const bs = $('#libBuiltin'); if (bs) bs.classList.toggle('on', !!state.showBuiltin); }
   const counts = libStatusCounts(recs || []);
   const st = state.lib.status || 'all';
   const box = $('#libStatus');
@@ -3111,7 +3209,12 @@ const LIB_SORTS = [
 /** 按 `state.lib.sort` 排一下；没有时间戳的记录始终排在后面（不参与比较） */
 function applyLibSort(recs) {
   const mode = state.lib.sort || '';
-  if (!mode) return recs;
+  // 在线排序（下载最多 / 最多点赞 / 最新发布 / 最近更新）在合并档位里按本地拿到的
+  // 同一批字段排：Nexus 分页只加载了一部分，但至少保证「看得见的那批」顺序正确。
+  const online = state.browse.sort || 'downloads';
+  const byOnline = !mode && (online === 'downloads' || online === 'endorsements'
+    || online === 'newest' || online === 'updated');
+  if (!mode && !byOnline) return recs;
   const out = recs.slice();
   const timeOf = (r) => (mode.startsWith('on') ? r.enabledAt : (r.installedAt || r.enabledAt)) || '';
   const dir = mode.endsWith('desc') ? -1 : 1;
@@ -3120,6 +3223,22 @@ function applyLibSort(recs) {
       const x = String(a.name || '').toLowerCase();
       const y = String(b.name || '').toLowerCase();
       return x < y ? -1 : (x > y ? 1 : 0);
+    }
+    if (byOnline) {
+      if (online === 'downloads' || online === 'endorsements') {
+        const fa = Number(a[online]) || 0;
+        const fb = Number(b[online]) || 0;
+        if (!fa && !fb) return 0;
+        if (!fa) return 1;      // 没数字的沉底
+        if (!fb) return -1;
+        return fb - fa;
+      }
+      const ua = a.updatedAt || '';
+      const ub = b.updatedAt || '';
+      if (!ua && !ub) return 0;
+      if (!ua) return 1;
+      if (!ub) return -1;
+      return ua < ub ? 1 : (ua > ub ? -1 : 0);   // 新的在前
     }
     const ta = timeOf(a), tb = timeOf(b);
     if (!ta && !tb) return 0;
@@ -3198,6 +3317,37 @@ ${rec.kind === 'online' ? `<span>⬇ ${fmtNum(rec.downloads)}</span><span>♥ ${
 }
 
 /** 统一渲染（状态 === 'online' 时仍走原来的 Nexus 分页路径，见 renderBrowse） */
+/**
+ * 合并档位的分类筛选条。
+ * 老浏览页的分类 chips 来自 Nexus 的 facets（只覆盖在线那批），合并后要按「当前全部记录」
+ * 重算 —— 已安装 / 已下载的分类靠 Nexus 档案补（见 libPrefetchInfo）。
+ */
+function renderLibFilters(recs) {
+  const box = $('#browseFilters');
+  if (!box) return;
+  const cur = String(state.browse.category || '');
+  const catMap = new Map();
+  for (const r of (recs || [])) {
+    const zh = String(r.categoryZh || r.category || '').trim();
+    if (!zh) continue;
+    catMap.set(zh, (catMap.get(zh) || 0) + 1);
+  }
+  if (!catMap.size) {
+    box.innerHTML = '<div class="frow"><span class="fl">分类</span><div class="fchips"><span class="fnote" style="margin:0">本地记录的分类要等 Nexus 信息补全后才出现</span></div></div>';
+    return;
+  }
+  const cnt = (n) => '<span class="n">' + Number(n).toLocaleString() + '</span>';
+  const list = [{ value: '', zh: '全部', count: (recs || []).length }]
+    .concat([...catMap.entries()].sort((x, y) => y[1] - x[1])
+      .map(([zh, n]) => ({ value: zh, zh, count: n })));
+  const chips = list.map(c => '<button class="fc' + (cur === c.value ? ' on' : '')
+    + '" data-cat="' + esc(c.value) + '">' + esc(c.zh) + cnt(c.count) + '</button>').join('');
+  box.innerHTML = '<div class="frow"><span class="fl">分类</span>'
+    + '<div class="fchips">' + chips + '</div>'
+    + (cur ? '<button class="fclear" id="btnClearFilter">清除筛选</button>' : '')
+    + '</div>';
+}
+
 function renderLibMerged() {
   const area = $('#browseArea');
   if (!area) return;
@@ -3217,6 +3367,8 @@ function renderLibMerged() {
   const shown = applyLibSort(libFilterRecords(recs));
   state.libShownRecords = shown;
   paintLibHead(recs);
+  renderLibFilters(recs);
+  libPrefetchInfo(recs);
 
   const stats = $('#browseStats');
   const more = $('#btnLoadMore');
@@ -7676,6 +7828,8 @@ function bindEvents() {
     if (state.browse.adultMode === mode) return; // 已选中，不重复拉
     state.browse.adultMode = mode;
     $$('#adultTabs button').forEach(x => x.classList.toggle('on', x === b));
+    // 合并档位（在线以外）是本地记录，就地重画即可；在线档位才需要回 Nexus 重拉
+    if ((state.lib.status || 'all') !== 'online') { renderBrowse(); return; }
     loadBrowse(true);
   });
 
@@ -7791,15 +7945,20 @@ function bindEvents() {
   $('#browseFilters').addEventListener('click', e => {
     const b = state.browse;
     const clear = e.target.closest('#btnClearFilter');
+    const merged = (state.lib.status || 'all') !== 'online';
     if (clear) {
       b.category = '';
       b.tags = [];
+      state.lib.catSet = false;
+      if (merged) { renderBrowse(); return; }
       loadBrowse(true);
       return;
     }
     const cat = e.target.closest('button[data-cat]');
     if (cat) {
       b.category = cat.dataset.cat || '';
+      state.lib.catSet = true;
+      if (merged) { renderBrowse(); return; }
       loadBrowse(true);
       return;
     }
@@ -7807,6 +7966,7 @@ function bindEvents() {
     if (tag) {
       const v = tag.dataset.tag;
       b.tags = b.tags.includes(v) ? b.tags.filter(x => x !== v) : b.tags.concat(v);
+      if (merged) { renderBrowse(); return; }
       loadBrowse(true);
     }
   });
@@ -7816,6 +7976,8 @@ function bindEvents() {
     if (!b) return;
     $$('#sortTabs button').forEach(x => x.classList.toggle('on', x === b));
     state.browse.sort = b.dataset.sort;
+    // 合并档位：按本地记录里同一批字段排（applyLibSort 认这四个键）
+    if ((state.lib.status || 'all') !== 'online') { renderBrowse(); return; }
     loadBrowse(true);
   });
 
@@ -8306,6 +8468,13 @@ function bindEvents() {
     if (libSt) { setLibStatus(libSt.dataset.libst); return; }
     const libMk = t.closest('[data-libmk]');
     if (libMk) { toggleLibMark(libMk.dataset.libmk); return; }
+    // UE4SS 自带脚本的显示开关（与原「已安装」页那颗 data-showbuiltin 同一个 state）
+    if (t.closest('[data-libbuiltin]')) {
+      state.showBuiltin = !state.showBuiltin;
+      try { window.api.config.set({ showBuiltin: !!state.showBuiltin }); } catch (err) { /* 存不上不影响本次 */ }
+      renderBrowse();
+      return;
+    }
     // 「已验证」开关（卡片、Nexus 抽屉、已安装抽屉都用同一颗）
     const libVer = t.closest('[data-libver]');
     if (libVer) { e.stopPropagation(); await toggleVerified(libVer.dataset.libver, libVer.dataset.vername || ''); return; }

@@ -121,7 +121,7 @@ section('C. 前端：带出时间 / 排序 / 入口');
   ok('renderLibMerged 走 applyLibSort',
     appSrc.includes('const shown = applyLibSort(libFilterRecords(recs));'));
   ok('state.lib 带 sort 字段',
-    appSrc.includes("kind: '', sort: '' }"));
+    /kind: '', sort: '', catSet: false }/.test(appSrc));
   ok('排序下拉有 change 绑定',
     appSrc.includes("const libSortSel = $('#libSort');")
     && appSrc.includes("libSortSel.addEventListener('change'"));
@@ -158,7 +158,7 @@ section('D. applyLibSort 行为');
     else if (c === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
   }
   const src = appSrc.slice(s, end);
-  const sandbox = { state: { lib: { sort: '' } } };
+  const sandbox = { state: { lib: { sort: '' }, browse: { sort: '' } } };
   vm.createContext(sandbox);
   vm.runInContext(src + '\n;this.__apply = applyLibSort;', sandbox);
   const apply = sandbox.__apply;
@@ -171,7 +171,8 @@ section('D. applyLibSort 行为');
   ];
 
   ok('默认档不动顺序', apply(recs).map(r => r.key).join('') === 'abcd');
-  ok('默认档直接返回原数组（不复制、不排序）', apply(recs) === recs);
+  // 合并态默认跟着顶部在线排序 chip 走（实测本机是「下载最多」），所以默认档也会排一次、返回副本。
+  ok('默认档跟着在线排序排一次（返回副本，不动原数组）', apply(recs) !== recs && recs.map(r => r.key).join('') === 'abcd');
 
   sandbox.state.lib.sort = 'on-desc';
   ok('开启时间 ↓：最近的在前，没时间的沉底',
@@ -200,7 +201,7 @@ section('E. i18n');
   for (const w of ['开启时间', '开启时间 ↓', '开启时间 ↑', '安装时间 ↓', '（按安装时间推算）']) {
     ok('词条在册：' + w, keys.includes(w));
   }
-  ok('总条数 = 1266', keys.length === 1266, '实际 ' + keys.length);
+  ok('总条数 = 1269', keys.length === 1269, '实际 ' + keys.length);
 }
 
 /* ---------------- 汇总 ---------------- */
