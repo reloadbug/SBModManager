@@ -184,8 +184,14 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .nxfiles{max-height:240px;overflow:auto;padding-right:4px}
 .filelist{font-family:Consolas,monospace;font-size:11px;color:var(--dim);line-height:1.9;word-break:break-all}
 
-/* 已安装页工具条：左边排序切换，右边「显示 UE4SS 内置脚本」按钮（推到最右） */
-.ibar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px}
+/* 已安装页工具条：左边排序切换，右边「显示 UE4SS 内置脚本」按钮（推到最右）
+   —— 并且**吸顶**：这一条里装着搜索框、状态 chip、类型下拉、排序、多选，
+   一个 Mod 一个卡片，几百张卡滚两下就把它顶没了，改筛选还得先滚回顶部。
+   ⚠️ 与 `.bhead` / `.crashbar` 同一套路：sticky 约束的是 **margin box**，
+   所以负 margin 必须和 `top` 成对（`.body` 有 16px padding，用 -16px 抵消）。 */
+.ibar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  position:sticky;top:-16px;z-index:19;background:var(--bg);
+  margin:-16px -16px 13px;padding:16px 16px 11px;border-bottom:1px solid var(--border)}
 /* ⚠️ 必须是子选择器：排序条右侧那颗「正序 / 倒序」按钮在 `.sortgrp` 里，
    用后代选择器会把它一起推到最右边，和「显示内置脚本」按钮挤成一坨。 */
 .ibar > .btn{margin-left:auto}

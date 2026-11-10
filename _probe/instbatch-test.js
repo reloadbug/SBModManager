@@ -228,6 +228,19 @@ t('筛选条有独立样式（.sortgrp.ifilter）', () => {
 t('CSS 有 .card.inst-hid 的隐藏规则（就地筛选要用）', () =>
   (/\.card\.inst-hid\{display:none !important\}/.test(css) ? true : '缺 .card.inst-hid'));
 
+/* 用户 2026-11-10（红框圈住工具条）：「红框里面的功能不随滚动条移动，一直保持在这里」。
+   已安装页几百张卡，工具条一滚就没，改筛选得先滚回顶部。 */
+t('已安装页工具条 .ibar 吸顶（sticky + 负 margin 与 top 成对）', () => {
+  const m = css.match(/\.ibar\{[^}]*\}/);
+  if (!m) return '没找到 .ibar 规则';
+  const rule = m[0];
+  if (!/position:sticky/.test(rule)) return '.ibar 没有 position:sticky';
+  if (!/top:-16px/.test(rule)) return 'top 不是 -16px（要和 .body 的 16px padding 抵消）';
+  if (!/margin:-16px -16px/.test(rule)) return '缺负 margin：sticky 约束的是 margin box，不抵消会留一条缝';
+  if (!/background:var\(--bg\)/.test(rule)) return '没铺不透明底色，卡片会从条里透出来';
+  return true;
+});
+
 // —— i18n ——
 const NEW_KEYS = [
   '已关闭', '全部类型', '搜索已安装的 Mod（名字 / Mod ID / 作者）', '按类型筛选',

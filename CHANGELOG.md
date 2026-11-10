@@ -4,6 +4,23 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.4.19] - 2026-11-10
+
+已安装页的工具条（搜索框 / 状态筛选 / 类型下拉 / 排序 / 多选 / 内置脚本开关）改成吸顶：
+几百张卡片往下滚时它一直停在顶上，改筛选不用再滚回最上面。
+
+### 修改
+
+- `.ibar` 加 `position:sticky; top:-16px`，配 `margin:-16px -16px 13px` + `padding:16px 16px 11px`：
+  sticky 约束的是 **margin box**，负 margin 与 `top` 必须成对（与 `.body` 的 16px padding 抵消）；
+  底色用不透明的 `var(--bg)`，卡片从条下面滚过去不会透出来。
+
+### 测试
+
+- `_probe/instbatch-test.js` 新增一条：`.ibar` 必须是 sticky、`top:-16px`、负 margin 成对、有不透明底色。
+- 真机（dev，`p-installed`）：容器可滚 5501px，`scrollTop` 在 0 / 45% / 底部三个位置时工具条的
+  `top` 都等于滚动容器的 `top`（54px）；滚动到中段时 `elementFromPoint` 命中搜索框本体，说明没被卡片盖住。
+
 ## [0.4.18] - 2026-11-10
 
 修「批量关闭有一部分出错、刷新也没变化」：纯 CNS 换装包（包里只有一个 `.dekcns.json`、没有 pak）
