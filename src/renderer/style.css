@@ -857,3 +857,6 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 
 /* 多选模式下先把启停开关收起来，只留勾选圈（2026-11-11） */
 body.sel .card .cover .sw{display:none}
+
+/* 批量开关跑起来时，按钮上走「禁用 3/39」的进度（2026-11-11） */
+.bhead .btn.busy{opacity:.65;pointer-events:none;font-variant-numeric:tabular-nums}

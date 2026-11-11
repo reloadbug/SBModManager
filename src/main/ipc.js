@@ -1393,13 +1393,20 @@ function listMods() {
 }
 
 /** 启用 / 禁用 */
-function setEnabled(id, enabled) {
+function setEnabled(id, enabled, opts) {
   const root = currentRoot();
   if (!root) throw new Error('尚未配置有效的游戏目录');
   const L = game.layout(root);
-  const list = scanner.scan(root, registry, linkReaderSafe());
+  // 批量开关时由调用方把「扫过一次的结果」传进来 —— 每处理一个 Mod 就把整个
+  // ~Mods（几百个文件）重扫一遍是 2026-11-11 那次「批量禁用点了没反应」的主因。
+  const list = (opts && Array.isArray(opts.list)) ? opts.list : scanner.scan(root, registry, linkReaderSafe());
   const mod = list.find(m => m.id === id);
+  // 批量时把要写的东西收集起来，最后 patchMany 落一次盘（逐条 patch = 写 N 次 mods.json）
+  const collect = (opts && Array.isArray(opts.collect)) ? opts.collect : null;
+  const commit = (patch) => { if (collect) collect.push({ id, patch }); else registry.patch(id, patch); };
+
   if (!mod) throw new Error('未找到该 Mod');
+  if (mod.kind === 'prereq') throw new Error('前置组件不支持禁用');
 
   if (mod.kind === 'prereq') throw new Error('前置组件不支持禁用');
 
@@ -1469,7 +1476,7 @@ function setEnabled(id, enabled) {
         : base;
       return { ...x, path: to, rel };
     });
-    registry.patch(id, { enabled, ...stamp, manifest: nextManifest });
+    commit({ enabled, ...stamp, manifest: nextManifest });
   } else if (found === 0 && ((manifest && manifest.length) || (mod.files && mod.files.length))) {
     // 一个文件都没在磁盘上找到，就别装作成功 —— 否则注册表说「已关闭」，
     // 游戏还在照旧加载，用户看到的和实际不一样。
@@ -1477,9 +1484,46 @@ function setEnabled(id, enabled) {
       ? '找不到这个 Mod 的文件（可能已被移走或改名），没法启用'
       : '找不到这个 Mod 的文件（可能已被移走或改名），没法关闭');
   } else {
-    registry.patch(id, { enabled, ...stamp });
+    commit({ enabled, ...stamp });
   }
   return { id, enabled, renamed: renames.length, fixed: fixed.length };
+}
+
+/**
+ * 批量开关：只扫描一次、只写一次注册表，并且每处理完一个就往前端推一次进度。
+ *
+ * 2026-11-11 用户报「多选后批量禁用没效果」，实际是太慢 —— 老实现每个 Mod 都
+ * 走一遍 setEnabled()：全盘 scanner.scan() + 单独写一次 mods.json，39 个 Mod
+ * 就是 39 次全盘扫描、几十次落盘，期间界面一动不动，看着就像没生效。
+ * 这里把扫描与落盘各收成一次，并把进度（done/total）推给渲染层显示在按钮上。
+ */
+async function setEnabledMany(ids, enabled) {
+  const wanted = Array.isArray(ids) ? ids.filter(Boolean) : [];
+  const results = [];
+  const total = wanted.length;
+  if (!total) return { total: 0, ok: 0, failed: 0, results };
+
+  const root = currentRoot();
+  if (!root) throw new Error('尚未配置有效的游戏目录');
+  const scanned = scanner.scan(root, registry, linkReaderSafe());   // ← 全批只扫这一次
+  const pairs = [];
+  let done = 0, ok = 0, failed = 0;
+  for (const id of wanted) {
+    try {
+      const r = setEnabled(id, enabled, { list: scanned, collect: pairs });
+      results.push({ id, ok: true, name: r && r.name, renamed: r && r.renamed, fixed: r && r.fixed });
+      ok++;
+    } catch (e) {
+      results.push({ id, ok: false, error: (e && e.message) || String(e) });
+      failed++;
+    }
+    done++;
+    sendToMain('mods:batchProgress', { done, total, id, enabled: !!enabled });
+  }
+  if (pairs.length) registry.patchMany(pairs);   // ← 全批只落这一次盘
+
+  logger.event('mods:setEnabledMany', { enabled: !!enabled, total, ok, failed });
+  return { total, ok, failed, results };
 }
 
 function toggleScriptMod(L, name, enabled) {
@@ -2012,6 +2056,7 @@ function register() {
     };
   });
   handle('mods:setEnabled', (id, enabled) => setEnabled(id, enabled));
+  handle('mods:setEnabledMany', (ids, enabled) => setEnabledMany(ids, enabled));
   handle('mods:uninstall', (id, opts) => uninstall(id, opts));
   /**
    * 管理器自带安装包的盘点：`data/library` 里那些包，哪些现在能装进当前游戏目录。

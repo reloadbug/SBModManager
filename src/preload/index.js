@@ -67,6 +67,14 @@ contextBridge.exposeInMainWorld('api', {
   mods: {
     list: () => invoke('mods:list'),
     setEnabled: (id, enabled) => invoke('mods:setEnabled', id, enabled),
+    /** 批量开关：只扫一次盘、只写一次注册表（进度见 onBatchProgress） */
+    setEnabledMany: (ids, enabled) => invoke('mods:setEnabledMany', ids, enabled),
+    /** 批量开关进度（done / total / id），返回取消订阅函数 */
+    onBatchProgress: (cb) => {
+      const h = (_e, p) => cb(p);
+      ipcRenderer.on('mods:batchProgress', h);
+      return () => ipcRenderer.removeListener('mods:batchProgress', h);
+    },
     uninstall: (id, opts) => invoke('mods:uninstall', id, opts),
     reveal: (id) => invoke('mods:reveal', id),
     /** 某个 Nexus modId 已装着的文件清单（覆盖对比用） */

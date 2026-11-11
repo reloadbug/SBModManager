@@ -81,9 +81,9 @@ section('B. 后端：安装与开关都记时间');
   ok('nowIso 先取一次（两支用同一个时刻）',
     ipcSrc.includes('const nowIso = new Date().toISOString();'));
   ok('改名分支的 patch 带上 stamp',
-    ipcSrc.includes('registry.patch(id, { enabled, ...stamp, manifest: nextManifest });'));
+    ipcSrc.includes('commit({ enabled, ...stamp, manifest: nextManifest });'));
   ok('兜底分支的 patch 带上 stamp',
-    ipcSrc.includes('registry.patch(id, { enabled, ...stamp });'));
+    ipcSrc.includes('commit({ enabled, ...stamp });'));
   ok('兜底分支不再用 registry.setEnabled（那个只改 enabled）',
     !ipcSrc.includes('registry.setEnabled(id, enabled);'));
 

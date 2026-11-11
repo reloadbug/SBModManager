@@ -174,10 +174,10 @@ t('gselUpdateBar 只重画多选那一排（replaceWith #instBatch）', () =>
   (/#installedArea #instBatch/.test(app) && /host\.replaceWith\(next\)/.test(app) ? true : '重画方式不对'));
 
 // —— 批量动作 ——
-t('批量启停：跳过前置组件、跳过已处于目标状态的文件、逐条调 mods.setEnabled', () =>
+t('批量启停：跳过前置组件与已达目标状态的文件，交给主进程批量接口一次做完', () =>
   (/if \(m\.kind === 'prereq'\) continue;/.test(app)
     && /if \(!!m\.enabled === !!target\) continue;/.test(app)
-    && /window\.api\.mods\.setEnabled\(m\.id, !!target\)/.test(app) ? true : '批量启停实现不全'));
+    && /window\.api\.mods\.setEnabledMany\(ids, !!target\)/.test(app) ? true : '批量启停实现不全'));
 t('批量删除：走 mods.uninstall + purge:false（移进 backup，不真删）', () =>
   (/window\.api\.mods\.uninstall\(m\.id, \{ purge: false \}\)/.test(app) ? true : '卸载调用不对'));
 t('批量删除：内置组件剔除，并告诉用户还有几个没动', () =>
@@ -301,6 +301,8 @@ t('13 个语言包都补上了这 19 条', () => {
 const TOGGLE = path.join(ROOT, 'src/main/toggleName.js');
 const toggleName = require(TOGGLE);
 const ipcSrc = fs.readFileSync(path.join(ROOT, 'src/main/ipc.js'), 'utf8');
+// 2026-11-11：批量开关改成 setEnabledMany + 进度通道，preload 也要一起钉住
+const preSrc = fs.readFileSync(path.join(ROOT, 'src/preload/index.js'), 'utf8');
 const reconcileSrc = fs.readFileSync(path.join(ROOT, 'src/main/reconcile.js'), 'utf8');
 const scannerSrc = fs.readFileSync(path.join(ROOT, 'src/main/scanner.js'), 'utf8');
 const crashSrc = fs.readFileSync(path.join(ROOT, 'src/main/crashLog.js'), 'utf8');
@@ -405,7 +407,9 @@ t('循环按 renameStep().managed 决定跳不跳', () => {
 });
 
 t('改名后把注册表 manifest 也同步了（否则卸载会找不到文件）', () => {
-  return ipcSrc.includes('registry.patch(id, { enabled, ...stamp, manifest: nextManifest })') || '没同步 manifest（或没带开关时间戳）';
+  // 批量开关改成「收集 patch → patchMany 落一次盘」，所以提交走 commit({...})
+  return (ipcSrc.includes('commit({ enabled, ...stamp, manifest: nextManifest })')
+    || ipcSrc.includes('registry.patch(id, { enabled, ...stamp, manifest: nextManifest })')) || '没同步 manifest（或没带开关时间戳）';
 });
 
 t('返回值带上改了几个文件（renamed + fixed），前端能据此判断真动了磁盘', () => {
@@ -439,9 +443,10 @@ t('模块注释写清「为什么不能加在 .json 后面」（DekCNS 子串匹
 });
 
 t('批量启停失败时把原因带出来，不只报个数', () => {
-  if (!app.includes('const failedWhy = [];')) return '没收集失败原因';
-  if (!app.includes('failedWhy.push(')) return '没有 push 原因';
-  return app.includes('没改成功的原因：') || '没把原因弹给用户';
+  // 主进程批量接口把每条失败原因放进 results[].error，渲染层挑前几条弹出来
+  if (!app.includes("filter(r => r && r.ok === false && r.error)")) return '没从批量结果里收集失败原因';
+  if (!app.includes('没改成功的原因：')) return '没把原因弹给用户';
+  return true;
 });
 
 
@@ -477,6 +482,37 @@ t('筛选按钮选中态是红的（.tabs#instBug button.on）', () => (
 t('新增的 4 个词条都在 keys.json 里', () => (
   ['有 bug', '不含 bug', '只看标记过「有 bug」的 Mod', '把标记过「有 bug」的 Mod 藏起来']
     .every(k => keys.includes(k)) ? true : '词条没登记全'));
+/* ============ C. 批量开关的进度与「只扫一次盘」（2026-11-11） ============ */
+t('主进程有批量开关接口，且整批只扫一次盘', () => (
+  ipcSrc.includes('async function setEnabledMany(ids, enabled)')
+    && ipcSrc.includes('const scanned = scanner.scan(root, registry, linkReaderSafe());')
+    && ipcSrc.includes('setEnabled(id, enabled, { list: scanned, collect: pairs })')
+    ? true : '批量接口没把扫描收成一次'));
+t('整批只写一次注册表（收集 patch → patchMany）', () => (
+  ipcSrc.includes('if (pairs.length) registry.patchMany(pairs);') ? true : '还是逐条落盘'));
+t('批量开关每处理完一个就推一次进度', () => (
+  ipcSrc.includes("sendToMain('mods:batchProgress', { done, total, id, enabled: !!enabled })")
+    ? true : '没有进度推送'));
+t('preload 暴露 setEnabledMany 与 onBatchProgress', () => (
+  preSrc.includes('setEnabledMany: (ids, enabled) => invoke(')
+    && preSrc.includes("ipcRenderer.on('mods:batchProgress', h)") ? true : 'preload 没接上'));
+t('批量按钮上走进度（禁用 3/39），跑完恢复文案', () => (
+  app.includes('btn.textContent = total ? label + ' + "' '" + ' + done + ' + "'/'" + ' + total : label;')
+    && app.includes('window.api.mods.onBatchProgress(') ? true : '按钮没走进度'));
+t('批量开关结束后用轻量刷新，不再整包 bootstrap', () => {
+  if (!app.includes('async function refreshAfterModsChanged()')) return '缺少轻量刷新函数';
+  const fn = app.indexOf('async function gselBatchToggle(target, groupsArg) {');
+  const seg = app.slice(fn, fn + 3000);
+  if (seg.includes('await refreshAll();')) return '批量开关里还在调 refreshAll()';
+  return seg.includes('await refreshAfterModsChanged();') || '没有调用轻量刷新';
+});
+t('轻量刷新只重取 mods.list 并重画必要区域', () => (
+  app.includes('const r = await call(window.api.mods.list(), { silent: true });')
+    && app.includes('if (r && Array.isArray(r.installed)) state.installed = r.installed;')
+    ? true : '轻量刷新没走 mods.list'));
+t('跑批时按钮加上 busy 样式（禁用点击 + 数字等宽）', () => (
+  /.bhead .btn.busy{[^}]*pointer-events:none/.test(css) ? true : '缺 .btn.busy 样式'));
+
 /* ---------- 汇总 ---------- */
 console.log('');
 for (const f of fails) console.log('  ✗ ' + f);

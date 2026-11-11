@@ -1224,50 +1224,83 @@ function gselUpdateBar() {
  * 已经在目标状态的文件直接跳过 —— 470 个文件全发一遍请求既慢又会让日志刷屏。
  * 前置组件不吃开关（主进程会抛「前置组件不支持禁用」），这里先剔掉。
  */
+/**
+ * 改完开关之后只刷该刷的那几块。
+ *
+ * 以前这里调 refreshAll()，它会重新 bootstrap：重扫游戏目录、重扫安装包库、
+ * 跑一遍账本核对、重新探测游戏版本……几十个 Mod 批下来，界面在操作结束后
+ * 还要再「僵」好几秒（用户 2026-11-11 报「反应慢」）。开关只影响已安装清单
+ * 与卡片状态，mods.list 一次就够。
+ */
+async function refreshAfterModsChanged() {
+  try {
+    const r = await call(window.api.mods.list(), { silent: true });
+    if (r && Array.isArray(r.installed)) state.installed = r.installed;
+  } catch { /* 拿不到就沿用旧数据，界面至少不会卡住 */ }
+  try { renderInstalled(); } catch { /* 已安装页是隐藏的数据容器，失败不影响主界面 */ }
+  try { renderSidebar(); } catch { /* 侧栏计数不是关键路径 */ }
+  if ($('#p-browse') && $('#p-browse').classList.contains('on')) renderBrowse();
+  try { selUpdateBar(); } catch { /* 批量条没显示时不用管 */ }
+  try { renderDownload(); } catch { /* 队列状态可能被 syncFromInstalled 改过 */ }
+}
+
 async function gselBatchToggle(target, groupsArg) {
   if (state.gsel.busy) return;
   const groups = Array.isArray(groupsArg) ? groupsArg : gselSelected();
   if (!groups.length) { toast('先勾选要处理的 Mod'); return; }
-  state.gsel.busy = true;
-  let mods = 0, failed = 0;
-  // 把「为什么没改成功」带出来 —— 只报个数的话用户无从下手
-  // （2026-11-10 用户报「批量关闭有一部分出错」，界面上只有一句「有 N 个文件没能改过来」）。
-  const failedWhy = [];
-  try {
-    for (const g of groups) {
-      let touched = false;
-      for (const m of (g.items || [])) {
-        if (m.kind === 'prereq') continue;
-        if (!!m.enabled === !!target) continue;
-        try {
-          await call(window.api.mods.setEnabled(m.id, !!target), { silent: true });
-          touched = true;
-        } catch (e) {
-          failed++;
-          if (failedWhy.length < 3) failedWhy.push(`${g.name || m.name || m.id}${e && e.message ? '（' + e.message + '）' : ''}`);
-        }
-      }
-      if (touched) mods++;
+  // 只挑真的要改的：已经开着的不必再开，已经关着的不必再关。
+  const ids = [];
+  for (const g of groups) {
+    for (const m of (g.items || [])) {
+      if (m.kind === 'prereq') continue;
+      if (!!m.enabled === !!target) continue;
+      ids.push(m.id);
     }
+  }
+  if (!ids.length) { toast(target ? '选中的都已经启用了' : '选中的都已经关闭了'); return; }
+
+  state.gsel.busy = true;
+  // 一个 Mod 可能牵着十几个文件，几十个 Mod 就是几百次改名 —— 以前这段时间界面
+  // 一动不动，用户以为「点了没反应」（2026-11-11 报障）。现在按钮上直接走进度。
+  const btn = $(target ? '#btnBatchOn' : '#btnBatchOff');
+  const label = target ? '启用' : '禁用';
+  const paint = (done, total) => {
+    if (!btn) return;
+    btn.textContent = total ? label + ' ' + done + '/' + total : label;
+    btn.classList.toggle('busy', !!total);
+  };
+  paint(0, ids.length);
+  const off = (window.api.mods && typeof window.api.mods.onBatchProgress === 'function')
+    ? window.api.mods.onBatchProgress((p) => {
+        if (p && p.enabled === !!target) paint(p.done, p.total);
+      })
+    : null;
+
+  let res = null, err = null;
+  try {
+    res = await call(window.api.mods.setEnabledMany(ids, !!target), { silent: true });
+  } catch (e) {
+    err = e;
   } finally {
+    if (off) off();
+    paint(0, 0);
     state.gsel.busy = false;
   }
-  toast(target ? `已启用 ${mods} 个 Mod` : `已关闭 ${mods} 个 Mod`, failed ? 'err' : 'ok');
-  if (failed) toast(`有 ${failed} 个文件没能改过来`, 'err');
-  // 光报个数没用 —— 把前几个失败原因带出来（用户 2026-11-10 报「批量关闭有一部分出错」时，
-  // 界面上只有一句「有 N 个文件没能改过来」，完全看不出是哪个 mod、为什么）。
-  if (failed && failedWhy.length) toast('没改成功的原因：' + failedWhy.join('；'), 'err');
+  if (err) { toast('批量' + label + '失败：' + ((err && err.message) || err), 'err'); return; }
+
+  const ok = (res && res.ok) || 0;
+  const failed = (res && res.failed) || 0;
+  toast(label + '了 ' + ok + ' 个 Mod' + (failed ? '，' + failed + ' 个没成功' : ''), failed ? 'err' : 'ok');
+  // 光报个数没用 —— 把前几个失败原因带出来（2026-11-10 那次「批量关闭有一部分出错」）
+  const whys = ((res && res.results) || []).filter(r => r && r.ok === false && r.error).slice(0, 3);
+  if (failed && whys.length) toast('没改成功的原因：' + whys.map(r => r.error).join('；'), 'err');
+
   state.gsel.ids.clear();
-  await refreshAll();
+  state.sel.ids.clear();
+  state.sel.all = false;
+  await refreshAfterModsChanged();
 }
 
-/**
- * 批量删除选中的 Mod。
- *
- * 走的是和单张卡片「卸载」完全一样的通路（`mods:uninstall { purge:false }`）：
- * 文件被移动到 `data\backup\uninstalled\`，不是真的抹掉，后悔还能捡回来。
- * 内置组件（UE4SS 自带脚本）跳过 —— 删了没法恢复。
- */
 async function gselBatchUninstall(groupsArg) {
   if (state.gsel.busy) return;
   const groups = Array.isArray(groupsArg) ? groupsArg : gselSelected();
@@ -1302,7 +1335,9 @@ async function gselBatchUninstall(groupsArg) {
   toast(`已删除 ${done} 个 Mod`, failed ? 'err' : 'ok');
   if (failed) toast(`有 ${failed} 个文件没能删掉`, 'err');
   state.gsel.ids.clear();
-  await refreshAll();
+  state.sel.ids.clear();
+  state.sel.all = false;
+  await refreshAfterModsChanged();
 }
 
 function renderInstalled() {
