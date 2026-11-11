@@ -45,7 +45,9 @@ const state = {
    *        / downloaded（下好了没装）/ installed（装着）/ enabled / disabled / partial
    * marks 三个布尔是**叠加**筛选，与 status 不冲突；kind 是本地类型（服装 / CNS / 前置 / 脚本…）。
    */
-  lib: { status: 'all', marks: { liked: false, blocked: false, bug: false, nobug: false }, kind: '', sort: '', catSet: false },
+  // 标记三态（用户 2026-11-11）：'' 任意 · 'in' 只看有 · 'ex' 排除掉有。
+  // 负面标记（不感兴趣 / 有 bug）默认第一下就是「排除」，正常浏览时不碍眼。
+  lib: { status: 'all', marks: { liked: '', blocked: '', bug: '', verified: '' }, kind: '', sort: '', catSet: false },
   libRecords: [],       // 最近一次拼出来的统一记录（全选 / 计数都走它）
   libShownRecords: [],  // 过滤之后真正显示的记录
   installedShown: [],   // 本次渲染后**真正显示出来**的分组（筛选之后），全选用它
@@ -2831,15 +2833,15 @@ const LIB_STATUS_CHIPS = [
 ];
 
 /** 标记 chip（可叠加，与状态同时生效） */
+/* 我的标记（用户自己打的）：三态循环。
+ * 2026-11-11 用户要求：「不感兴趣」「有 bug」这种负面标签要能**排除**掉，
+ * 也要能**只看它们**（好集中删 / 取消标记）——所以每颗都是 任意 → 排除 → 只看 → 任意。
+ * 正面标签（喜欢 / 已验证）顺序反过来：任意 → 只看 → 排除 → 任意。 */
 const LIB_MARK_CHIPS = [
-  { k: 'liked', label: '👍 喜欢' },
-  { k: 'blocked', label: '👎 不感兴趣' },
-  // 用户 2026-11-10：有 bug 的要**红**，没 bug 的要**绿** —— 两颗 chip 说相反的话，因而互斥
-  { k: 'bug', label: '⚠ 有 bug', tone: 'bad' },
-  { k: 'nobug', label: '不含 bug', tone: 'good' },
-  // 用户 2026-11-10：实测过能用的打个「已验证」，反向那颗叫「未验证」（同样互斥）
-  { k: 'verified', label: '✓ 已验证', tone: 'ver' },
-  { k: 'unverified', label: '未验证', tone: 'dim' }
+  { k: 'liked', label: '👍 喜欢', neg: false },
+  { k: 'blocked', label: '👎 不感兴趣', neg: true },
+  { k: 'bug', label: '⚠ 有 bug', neg: true, tone: 'bad' },
+  { k: 'verified', label: '✓ 已验证', neg: false, tone: 'ver' }
 ];
 
 /** 记录的状态徽标 */
@@ -2865,9 +2867,7 @@ function libMarkSet(k) {
 /** 这条记录有没有某个标记（没有 modId 的磁盘条目一律没有） */
 function libHasMark(rec, k) {
   if (!rec || !rec.modId) return false;
-  // 「不含 bug」不是一个开关，而是「有没有 bug 标记」的取反 —— 别去 libMarkSet 里找它
-  if (k === 'nobug') return !libHasMark(rec, 'bug');
-  if (k === 'unverified') return !libHasMark(rec, 'verified');
+  // 「排除」不在这里表达：它由 state.lib.marks[k] === 'ex' 在 libFilterRecords 里处理
   const s = libMarkSet(k);
   return !!(s && typeof s.has === 'function' && s.has(String(rec.modId)));
 }
@@ -3109,14 +3109,16 @@ function libFilterRecords(recs) {
     else if (st === 'unreg') { if (rec.modId) return false; }
     else if (st === 'linked') { if (!rec.link) return false; }
 
-    if (marks.liked && !libHasMark(rec, 'liked')) return false;
-    if (marks.blocked && !libHasMark(rec, 'blocked')) return false;
-    if (marks.bug && !libHasMark(rec, 'bug')) return false;
-    if (marks.nobug && libHasMark(rec, 'bug')) return false;
-    if (marks.verified && !libHasMark(rec, 'verified')) return false;
-    if (marks.unverified && libHasMark(rec, 'verified')) return false;
-    // 黑名单默认不显示（老行为），除非用户自己点开「不感兴趣」这一档看
-    if (hideBlocked && !marks.blocked && libHasMark(rec, 'blocked')) return false;
+    // 我的标记：四类各自三态（'' 任意 / 'in' 只看有 / 'ex' 排除掉有）
+    for (const k of ['liked', 'blocked', 'bug', 'verified']) {
+      const mode = marks[k] || '';
+      if (!mode) continue;
+      const has = libHasMark(rec, k);
+      if (mode === 'in' && !has) return false;
+      if (mode === 'ex' && has) return false;
+    }
+    // 黑名单默认不显示（老行为）；用户主动「只看不感兴趣」时当然要显示出来
+    if (hideBlocked && marks.blocked !== 'in' && libHasMark(rec, 'blocked')) return false;
 
     // 分类（本地记录靠 Nexus 档案补，补不到就不参与分类筛）
     if (catActive && !catOk(rec)) return false;
@@ -3173,20 +3175,17 @@ function paintLibHead(recs) {
   const marks = $('#libMarks');
   if (marks) {
     const cur = state.lib.marks || {};
-    // 反向档（不含 bug / 未验证）= 总数 − 正向档的条数：它们不是一个真开关
-    const MK_TIP = {
-      nobug: '把标记过「有 bug」的 Mod 藏起来',
-      unverified: '把标记过「已验证」的 Mod 藏起来'
-    };
-    const MK_INVERSE = { nobug: 'bug', unverified: 'verified' };
-    marks.innerHTML = LIB_MARK_CHIPS.map(c => {
-      const inv = MK_INVERSE[c.k];
-      const total = inv
-        ? (recs || []).length - (recs || []).filter(r => libHasMark(r, inv)).length
-        : (recs || []).filter(r => libHasMark(r, c.k)).length;
-      const tone = c.tone ? ` tone-${c.tone}` : '';
-      const tip = MK_TIP[c.k] || `只看${c.label}的 Mod`;
-      return `<button data-libmk="${c.k}" class="${cur[c.k] ? 'on' : ''}${tone}" title="${tip}">${c.label}${total ? `<span class="dir">${fmtNum(total)}</span>` : ''}</button>`;
+    const n = (recs || []).filter(r => libHasMark(r, 'bug')).length;   // 仅用于占位提示，见下
+    void n;
+    marks.innerHTML = LIB_MARK_CHIPS.map(ch => {
+      const mode = cur[ch.k] || '';
+      const hit = (recs || []).filter(r => libHasMark(r, ch.k)).length;
+      const cnt = mode === 'ex' ? (recs || []).length - hit : hit;
+      const tone = ch.tone ? ` tone-${ch.tone}` : '';
+      const cls = mode === 'in' ? ' on' : (mode === 'ex' ? ' ex' : '');
+      const flag = mode === 'in' ? '只看' : (mode === 'ex' ? '排除' : '任意');
+      const tip = `${ch.label}：现在是「${flag}」—— 再点一下切到${mode === '' ? (ch.neg ? '排除' : '只看') : (mode === (ch.neg ? 'ex' : 'in') ? (ch.neg ? '只看' : '排除') : '任意')}`;
+      return `<button data-libmk="${ch.k}" class="${cls.trim()}${tone}" title="${tip}">${ch.label}<span class="dir">${flag} ${fmtNum(cnt)}</span></button>`;
     }).join('');
   }
 }
@@ -3252,22 +3251,41 @@ function libCard(rec) {
   const selOn = state.sel.ids.has(key);
   const isBug = libHasMark(rec, 'bug');
   const isVer = libHasMark(rec, 'verified');
+  const isLiked = libHasMark(rec, 'liked');
+  const isBlocked = libHasMark(rec, 'blocked');
   const img = rec.image || (rec.modId && typeof coverForMod === 'function' ? coverForMod(rec.modId) : '');
-  const nfiles = rec.kind === 'installed'
-    ? (rec.files ? `<span class="tag nfile" title="这个 Mod 装了 ${rec.files} 个文件">${rec.files} 个已装文件</span>` : '')
-    : '';
-  const typeTag = (() => {
-    const t = libTypeOf(rec);
-    const zh = { cns: 'CNS 换装', prereq: '前置', script: '脚本', builtin: '内置', outfit: '服装', online: '在线' }[t] || '';
-    return zh ? `<span class="tag">${zh}</span>` : '';
-  })();
+
+  /* 2026-11-11 用户要求「卡片上的信息各说一次，别重复显示、别挤在一起」：
+   * 封面右上角**只留状态徽标**（在线/已下载/已安装…），
+   * 标记、类型、文件数统一排到信息区第一行（.ctags），
+   * 第二行是纯数字/文字元信息（.meta），最后一行放按钮（.acts）。
+   * 以前 bug/已验证 在封面角标和元信息里各出现一次，就是用户说的「标签显示了两次」。 */
+  const typeZh = ({ cns: 'CNS 换装', prereq: '前置', script: '脚本', builtin: '内置', outfit: '服装', online: '在线' })[libTypeOf(rec)] || '';
+  const tags = [
+    isBlocked ? '<span class="tag bad" title="你点过「不感兴趣」（黑名单）">👎 不感兴趣</span>' : '',
+    isBug ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>' : '',
+    isVer ? '<span class="tag ver" title="我实测过它能用">✓ 已验证</span>' : '',
+    isLiked ? '<span class="tag like" title="你点过喜欢">👍 喜欢</span>' : '',
+    typeZh ? `<span class="tag" title="类型">${typeZh}</span>` : '',
+    (rec.kind === 'installed' && rec.files) ? `<span class="tag nfile" title="这个 Mod 装了 ${rec.files} 个文件">${rec.files} 个文件</span>` : ''
+  ].filter(Boolean).join('');
+
+  // 元信息：只用「·」分隔的纯文字，不再套 chip，避免一行里三四种边框互相挤
+  const metaBits = [];
+  if (rec.modId) metaBits.push(`#${rec.modId}`);
+  if (rec.version) metaBits.push(esc(verText(rec.version)));
+  if (rec.author) metaBits.push(esc(rec.author));
+  if (typeof rec.size === 'number') metaBits.push(fmtSize(rec.size));
+  if (rec.kind === 'online') metaBits.push(`⬇ ${fmtNum(rec.downloads)} · ♥ ${fmtNum(rec.endorsements)}`);
+  if (rec.enabledAt) metaBits.push(`开启于 ${esc(fmtWhen(rec.enabledAt))}`);
+  const meta = metaBits.map((t, i) => (i ? '<span class="sep">·</span>' : '') + `<span>${t}</span>`).join('');
 
   // 动作：按状态给主按钮，其余塞进次按钮（都能在抽屉里找到更全的）
   let acts = '';
   if (rec.kind === 'installed') {
     acts = `<button class="btn sm" data-lopen="${esc(key)}" title="看文件、来源和逐文件开关">详情</button>`;
   } else if (rec.kind === 'downloaded') {
-    acts = `<button class="btn sm p" data-lib-install="${rec.modId}" title="安装包已经在管理器里（不用再下一次），直接装进游戏目录">安装到游戏</button>`
+    acts = `<button class="btn sm p" data-lib-install="${rec.modId}" title="安装包已经在管理器里（不用再下一次），直接装进游戏目录">安装</button>`
       + `<button class="btn sm" data-libreveal="${rec.modId}" title="在资源管理器里定位这个安装包">定位</button>`
       + `<button class="btn sm d" data-libdel="${rec.modId}" title="只删安装包，不动用户标记（喜欢 / 不感兴趣 / 有 bug）">删包</button>`;
   } else {
@@ -3275,7 +3293,7 @@ function libCard(rec) {
   }
   // 「已验证」那颗按钮：只有认得出 Nexus modId 的条目才标得上（标记靠 modId 认人）
   const verBtn = rec.modId
-    ? `<button class="btn sm ver${isVer ? ' on' : ''}" data-libver="${rec.modId}" title="${isVer ? '点一下取消「已验证」标记' : '我实测过它能用 —— 打上「已验证」，之后可以按这个筛'}">${isVer ? '✓ 已验证' : '标记已验证'}</button>`
+    ? `<button class="btn sm ver${isVer ? ' on' : ''}" data-libver="${rec.modId}" title="${isVer ? '点一下取消「已验证」标记' : '我实测过它能用 —— 打上「已验证」，之后可以按这个筛'}">${isVer ? '✓ 已验证' : '标记'}</button>`
     : '';
   if (verBtn) acts += verBtn;
   const vote = rec.modId ? voteHtml({ modId: rec.modId }) : '';
@@ -3290,24 +3308,13 @@ function libCard(rec) {
         : `<div class="ph">${rec.kind === 'installed' ? '本地文件<br>无封面图' : '无封面图'}</div>`}
       <div class="ck${selOn ? ' on' : ''}" data-lck="${esc(key)}">✓</div>
       <span class="lb ${b.c}">${b.t}</span>
-      ${nfiles}
-      ${isBug ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>' : ''}
-      ${isVer ? '<span class="tag ver" title="我实测过它能用">✓ 已验证</span>' : ''}
-      ${typeTag}
-      ${sw}
     </div>
     <div class="cbody">
       <h3 data-i18n-skip title="${esc(rec.name)}">${esc(rec.name)}</h3>
       <div class="zh" data-i18n-skip title="${esc(rec.summary || '')}">${esc(rec.summary || (rec.kind === 'installed' ? '本地已安装' : '—'))}</div>
-      <div class="meta">
-        ${rec.modId ? `<span class="chip mid" title="Nexus Mod ID">#${rec.modId}</span>` : ''}
-        ${rec.version ? `<span class="chip">${esc(verText(rec.version))}</span>` : ''}
-        ${rec.author ? `<span>${esc(rec.author)}</span>` : ''}
-        ${typeof rec.size === 'number' ? `<span>${fmtSize(rec.size)}</span>` : ''}
-${rec.kind === 'online' ? `<span>⬇ ${fmtNum(rec.downloads)}</span><span>♥ ${fmtNum(rec.endorsements)}</span>` : ''}
-        ${rec.enabledAt ? `<span data-i18n-skip title="${rec.enabledAtGuess ? '按安装时间推算的开启时刻' : '最近一次开启的时刻'}">开启于 ${esc(fmtWhen(rec.enabledAt))}</span>` : ''}
-        <div class="acts">${vote}${acts}</div>
-      </div>
+      ${tags ? `<div class="ctags">${tags}</div>` : ''}
+      <div class="meta" data-i18n-skip>${meta}</div>
+      <div class="acts">${vote}${acts}</div>
     </div>
   </div>`;
 }
@@ -3448,15 +3455,18 @@ async function doVerifyToggleGroup(key) {
   reopenInstalledDrawer(key);
 }
 
+/**
+ * 我的标记：三态循环。
+ * 负面标记（不感兴趣、有 bug）：任意 → 排除 → 只看 → 任意（第一下先把它们藏起来，
+ * 正常浏览不碍眼；想看时再点一下变成「只看」，方便一次挑出来删掉或取消标记）。
+ * 正面标记（喜欢、已验证）：任意 → 只看 → 排除 → 任意。
+ */
 function toggleLibMark(k) {
-  if (!state.lib.marks) state.lib.marks = { liked: false, blocked: false, bug: false, nobug: false };
-  state.lib.marks[k] = !state.lib.marks[k];
-  // 「有 bug」和「不含 bug」说的是相反的话：点亮一个必须关掉另一个，否则列表永远是空的
-  if (k === 'bug' && state.lib.marks.bug) state.lib.marks.nobug = false;
-  if (k === 'nobug' && state.lib.marks.nobug) state.lib.marks.bug = false;
-  // 「已验证 / 未验证」同理：说的是相反的话，必须互斥
-  if (k === 'verified' && state.lib.marks.verified) state.lib.marks.unverified = false;
-  if (k === 'unverified' && state.lib.marks.unverified) state.lib.marks.verified = false;
+  if (!state.lib.marks) state.lib.marks = { liked: '', blocked: '', bug: '', verified: '' };
+  const neg = !!(LIB_MARK_CHIPS.find(c => c.k === k) || {}).neg;
+  const cur = state.lib.marks[k] || '';
+  const order = neg ? ['', 'ex', 'in'] : ['', 'in', 'ex'];
+  state.lib.marks[k] = order[(order.indexOf(cur) + 1) % order.length];
   renderBrowse();
 }
 

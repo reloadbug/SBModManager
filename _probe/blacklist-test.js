@@ -233,7 +233,7 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
   t('undislikeMod 先删集合再落盘', () =>
     /async function undislikeMod[\s\S]{0,400}b\.blocked\.delete\(id\)[\s\S]{0,900}window\.api\.blacklist\.remove/.test(code) || '缺失');
   t('黑名单状态同步到 tabs（updateBlockTabs）', () => /function updateBlockTabs\(\)/.test(code) || '缺失');
-  t('黑名单默认隐藏仍生效（合并视图的过滤里）', () => code.includes("hideBlocked && !marks.blocked && libHasMark(rec, 'blocked')") || '缺失');
+  t('黑名单默认隐藏仍生效（合并视图的过滤里）', () => code.includes("hideBlocked && marks.blocked !== 'in' && libHasMark(rec, 'blocked')") || '缺失');
     // 窗口放宽到 700：本轮在切模式与重载之间插了「关掉只看喜欢」的互斥处理与注释
   t('启动时先拉黑名单与「喜欢」再刷新（否则首屏画不对）', () =>
     /await loadBlacklist\(\);[\s\S]{0,200}await loadFavorites\(\);[\s\S]{0,160}await refreshAll\(\);/.test(code) || '缺失');

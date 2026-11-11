@@ -735,3 +735,50 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 .sline{margin-bottom:2px}
 .bhead{padding-bottom:4px}
 #browseStats{margin:0}
+
+/* ---------- 五段式筛选区：状态 / 信息 / 标记 / 排序 / 操作 ---------- */
+/* 2026-11-11 用户要求「控件横平竖直、字号与按钮尺寸统一、别互相遮挡」：
+   每段左侧固定 40px 标签，右侧一行控件，高度一律 22px，超宽就横向滚动而不折行。 */
+.sect{margin-bottom:4px}
+.slabel{flex:0 0 40px;line-height:22px;color:var(--dim2);font-size:11px;letter-spacing:1px;user-select:none}
+.sline{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;margin-bottom:4px}
+.sline::-webkit-scrollbar{height:0}
+.sline>.tabs{flex:0 0 auto;flex-wrap:nowrap}
+.sline>.libkind,.sline>.btn{flex:0 0 auto}
+.sline .tabs button,.filters .fc{height:22px;line-height:20px;padding:0 9px;font-size:11px}
+.sline .btn.sm{height:22px;padding:0 9px;font-size:11px;line-height:20px}
+.sect:last-of-type .sline{margin-bottom:0}
+/* 标记按钮右侧的小字：任意 / 只看 N / 排除 N —— 三态一眼能看出来 */
+.tabs.libmarks button .dir{opacity:.72;margin-left:5px;font-variant-numeric:tabular-nums}
+.tabs.libmarks button.on{color:#fff}
+.tabs.libmarks button.ex{color:#ff8b80;border-color:rgba(229,52,43,.45);background:rgba(229,52,43,.10)}
+
+/* ---------- 卡片：同一条信息只说一次，行高与字号统一 ---------- */
+/* 封面只留状态徽标；标记/类型/文件数在 .ctags 一行；元信息在 .meta 一行；按钮单独一行。 */
+.card .ctags{display:flex;align-items:center;gap:4px;height:16px;overflow:hidden;margin:1px 0 2px}
+.card .ctags .tag{font-size:9.5px;line-height:14px;padding:0 5px;border-radius:4px;white-space:nowrap;border:1px solid transparent}
+.card .ctags .tag.bad{color:#ff9a92;border-color:rgba(229,52,43,.45);background:rgba(229,52,43,.12)}
+.card .ctags .tag.bug{color:#fff;border-color:rgba(229,52,43,.9);background:#e5342b}
+.card .ctags .tag.ver{color:#8fd3ff;border-color:rgba(76,160,255,.5);background:rgba(38,110,190,.22)}
+.card .ctags .tag.like{color:#7EE0A0;border-color:rgba(63,185,80,.5);background:rgba(18,42,26,.6)}
+.card .ctags .tag.nfile{color:var(--blue);border-color:rgba(74,158,255,.45);background:rgba(74,158,255,.16)}
+.card .meta{display:flex;align-items:center;gap:0;font-size:10px;color:var(--dim2);flex-wrap:nowrap;overflow:hidden;white-space:nowrap;padding-top:2px;margin-top:auto}
+.card .meta .sep{opacity:.5;margin:0 4px}
+.card .acts{display:flex;align-items:center;gap:5px;margin:6px 0 0;padding-top:0;flex-wrap:nowrap;overflow:hidden}
+.card .acts .vote{margin-right:auto;flex:0 0 auto}
+.card .acts .btn{height:24px;padding:0 9px;font-size:11px;line-height:22px;white-space:nowrap;flex:0 0 auto}
+
+/* 合并到同一行的多组控件：内联小标签 + 分类行横滚 */
+.sline>.slabel{flex:0 0 auto;margin-right:2px}
+.sline>.slabel.ml{margin-left:12px;padding-left:12px;border-left:1px solid var(--border)}
+.sline>.filters{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.sline>.filters::-webkit-scrollbar{height:0}
+.filters .frow{display:flex;align-items:center;gap:5px;flex-wrap:nowrap;margin-bottom:0}
+.sect{margin-bottom:3px}
+.sline{margin-bottom:2px}
+.bhead{padding-bottom:2px}
+
+/* 卡片动作行：4 颗按钮（安装/定位/删包/已验证）也要塞得下 —— 收窄内边距与字距 */
+.card .acts{gap:4px}
+.card .acts .btn{padding:0 7px;font-size:10.5px}
+.card .acts .vbtn{width:24px}

@@ -40,19 +40,30 @@ function t(name, fn) {
 }
 
 
-﻿  /* ---------- G. 「已验证」标记（用户 2026-11-10） ---------- */
-  t('标记 chip 里有「已验证」和「未验证」两颗', () =>
-    app.includes("{ k: 'verified', label: '✓ 已验证', tone: 'ver' }") && app.includes("{ k: 'unverified', label: '未验证', tone: 'dim' }"));
+﻿  /* ---------- G. 「已验证」标记 + 三态标记（用户 2026-11-10 / 2026-11-11） ---------- */
+  t('标记 chip 有四颗：喜欢 / 不感兴趣 / 有 bug / 已验证，并标了正负', () =>
+    app.includes("{ k: 'liked', label: '👍 喜欢'") &&
+    app.includes("{ k: 'blocked', label: '👎 不感兴趣'") &&
+    app.includes("{ k: 'bug', label: '⚠ 有 bug'") &&
+    app.includes("{ k: 'verified', label: '✓ 已验证'") &&
+    app.includes('neg: true') && app.includes('neg: false') ||
+    '四颗标记不全');
+  t('反义词那两颗（不含 bug / 未验证）已经撤掉，改由三态表达', () =>
+    (!app.includes("k: 'nobug'") && !app.includes("k: 'unverified'")) || '反义词 chip 还在');
   t('libMarkSet 认 verified', () => app.includes("if (k === 'verified') return state.verifiedIds;"));
-  t('libHasMark 里「未验证」= 已否定的已验证', () => app.includes("if (k === 'unverified') return !libHasMark(rec, 'verified');"));
-  t('筛选按已验证剔 / 留两个方向', () =>
-    app.includes("if (marks.verified && !libHasMark(rec, 'verified')) return false;") &&
-    app.includes("if (marks.unverified && libHasMark(rec, 'verified')) return false;"));
-  t('已验证 / 未验证 两颗 chip 互斥', () =>
-    app.includes("if (k === 'verified' && state.lib.marks.verified) state.lib.marks.unverified = false;") &&
-    app.includes("if (k === 'unverified' && state.lib.marks.unverified) state.lib.marks.verified = false;"));
+  t('筛选按「只看 / 排除」两个方向循环判断', () =>
+    (app.includes("for (const k of ['liked', 'blocked', 'bug', 'verified'])")
+      && app.includes("if (mode === 'in' && !has) return false;")
+      && app.includes("if (mode === 'ex' && has) return false;")) || '标记筛选没做成三态');
+  t('负面标记默认是「排除」而不是「只看」', () =>
+    app.includes("marks.blocked !== 'in'") || '负面标记默认没按排除走');
+  t('点一下切三态：任意 → 排除 → 只看 → 任意（正面标记反过来）', () => {
+    const i = app.indexOf('function toggleLibMark(');
+    const body = app.slice(i, i + 900);
+    return (body.includes('neg') && body.includes("'ex'") && body.includes("'in'")) || 'toggleLibMark 没做三态循环';
+  });
   t('卡片上有「标记已验证」按钮（data-libver）', () =>
-    app.includes('data-libver="${rec.modId}"') && app.includes("${isVer ? '✓ 已验证' : '标记已验证'}"));
+    app.includes('data-libver=') && app.includes('已验证') || '缺 data-libver 按钮');
   t('index.html：吸顶区 #browseHead 的 div 是配平的（多删一行就会把 #browseArea 挤出 .main）', () => {
   const html = fs.readFileSync('src/renderer/index.html', 'utf8').split(/\r?\n/);
   const start = html.findIndex(l => l.includes('class="bhead"'));
@@ -280,14 +291,14 @@ t('状态 = 在线 → 三条都算在线（本地那两条也有在线信息时
 t('标记「有 bug」→ 只留标了的那个', () => {
   const recs = three();
   state.bugIds = new Set(['200']);
-  state.lib.marks.bug = true;
+  state.lib.marks.bug = 'in';
   const shown = ctx.libFilterRecords(recs);
   return shown.length === 1 && shown[0].modId === 200;
 });
 t('标记「不感兴趣」→ 只留黑名单里的', () => {
   const recs = three();
   state.browse.blocked = new Set(['100']);
-  state.lib.marks.blocked = true;
+  state.lib.marks.blocked = 'in';
   const shown = ctx.libFilterRecords(recs);
   return shown.length === 1 && shown[0].modId === 100;
 });
@@ -341,33 +352,40 @@ t('状态 chip 覆盖了用户点名的五种状态', () => {
   const vs = ctx.LIB_STATUS_CHIPS.map((c) => c.v);
   return ['all', 'online', 'downloaded', 'installed', 'enabled', 'disabled'].every((v) => vs.includes(v));
 });
-t('标记 chip 有四档（喜欢 / 不感兴趣 / 有 bug / 不含 bug）', () => {
+t('状态 chip 覆盖了用户点名的五种状态', () => {
+  const vs = ctx.LIB_STATUS_CHIPS.map((c) => c.v);
+  return ['all', 'online', 'downloaded', 'installed', 'enabled', 'disabled'].every((v) => vs.includes(v));
+});
+t('标记 chip 是四颗（喜欢 / 不感兴趣 / 有 bug / 已验证）', () => {
   const ks = ctx.LIB_MARK_CHIPS.map((c) => c.k);
-  return ks.includes('liked') && ks.includes('blocked') && ks.includes('bug') && ks.includes('nobug');
+  return ks.length === 4 && ['liked', 'blocked', 'bug', 'verified'].every((k) => ks.includes(k));
 });
-
-t('「有 bug」红、「不含 bug」绿（tone 标记 + CSS 都在）', () => {
+t('「有 bug」红、「已验证」蓝（tone 标记 + CSS 都在）', () => {
   const bad = ctx.LIB_MARK_CHIPS.find((c) => c.k === 'bug');
-  const good = ctx.LIB_MARK_CHIPS.find((c) => c.k === 'nobug');
-  return bad.tone === 'bad' && good.tone === 'good' &&
-    /\.tabs\.libmarks button\.tone-bad\.on/.test(css) && /\.tabs\.libmarks button\.tone-good\.on/.test(css);
+  const ver = ctx.LIB_MARK_CHIPS.find((c) => c.k === 'verified');
+  return bad.tone === 'bad' && ver.tone === 'ver' &&
+    /\.tabs\.libmarks button\.tone-bad\.on/.test(css) && /\.tabs\.libmarks button\.tone-ver\.on/.test(css);
 });
-t('「不含 bug」把标过的剔掉（不是只看标过的）', () => {
+t('「不感兴趣」选「排除」时剔掉、选「只看」时只剩它们', () => {
+  const recs = three();
+  state.browse.blocked = new Set(['100', '200']);
+  state.lib.marks.blocked = 'ex';
+  const ex = ctx.libFilterRecords(recs).map((r) => r.modId);
+  state.lib.marks.blocked = 'in';
+  const only = ctx.libFilterRecords(recs).map((r) => r.modId);
+  state.browse.blocked = new Set();
+  state.lib.marks.blocked = '';
+  return (ex.length === 1 && ex[0] === 300 && only.length === 2) || ('ex=' + ex + ' only=' + only);
+});
+t('清空标记之后记录全回来（三态不残留）', () => {
   const recs = three();
   state.bugIds = new Set(['200']);
-  state.lib.marks.nobug = true;
-  const shown = ctx.libFilterRecords(recs);
-  return shown.length === 2 && !shown.some((r) => r.modId === 200);
-});
-t('「有 bug」与「不含 bug」互斥（点亮一个就关掉另一个）', () =>
-  app.includes("if (k === 'bug' && state.lib.marks.bug) state.lib.marks.nobug = false;") &&
-  app.includes("if (k === 'nobug' && state.lib.marks.nobug) state.lib.marks.bug = false;"));
-t('没标过的记录「不含 bug」为真、标过的为假', () => {
-  const recs = three();
-  state.bugIds = new Set(['100']);
-  const r100 = recs.find((r) => r.modId === 100);
-  const r200 = recs.find((r) => r.modId === 200);
-  return ctx.libHasMark(r100, 'nobug') === false && ctx.libHasMark(r200, 'nobug') === true;
+  state.lib.marks.bug = 'ex';
+  ctx.libFilterRecords(recs);
+  state.lib.marks.bug = '';
+  const all = ctx.libFilterRecords(recs).map((r) => r.modId);
+  state.bugIds = new Set();
+  return all.length === 3;
 });
 // ---------------------------------------------------------------------------
 console.log('\n=== F. 接线：一套界面、一套多选、一套批量 ===');
@@ -613,36 +631,33 @@ t('app.js：老入口 p-installed 会被导向 p-browse 并把状态切到「已
 //    上一版是把节点在 JS 里搬来搬去（compactLibHead），现在直接写死在 HTML 里，
 //    顺序固定、不依赖运行时搬迁。
 // ---------------------------------------------------------------------------
-t('index.html：#browseHead 分成「筛选 / 排序 / 操作」三段', () => {
+t('index.html：#browseHead 按「状态 / 信息 / 排序 / 操作」分行，状态与标记共用一行', () => {
   const html = fs.readFileSync('src/renderer/index.html', 'utf8');
   const i = html.indexOf('id="browseHead"');
   const j = html.indexOf('id="browseArea"');
-  if (i < 0 || j <= i) return "找不到 #browseHead / #browseArea";
+  if (i < 0 || j <= i) return '找不到 #browseHead / #browseArea';
   const seg = html.slice(i, j);
   const secs = (seg.match(/class="sect"/g) || []).length;
-  return (secs === 3 && seg.includes('>筛选<') && seg.includes('>排序<') && seg.includes('>操作<'))
-    || '顶栏没分成三段：' + secs;
+  const need = (t) => seg.includes('>' + t + '<');
+  return (secs === 4 && need('状态') && need('标记') && need('信息') && need('排序') && need('操作'))
+    || '顶栏段数不对：' + secs;
 });
-t('index.html：三段归属正确（筛选=状态/标记/内置脚本/分类，排序=sortTabs+libSort，操作=批量条）', () => {
+t('index.html：控件归属正确（状态+标记 / 信息 / 排序 / 操作）', () => {
   const html = fs.readFileSync('src/renderer/index.html', 'utf8');
   const i = html.indexOf('id="browseHead"');
   const j = html.indexOf('id="browseArea"');
   const seg = html.slice(i, j);
-  const segOf = (label) => {
-    const a = seg.indexOf('>' + label + '<');
-    const b = seg.indexOf('class="sect"', a);
-    return seg.slice(a, b < 0 ? seg.length : b);
-  };
-  const f = segOf('筛选'), so = segOf('排序'), op = segOf('操作');
+  const parts = seg.split('class="sect"');
   const need = (s, id) => s.indexOf('id="' + id + '"') >= 0;
-  return (need(f, 'libStatus') && need(f, 'libMarks') && need(f, 'libBuiltin') && need(f, 'browseFilters')
-    && need(so, 'sortTabs') && need(so, 'libSort')
-    && need(op, 'batchBar') && need(op, 'batchMarks'))
-    || '控件没落在对应的段里';
+  const s0 = parts[1] || '', s1 = parts[2] || '', s2 = parts[3] || '', s3 = parts[4] || '';
+  return (need(s0, 'libStatus') && need(s0, 'libMarks')
+    && need(s1, 'browseFilters') && need(s1, 'libBuiltin') && need(s1, 'adultTabs')
+    && need(s2, 'sortTabs') && need(s2, 'libSort')
+    && need(s3, 'batchBar') && need(s3, 'batchMarks')) || '控件没落在对应的段里';
 });
 t('app.js：不再用 compactLibHead 搬节点（写死在 HTML 里了）', () =>
   !app.includes('function compactLibHead(') || '还在运行时搬节点');
-t('style.css：三段样式 .sect / .slabel / .sline 齐全', () => {
+t('style.css：分段样式 .sect / .slabel / .sline 齐全', () => {
   const css = fs.readFileSync('src/renderer/style.css', 'utf8');
   return (/\.sect\{/.test(css) && /\.slabel\{/.test(css) && /\.sline\{/.test(css))
     || '缺三段样式';
@@ -689,6 +704,43 @@ t('app.js：类型筛选的代码已清干净（没有 libKind / state.lib.kind 
   const i = app.indexOf('function libFilterRecords(');
   const body = app.slice(i, i + 2600);
   return !body.includes('libTypeOf(rec) !== kind') || '筛选里还在按 kind 过滤';
+});
+
+// ---------------------------------------------------------------------------
+// M. 卡片重排 + 全站尺寸统一（2026-11-11 用户要求：信息别重复、别互相遮挡）
+// ---------------------------------------------------------------------------
+t('卡片：封面只留状态徽标，标记/类型/文件数集中在 .ctags 一行', () => {
+  const i = app.indexOf('function libCard(');
+  const body = app.slice(i, i + 4600);
+  if (body.indexOf('class="ctags"') < 0) return '缺 .ctags 一行';
+  const tpl = body.indexOf('<div class="cover">');
+  const cbody = body.indexOf('class="cbody"');
+  if (tpl < 0 || cbody < 0) return '找不到封面模板';
+  const cover = body.slice(tpl, cbody);
+  if (cover.indexOf('class="lb ') < 0) return '封面缺状态徽标';
+  if (/class="tag (bug|ver|bad|like|nfile)"/.test(cover)) return '封面里还有标记角标（重复显示）';
+  return true;
+});
+t('卡片：元信息只用「·」分隔的一行文字（不再套 chip）', () => {
+  const i = app.indexOf('function libCard(');
+  const body = app.slice(i, i + 4600);
+  return (body.indexOf('<span class="sep">·</span>') >= 0 && body.indexOf('class="meta"') >= 0)
+    || '元信息没改成「·」分隔';
+});
+t('style.css：.ctags / .meta 单行 / .acts 单独一行 + 统一按钮高度 24', () => {
+  const s = fs.readFileSync('src/renderer/style.css', 'utf8');
+  const ok = /\.card \.ctags\{/.test(s) && /\.card \.meta\{/.test(s)
+    && /\.card \.acts\{/.test(s) && /\.card \.acts \.btn\{height:24px/.test(s);
+  return ok || '卡片样式不全';
+});
+t('style.css：筛选区 chip 与按钮统一 22px、段标签固定 40px', () => {
+  const s = fs.readFileSync('src/renderer/style.css', 'utf8');
+  return (/\.sline \.tabs button[^{]*\{[^}]*height:22px/.test(s) && /\.slabel\{flex:0 0 40px/.test(s))
+    || '筛选区尺寸没统一';
+});
+t('样式里有「排除态」的视觉区分（.ex）', () => {
+  const s = fs.readFileSync('src/renderer/style.css', 'utf8');
+  return /\.tabs\.libmarks button\.ex\{/.test(s) || '排除态没有样式';
 });
 
 // ---------------------------------------------------------------------------

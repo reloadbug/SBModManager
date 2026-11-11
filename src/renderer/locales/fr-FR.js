@@ -1272,5 +1272,13 @@
     '显示内置脚本': 'Afficher les scripts intégrés',
     '显示 UE4SS 自带的 10 个内置脚本模组（默认藏起来，免得和真 Mod 混在一起）': 'Afficher les 10 mods de script fournis avec UE4SS (masqués par défaut pour ne pas les mélanger aux vrais mods)',
     '本地记录的分类要等 Nexus 信息补全后才出现': 'Les catégories des entrées locales apparaissent une fois les infos Nexus complétées',
+    '标记': 'Marquer',
+    '排序': 'Tri',
+    '操作': 'Actions',
+    '只看': 'Seulement',
+    '排除': 'Exclure',
+    '任意': 'Tous',
+    '验证': 'Vérifier',
+    '删包': 'Supprimer',
   });
 })();
