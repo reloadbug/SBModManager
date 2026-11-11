@@ -54,7 +54,7 @@ icacls "D:\AI game\StarBladeModManager" /setintegritylevel "(OI)(CI)M"   # 目�
 ## 代码约定（容易踩的几条）
 
 - 渲染层**直接用中文写界面**是安全的：`i18n.js` 是「中文原文即 key」的后处理翻译，`_probe/i18n-test.js`
-  只校验 13 个语言包与 `_probe/i18n-keys.json` 键集合严格一致（1228 条）。**不要随手往 keys.json 或语言包里加键**，
+  只校验 13 个语言包与 `_probe/i18n-keys.json` 键集合严格一致（当前 1301 条，改文案必须走 `_probe/i18n-add-keys.js`）。**不要随手往 keys.json 或语言包里加键**，
   否则那个断言会红。
 - `scanner.scan(root, registry, links)` 的 `registry` 必填，探针里传 `null` 会抛
   `Cannot read properties of null (reading 'get')`。
