@@ -871,3 +871,6 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 /* ---------- 标记 chip 的「全部 / 只看 / 排除」挪到文字前面（2026-11-11 用户要求） ---------- */
 .tabs.libmarks button .dir{margin-left:0;margin-right:5px;opacity:.72;font-variant-numeric:tabular-nums}
 .bhead .tabs.libmarks button .dir{margin-left:0;margin-right:5px;font-size:10.5px;opacity:.75}
+
+/* 多选模式下先把启停开关收起来，只留勾选圈（2026-11-11） */
+body.sel .card .cover .sw{display:none}

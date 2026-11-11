@@ -3286,7 +3286,6 @@ function libCard(rec) {
     acts = `<button class="btn sm" data-lopen="${esc(key)}" title="看文件、来源和逐文件开关">详情</button>`;
   } else if (rec.kind === 'downloaded') {
     acts = `<button class="btn sm p" data-lib-install="${rec.modId}" title="安装包已经在管理器里（不用再下一次），直接装进游戏目录">安装</button>`
-      + `<button class="btn sm" data-libreveal="${rec.modId}" title="在资源管理器里定位这个安装包">定位</button>`
       + `<button class="btn sm d" data-libdel="${rec.modId}" title="只删安装包，不动用户标记（喜欢 / 不感兴趣 / 有 bug）">删包</button>`;
   } else {
     acts = `<button class="btn sm" data-dl-add="${rec.modId}" title="加入下载队列（之后自动下载并安装）">⬇ 下载</button>`;
@@ -3306,6 +3305,7 @@ function libCard(rec) {
     <div class="cover">
       ${img ? `<img src="${esc(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'无封面图'}))">`
         : `<div class="ph">${rec.kind === 'installed' ? '本地文件<br>无封面图' : '无封面图'}</div>`}
+      ${sw}
       <div class="ck${selOn ? ' on' : ''}" data-lck="${esc(key)}">✓</div>
     </div>
     <div class="cbody">
@@ -9068,6 +9068,8 @@ async function doToggleGroup(key) {
     }
     toast(target ? `已启用 ${items.length} 个文件` : `已禁用 ${items.length} 个文件`, 'ok');
     await refreshAll();
+    // 卡片上的开关状态是从 renderBrowse 的渲染里来的，refreshAll 不会重画 Mod 库
+    if ($('#p-browse') && $('#p-browse').classList.contains('on')) renderBrowse();
   } catch { /* call() 已提示 */ }
   reopenInstalledDrawer(key);
 }
