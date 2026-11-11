@@ -1307,5 +1307,6 @@
     'Nexus官网': 'Nexus site',
     '导入': 'Import',
     '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'Bring an archive you already downloaded (.7z / .zip / .rar) into the manager, then install it into the game in one click',
+    '工具': 'Tools',
   });
 })();

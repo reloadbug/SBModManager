@@ -329,8 +329,6 @@ function switchPage(id) {
   $('#sub').textContent = s;
   $('#searchBox').style.display = id === 'p-browse' ? 'flex' : 'none';
   $('#btnImport').style.display = (id === 'p-browse' || id === 'p-download') ? '' : 'none';
-  const btnLk = $('#btnLinker');
-  if (btnLk) btnLk.style.display = (id === 'p-browse') ? '' : 'none';
   const btnSite = $('#btnOpenSite');
   if (btnSite) btnSite.style.display = (id === 'p-browse') ? '' : 'none';
   $('#btnRefresh').style.display = id === 'p-prereq' ? 'none' : '';
@@ -6550,6 +6548,14 @@ function renderSettings() {
     </div>
 
     <div class="frm">
+      <h3>工具</h3>
+      <div class="f">
+        <label>批量解析</label>
+        <button class="btn" id="btnLinker" title="把手动放进 Mods 目录的 Mod 与 Nexus 上的条目对上号，自动补上名字、作者、版本和封面">批量解析</button>
+        <div class="hint">把手动放进 Mods 目录的 Mod 与 Nexus 上的条目对上号，自动补上名字、作者、版本和封面。</div>
+      </div>
+    </div>
+    <div class="frm">
       <h3>游戏</h3>
       <div class="f">
         <label>游戏目录</label>
@@ -7826,8 +7832,6 @@ function bindEvents() {
   });
 
   // 批量解析：把手工放进去的 Mod 与 Nexus 对上号（用户 2026-11-06）
-  const btnL = $('#btnLinker');
-  if (btnL) btnL.addEventListener('click', () => openLinkerModal());
 
   $('#btnOpenSite').addEventListener('click', () => {
     window.api.openExternal('https://www.nexusmods.com/stellarblade/mods/');
@@ -8639,6 +8643,8 @@ function bindEvents() {
         if (!r.candidates.length) toast('没有探测到剑星目录，请手动填写', 'err');
         else toast('探测到：' + r.candidates.join('  |  '));
       } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnLinker') {
+      openLinkerModal();
     } else if (e.target.id === 'btnOpenGameRoot') {
       // 成功不弹提示：资源管理器自己就是反馈；失败由 call() 把主进程的人话弹出来
       try { await call(window.api.game.openRoot()); } catch { /* 已提示 */ }

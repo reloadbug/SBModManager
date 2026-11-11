@@ -1307,5 +1307,6 @@
     'Nexus官网': 'Site Nexus',
     '导入': 'Importer',
     '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'Importer une archive déjà téléchargée (.7z / .zip / .rar) dans le gestionnaire, puis l\'installer dans le jeu en un clic',
+    '工具': 'Outils',
   });
 })();

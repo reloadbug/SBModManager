@@ -1307,5 +1307,6 @@
     'Nexus官网': 'Nexus sitesi',
     '导入': 'İçe aktar',
     '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'İndirdiğiniz arşivi (.7z / .zip / .rar) yöneticiye aktarın, tek tıkla oyuna kurun',
+    '工具': 'Araçlar',
   });
 })();

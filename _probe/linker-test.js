@@ -300,10 +300,10 @@ function finish() {
     }
     t('preload 订阅 linker:progress', () => (preload.includes("ipcRenderer.on('linker:progress'") ? true : '没找到'));
 
-    t('index.html 有「批量解析」按钮', () => (html.includes('id="btnLinker"') ? true : '没找到'));
-    t('顶栏按钮在「导入 Mod」之前', () => (html.indexOf('id="btnLinker"') < html.indexOf('id="btnImport"') ? true : '顺序不对'));
+    t('设置页里有「批量解析」按钮', () => (app.includes('id="btnLinker"') && app.includes('<h3>工具</h3>') ? true : '没找到'));
+    t('顶栏不再放批量解析', () => (html.includes('id="btnLinker"') ? '顶栏还有' : true));
 
-    t('app.js 绑定了 #btnLinker', () => (app.includes("$('#btnLinker')") ? true : '没找到'));
+    t('app.js 用点击委托兜住 #btnLinker', () => (app.includes("e.target.id === 'btnLinker'") && app.includes('openLinkerModal()') ? true : '没找到'));
     t('app.js 有复核弹窗的入口', () => (app.includes('function openLinkerModal()') ? true : '没找到'));
     t('app.js 有应用入口', () => (app.includes('function applyLinkerChoices()') ? true : '没找到'));
     t('卡片标签认「已关联」', () => (app.includes("g.linked ? '已关联'") ? true : '没找到'));

@@ -855,3 +855,15 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 .top>.btn,.top>.verchip{white-space:nowrap}
 .top>.spacer{flex:1 1 auto}
 .bhead{margin-bottom:14px}
+
+/* ---------- 顶栏统一规格（2026-11-11，用户：一整套按钮和搜索框要一致尺寸与风格配色） ---------- */
+/* 同一排控件：同高 30px、同圆角 8px、同字号 12px、同底色与描边；启动游戏不再单独高亮 */
+.top>.btn,.top>.search,.top>.verchip{height:30px;min-height:30px;border-radius:8px;font-size:12px;line-height:28px;padding:0 11px;border:1px solid var(--border);background:var(--panel2);color:var(--text);box-sizing:border-box}
+.top>.btn{display:inline-flex;align-items:center;gap:6px}
+.top>.btn:hover,.top>.search:hover{border-color:var(--border2);background:var(--panel3)}
+.top>.btn.p{background:var(--panel2);border-color:var(--border);color:var(--text);font-weight:400}
+.top>.btn.p:hover{background:var(--panel3);border-color:var(--border2);filter:none}
+.top>.search{width:200px;max-width:200px;padding:0 10px;color:var(--dim2)}
+.top>.search input{height:26px;line-height:26px;font-size:12px}
+.top>.verchip{display:inline-flex;align-items:center;padding:0 9px;font-size:11.5px;line-height:1;color:var(--dim2)}
+.top>.btn.acct{padding:0 10px 0 5px;max-width:200px}
