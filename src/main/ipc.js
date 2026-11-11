@@ -59,6 +59,9 @@ function imageCache() {
 
 /** Mod 基本信息档案的单例（一条一个 JSON，见 modInfo.js） */
 let modInfoSingleton = null;
+/** modId → { url, at }：本地封面地址的短缓存（见 images:covers） */
+const coverCache = new Map();
+
 function modInfoStore() {
   if (!modInfoSingleton) modInfoSingleton = createModInfo();
   return modInfoSingleton;
@@ -2502,6 +2505,45 @@ function register() {
    * 只读本地的那份图集（0.4.9）：不发任何网络请求。
    * 渲染层先用它把「已经存下来的图」立刻画出来，没有才去 `mod:images` 抓。
    */
+  /**
+   * 批量问「这一批 Mod 有没有本地封面」（0.7.9）。
+   *
+   * 已安装 / 已下载的卡片只有 modId，手里没有图片地址；而图集早就存在
+   * `data/cache/images/<modId>/` 里（详情抽屉能看到，卡片却是「无封面图」）。
+   * 所以这里一次性把一批 modId 的本地第一张图换成 file:// 地址交出去 ——
+   * 纯读磁盘，不联网；查过的 id 记在缓存里，避免每次重画都把目录扫一遍。
+   */
+  handle('images:covers', async (modIds) => {
+    const ids = (Array.isArray(modIds) ? modIds : [])
+      .map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0).slice(0, 400);
+    const out = {};
+    for (const id of ids) {
+      const hit = coverCache.get(id);
+      if (hit !== undefined) {
+        if (hit.url && Date.now() - hit.at < 10 * 60 * 1000) out[id] = hit.url;
+        else if (hit.url) { coverCache.delete(id); }
+        else if (Date.now() - hit.at < 60 * 1000) continue;   // 「没有图」这类结论只信一分钟
+        else { coverCache.delete(id); }
+        if (out[id]) continue;
+      }
+      let url = '';
+      try {
+        const list = await imageCache().listCached(id);
+        const first = (list || []).find(x => x && x.localUrl);
+        if (first) url = first.localUrl;
+      } catch { /* 读不到就当没有 */ }
+      if (!url) {
+        try {
+          const rec = modInfoStore().get(id);
+          if (rec && rec.coverFile) url = require('url').pathToFileURL(rec.coverFile).href;
+        } catch { /* 同上 */ }
+      }
+      coverCache.set(id, { url, at: Date.now() });
+      if (url) out[id] = url;
+    }
+    return out;
+  });
+
   handle('mod:imagesDisk', (modId) => {
     const id = Number(modId);
     if (!Number.isFinite(id) || id <= 0) return [];

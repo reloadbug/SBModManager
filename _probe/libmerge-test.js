@@ -781,6 +781,24 @@ t('style.css：筛选区 chip 与按钮统一 22px、段标签固定 40px', () =
     return true;
   });
 
+  t('本地记录也有封面：card 用 libCoverOf 兜底', () => {
+    if (!app.includes('const img = rec.image || libCoverOf(rec.modId)')) return 'libCard 没接本地封面';
+    if (!app.includes('libPrefetchCovers(recs);')) return 'renderLibMerged 没预取封面';
+    if (!/async function libPrefetchCovers\b/.test(app)) return '缺 libPrefetchCovers';
+    if (!app.includes('window.api.imagesCovers(')) return '没走批量封面通道';
+    return true;
+  });
+
+  t('images:covers 纯读磁盘、带短缓存', () => {
+    const ipcSrc = require('fs').readFileSync('src/main/ipc.js', 'utf8');
+    const preSrc = require('fs').readFileSync('src/preload/index.js', 'utf8');
+    if (!ipcSrc.includes('images:covers')) return '缺 images:covers 通道';
+    if (!/imageCache\(\)\.listCached\(id\)/.test(ipcSrc)) return '没走 listCached';
+    if (!ipcSrc.includes('coverCache')) return '没有短缓存';
+    if (!preSrc.includes('imagesCovers:')) return 'preload 没暴露 imagesCovers';
+    return true;
+  });
+
 t('样式里有「排除态」的视觉区分（.ex）', () => {
   const s = fs.readFileSync('src/renderer/style.css', 'utf8');
   return /\.tabs\.libmarks button\.ex\{/.test(s) || '排除态没有样式';

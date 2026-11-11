@@ -3247,6 +3247,46 @@ function applyLibSort(recs) {
   return out;
 }
 
+/** modId → 本地封面 file:// 地址（见下面的 libPrefetchCovers） */
+const libCoverCache = new Map();
+
+function libCoverOf(modId) {
+  const id = Number(modId);
+  return id ? (libCoverCache.get(id) || '') : '';
+}
+
+/**
+ * 给「只有 modId、没有图片地址」的本地记录补封面（0.7.9）。
+ *
+ * 用户报：已安装的卡片显示「本地文件 / 无封面图」，可详情抽屉里有图集 ——
+ * 图早就缓存在本地，只是卡片不知道地址。这里一次问一批（纯读磁盘、不联网），
+ * 拿到就记进 libCoverCache 并重画一次；问过的 id 不再重复问。
+ */
+let libCoverAsked = null;
+async function libPrefetchCovers(recs) {
+  if (!window.api || typeof window.api.imagesCovers !== 'function') return;
+  if (!libCoverAsked) libCoverAsked = new Set();
+  const want = [];
+  for (const r of recs || []) {
+    if (!r || !r.modId || r.image) continue;
+    const id = Number(r.modId);
+    if (!id || libCoverCache.has(id) || libCoverAsked.has(id)) continue;
+    libCoverAsked.add(id);
+    want.push(id);
+    if (want.length >= 120) break;
+  }
+  if (!want.length) return;
+  let got = {};
+  try { got = await call(window.api.imagesCovers(want), { silent: true }) || {}; } catch { return; }
+  let changed = 0;
+  for (const [k, v] of Object.entries(got)) {
+    if (!v) continue;
+    libCoverCache.set(Number(k), v);
+    changed++;
+  }
+  if (changed && (state.lib.status || 'all') !== 'online') renderBrowse();
+}
+
 function libCard(rec) {
   const s = libStateOf(rec);
   const b = LIB_BADGE[s] || LIB_BADGE.online;
@@ -3256,7 +3296,8 @@ function libCard(rec) {
   const isVer = libHasMark(rec, 'verified');
   const isLiked = libHasMark(rec, 'liked');
   const isBlocked = libHasMark(rec, 'blocked');
-  const img = rec.image || (rec.modId && typeof coverForMod === 'function' ? coverForMod(rec.modId) : '');
+  const img = rec.image || libCoverOf(rec.modId)
+    || (rec.modId && typeof coverForMod === 'function' ? coverForMod(rec.modId) : '');
 
   /* 2026-11-11 用户要求「卡片上的信息各说一次，别重复显示、别挤在一起」：
    * 封面右上角**只留状态徽标**（在线/已下载/已安装…），
@@ -3381,6 +3422,7 @@ function renderLibMerged() {
   paintLibHead(recs);
   renderLibFilters(recs);
   libPrefetchInfo(recs);
+  libPrefetchCovers(recs);
 
   const stats = $('#browseStats');
   const more = $('#btnLoadMore');

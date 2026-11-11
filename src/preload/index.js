@@ -287,6 +287,7 @@ contextBridge.exposeInMainWorld('api', {
   modImages: (modId, urls, opts) => invoke('mod:images', modId, urls, opts),
 
   /** 只读本地已缓存的图集（不发网络请求）；渲染层优先用它，没有再去抓 */
+  imagesCovers: (modIds) => invoke('images:covers', modIds),
   modImagesDisk: modId => invoke('mod:imagesDisk', modId),
 
   /**
