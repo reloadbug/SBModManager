@@ -2822,16 +2822,17 @@ function renderBrowseDownloaded() {
  */
 
 /** 状态 chip（互斥单选） */
+/* 状态 chip：文字最多 4 个字（用户 2026-11-11 要求），说不清的放 title 里悬停看 */
 const LIB_STATUS_CHIPS = [
-  { v: 'all', label: '全部' },
-  { v: 'online', label: '在线' },
-  { v: 'downloaded', label: '已下载' },
-  { v: 'installed', label: '已安装' },
-  { v: 'enabled', label: '已启用' },
-  { v: 'disabled', label: '已禁用' },
-  { v: 'partial', label: '部分启用' },
-  { v: 'unreg', label: '未登记' },
-  { v: 'linked', label: '已关联' }
+  { v: 'all', label: '全部', title: '所有 Mod（在线 + 已下载 + 已安装），不筛' },
+  { v: 'online', label: '在线', title: '只在 Nexus 上，本地还没有' },
+  { v: 'downloaded', label: '已下载', title: '安装包在管理器里，还没装进游戏' },
+  { v: 'installed', label: '已安装', title: '已经装进游戏目录（含已启用 / 已禁用）' },
+  { v: 'enabled', label: '已启用', title: '装进游戏并且开关是开着的' },
+  { v: 'disabled', label: '已禁用', title: '装进游戏但开关关着 —— 游戏不会加载' },
+  { v: 'partial', label: '部分启用', title: '一个 Mod 里只有部分文件被关掉了' },
+  { v: 'unreg', label: '未登记', title: '没有 Nexus Mod ID，认不出是哪个 Mod' },
+  { v: 'linked', label: '已关联', title: '手动关联到了 Nexus 上的某个条目' }
 ];
 
 /** 标记 chip（可叠加，与状态同时生效） */
@@ -2840,10 +2841,10 @@ const LIB_STATUS_CHIPS = [
  * 也要能**只看它们**（好集中删 / 取消标记）——所以每颗都是 任意 → 排除 → 只看 → 任意。
  * 正面标签（喜欢 / 已验证）顺序反过来：任意 → 只看 → 排除 → 任意。 */
 const LIB_MARK_CHIPS = [
-  { k: 'liked', label: '👍 喜欢', neg: false },
-  { k: 'blocked', label: '👎 不感兴趣', neg: true },
-  { k: 'bug', label: '⚠ 有 bug', neg: true, tone: 'bad' },
-  { k: 'verified', label: '✓ 已验证', neg: false, tone: 'ver' }
+  { k: 'liked', label: '👍 喜欢', neg: false, title: '你喜欢的 Mod' },
+  { k: 'blocked', label: '👎 不感兴趣', neg: true, title: '你不想再看到的 Mod（等于加进黑名单）' },
+  { k: 'bug', label: '⚠ 有 bug', neg: true, tone: 'bad', title: '装上会出问题的 Mod' },
+  { k: 'verified', label: '✓ 已验证', neg: false, tone: 'ver', title: '你实测过能正常用的 Mod' }
 ];
 
 /** 记录的状态徽标 */
@@ -3066,10 +3067,10 @@ function libAdultChips(recs) {
   const total = (recs || []).length;
   const adultN = (recs || []).filter((r) => r && r.adult).length;
   const cnt = (n) => '<span class="n">' + Number(n).toLocaleString() + '</span>';
-  const chip = (v, label, n) => '<button class="fc' + (mode === v ? ' on' : '') + '" data-adult="' + v + '">' + label + cnt(n) + '</button>';
-  return chip('hide', '隐藏成人内容', Math.max(0, total - adultN))
-    + chip('all', '全部内容', total)
-    + chip('only', '只显示成人内容', adultN);
+  const chip = (v, label, n, tip) => '<button class="fc' + (mode === v ? ' on' : '') + '" data-adult="' + v + '" title="' + esc(tip || label) + '">' + label + cnt(n) + '</button>';
+  return chip('hide', '隐藏成人', Math.max(0, total - adultN), '不显示成人内容（露骨的单独藏起来）')
+    + chip('all', '全部内容', total, '成人内容也照常显示')
+    + chip('only', '只看成人', adultN, '只列出成人内容');
 }
 
 /** 按当前状态 / 标记 / 类型 / 关键词筛记录（纯计算，不碰 DOM） */
@@ -3169,7 +3170,7 @@ function paintLibHead(recs) {
     box.innerHTML = LIB_STATUS_CHIPS.map(c => {
       const n = counts[c.v];
       const num = typeof n === 'number' && c.v !== 'all' ? `<span class="dir">${fmtNum(n)}</span>` : '';
-      return `<button data-libst="${c.v}" class="${st === c.v ? 'on' : ''}">${c.label}${num}</button>`;
+      return `<button data-libst="${c.v}" class="${st === c.v ? 'on' : ''}" title="${esc(c.title || c.label)}">${c.label}${num}</button>`;
     }).join('');
   }
   const marks = $('#libMarks');
@@ -3184,7 +3185,7 @@ function paintLibHead(recs) {
       const tone = ch.tone ? ` tone-${ch.tone}` : '';
       const cls = mode === 'in' ? ' on' : (mode === 'ex' ? ' ex' : '');
       const flag = mode === 'in' ? '只看' : (mode === 'ex' ? '排除' : '任意');
-      const tip = `${ch.label}：现在是「${flag}」—— 再点一下切到${mode === '' ? (ch.neg ? '排除' : '只看') : (mode === (ch.neg ? 'ex' : 'in') ? (ch.neg ? '只看' : '排除') : '任意')}`;
+      const tip = `${ch.title || ch.label}｜现在是「${flag}」—— 再点一下切到${mode === '' ? (ch.neg ? '排除' : '只看') : (mode === (ch.neg ? 'ex' : 'in') ? (ch.neg ? '只看' : '排除') : '任意')}`;
       return `<button data-libmk="${ch.k}" class="${cls.trim()}${tone}" title="${tip}">${ch.label}<span class="dir">${flag} ${fmtNum(cnt)}</span></button>`;
     }).join('');
   }
@@ -3194,10 +3195,9 @@ function paintLibHead(recs) {
 // Mod 库的排序方式（0.5.3）。默认档位不动：状态优先、组内保持原顺序；
 // 「开启时间」是排查崩溃时最常用的 —— 新开的 Mod 最可疑。
 const LIB_SORTS = [
-  { value: '', label: '默认', title: '按状态分组，保持原来的顺序' },
   { value: 'on-desc', label: '开启时间 ↓', title: '最近开启的排最前 —— 崩了先看它' },
   { value: 'on-asc', label: '开启时间 ↑', title: '最早开启的排最前' },
-  { value: 'inst-desc', label: '安装时间 ↓', title: '最近装的排最前' },
+  { value: 'inst-desc', label: '安装时间 ↓', title: '最近装上的排最前' },
   { value: 'name', label: '名称', title: '按名称排' }
 ];
 
