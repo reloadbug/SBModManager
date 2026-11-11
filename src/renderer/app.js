@@ -3342,7 +3342,11 @@ function libAdultChips(recs) {
 }
 
 /** 按当前状态 / 标记 / 类型 / 关键词筛记录（纯计算，不碰 DOM） */
-function libFilterRecords(recs) {
+function libFilterRecords(recs, opts) {
+  // opts.skip：'status' = 不算状态档；某个标记名 = 不算那颗标记。
+  // 顶栏 chip 上的数字用「除自己以外全部条件都算上」的口径统计 ——
+  // 否则会出现「已启用 121」但点下去只有 1 张（被标记/成人/关键词又筛掉了）。
+  const skip = (opts && opts.skip) || '';
   const st = state.lib.status || 'all';
   const marks = state.lib.marks || {};
   // 顶栏搜索框与老「已安装」搜索框共用一个关键词（用户在 Mod 库里只有一个搜索框）
@@ -3371,17 +3375,20 @@ function libFilterRecords(recs) {
 
   return (recs || []).filter(rec => {
     const s = libStateOf(rec);
-    if (st === 'online') { if (rec.kind !== 'online' && !rec.online) return false; }
-    else if (st === 'downloaded') { if (rec.kind !== 'downloaded') return false; }
-    else if (st === 'installed') { if (rec.kind !== 'installed') return false; }
-    else if (st === 'enabled') { if (s !== 'enabled') return false; }
-    else if (st === 'disabled') { if (s !== 'disabled') return false; }
-    else if (st === 'partial') { if (s !== 'partial') return false; }
-    else if (st === 'unreg') { if (rec.modId) return false; }
-    else if (st === 'linked') { if (!rec.link) return false; }
+    if (skip !== 'status') {
+      if (st === 'online') { if (rec.kind !== 'online' && !rec.online) return false; }
+      else if (st === 'downloaded') { if (rec.kind !== 'downloaded') return false; }
+      else if (st === 'installed') { if (rec.kind !== 'installed') return false; }
+      else if (st === 'enabled') { if (s !== 'enabled') return false; }
+      else if (st === 'disabled') { if (s !== 'disabled') return false; }
+      else if (st === 'partial') { if (s !== 'partial') return false; }
+      else if (st === 'unreg') { if (rec.modId) return false; }
+      else if (st === 'linked') { if (!rec.link) return false; }
+    }
 
     // 我的标记：四类各自三态（'' 任意 / 'in' 只看有 / 'ex' 排除掉有）
     for (const k of ['liked', 'blocked', 'bug', 'verified']) {
+      if (k === skip) continue;
       const mode = marks[k] || '';
       if (!mode) continue;
       const has = libHasMark(rec, k);
@@ -3389,7 +3396,7 @@ function libFilterRecords(recs) {
       if (mode === 'ex' && has) return false;
     }
     // 黑名单默认不显示（老行为）；用户主动「只看不感兴趣」时当然要显示出来
-    if (hideBlocked && marks.blocked !== 'in' && libHasMark(rec, 'blocked')) return false;
+    if (hideBlocked && skip !== 'blocked' && marks.blocked !== 'in' && libHasMark(rec, 'blocked')) return false;
 
     // 分类（本地记录靠 Nexus 档案补，补不到就不参与分类筛）
     if (catActive && !catOk(rec)) return false;
@@ -3408,8 +3415,10 @@ function libFilterRecords(recs) {
 
 /** 状态 chip 后面的计数（各档有多少条） */
 function libStatusCounts(recs) {
-  const c = { all: recs.length, online: 0, downloaded: 0, installed: 0, enabled: 0, disabled: 0, partial: 0, unreg: 0, linked: 0 };
-  for (const rec of recs) {
+  // 数字按「只看状态之外的其它条件」统计：点下去看到多少张，chip 上就写多少。
+  const vis = libFilterRecords(recs || [], { skip: 'status' });
+  const c = { all: vis.length, online: 0, downloaded: 0, installed: 0, enabled: 0, disabled: 0, partial: 0, unreg: 0, linked: 0 };
+  for (const rec of vis) {
     const s = libStateOf(rec);
     if (rec.kind === 'installed') c.installed++;
     else if (rec.kind === 'downloaded') c.downloaded++;
@@ -3444,11 +3453,9 @@ function paintLibHead(recs) {
   const marks = $('#libMarks');
   if (marks) {
     const cur = state.lib.marks || {};
-    const n = (recs || []).filter(r => libHasMark(r, 'bug')).length;   // 仅用于占位提示，见下
-    void n;
     marks.innerHTML = LIB_MARK_CHIPS.map(ch => {
       const mode = cur[ch.k] || '';
-      const hit = (recs || []).filter(r => libHasMark(r, ch.k)).length;
+      const hit = libFilterRecords(recs || [], { skip: ch.k }).filter(r => libHasMark(r, ch.k)).length;
       // 2026-11-11 用户：数字要跟「排除」读得通 —— 排除 N 就是排掉 N 个，
       // 不能写成「排除 305」（那是剩下的数量，看着像排错了）。
       const cnt = hit;
