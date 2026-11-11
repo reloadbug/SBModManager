@@ -182,15 +182,16 @@ console.log('\n=== installedIdsOf：本地状态 IPC ===');
     /function downloadedStatsHtml\(count, listed, total\)/.test(code) && /已下载 共 /.test(code));
   t('已下载卡片也带 👍 / 👎（有 modId 才显示）', () =>
     /<div class="acts">\r?\n\s*\$\{it\.modId \? voteHtml\(it\) : ''\}/.test(code));
-  t('详情抽屉操作行也带 👍 / 👎', () => /\$\{voteHtml\(m\)\}/.test(code));
-  t('applyDrawerLocalState 重写操作行时不吞掉 👍👎', () =>
-    /const vote = state\.drawer\.kind === 'nexus' \? voteHtml\(cur\) : '';/.test(code) &&
-    /const openBtn = `\$\{vote\}<button class="btn" data-openurl=/.test(code));
+  t('详情抽屉标记行也带 👍 / 👎', () => /markActs\.push\(voteHtml\(\{ modId: markId \}\)\)/.test(code));
+t('applyDrawerLocalState 重写主操作时不吞掉 👍👎', () =>
+  /const vote = \(!primary && state\.drawer\.kind === 'nexus'\)/.test(code) &&
+  /const openBtn = primary \? '' :/.test(code));
   t('三个本地状态分支都带着 vote 一起写', () =>
     /if \(st\.act === 'install'\)[\s\S]{0,400}\$\{vote\}/.test(code) === false &&
     /foot\.innerHTML = openBtn \+/.test(code));
-  t('详情抽屉里本地有安装包时给「装进游戏」', () =>
-    /const libOne = libItemOf\(m\.modId\);/.test(code) && /data-lib-install="\$\{m\.modId\}"/.test(code));
+t('详情抽屉里本地有安装包时给「安装到游戏」', () =>
+  /data-lib-install="\$\{modId\}" title="把管理器里的这个安装包装进当前游戏目录"/.test(code)
+  || /data-lib-install="\$\{cur\.modId\}"/.test(code));
   /* ---------- 已下载的详情页要显示「安装到游戏」（2026-11-10） ---------- */
   t('已下载的主按钮文案是「安装到游戏」而不是「⬇ 安装」', () =>
     code.includes("btn: '安装到游戏', act: 'install'"));

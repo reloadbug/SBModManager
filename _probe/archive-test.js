@@ -209,9 +209,9 @@ console.log('\n[4] 接线与样式');
 
   t('抽屉「信息」里有 Mod ID 行', () => /<span>Mod ID<\/span>/.test(appCode) || '缺失');
   t('Mod ID 行同时给出文件 ID', () => /· 文件 \$\{esc\(String\(src\.fileId\)\)\}/.test(appCode) || '缺失');
-  t('抽屉正文插入了 archiveBlockHtml(m)', () => /\$\{archiveBlockHtml\(m\)\}/.test(appCode) || '缺失');
+  t('抽屉正文插入了 archiveBlockHtml(group)', () => /\$\{archiveBlockHtml\(group\)\}/.test(appCode) || '缺失');
   t('抽屉底栏有「📦 定位原压缩包」（且只在安装包还在时出现）', () =>
-    /m\.archive && m\.archive\.exists\s*\n?\s*\?\s*`<button class="btn" data-reveal-path=/.test(appCode) || '缺失');
+    /if \(group\.archive && group\.archive\.exists\)/.test(appCode) && /data-reveal-path=/.test(appCode) || '缺失');
   t('archiveBlockHtml 放在 openInstalledDrawer 之前（函数声明提升之外也要可读）', () =>
     appCode.indexOf('function archiveBlockHtml(') < appCode.indexOf('function openInstalledDrawer(') || '顺序不对');
 

@@ -205,10 +205,10 @@ async function main() {
     app.includes('class="tag bug"') && app.includes('⚠ 有 bug') ? true : '卡片上没有角标'));
   t('角标只在 state.bugIds 命中时出现', () => (
     app.includes('state.bugIds.has(String(modId))') ? true : '没有按标记判断'));
-  t('抽屉底部有 data-gbug 按钮', () => (
-    app.includes('data-gbug="${esc(g.key)}"') && app.includes('⚠ 标为有 bug') ? true : '抽屉里没有按钮'));
+  t('抽屉标记行有 data-gbug 按钮', () => (
+    app.includes('data-gbug="${esc(') && app.includes('⚠ 标为有 bug') ? true : '抽屉里没有按钮'));
   t('按钮只在有 Nexus modId 时出现', () => (
-    app.includes('${srcModId ? `<button class="btn bug" data-gbug=') ? true : '没有按 srcModId 判定'));
+    /if \(markId\) \{[\s\S]{0,600}data-gbug=/.test(app) ? true : '没有按是否有 modId 判定'));
   t('点击委托里有 data-gbug 分支', () => (
     app.includes("closest('[data-gbug]')") ? true : '点了没反应'));
   t('doBugToggleGroup 会调 add / remove 并重新载入', () => (

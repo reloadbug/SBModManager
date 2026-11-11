@@ -373,15 +373,17 @@ console.log('\n[8] 对比入口去重 + 对比框两侧信息完整（用户 202
     /\.cfl-cmpbar\{[^}]*border-bottom/.test(css) || '没分隔线');
 
   // ---- ④ 浏览页详情抽屉：图片 → 文件 → 操作按钮，元数据往后排 ----
-  const bodyOrder = ['id="galleryBox"', '<div class="lbl">文件</div>', 'id="dActions"',
-    '<div class="lbl">说明</div>', '<div class="lbl">来源</div>', '<div class="lbl">信息</div>']
-    .map(s => appJs.indexOf(s, appJs.indexOf('async function openNexusDrawer')));
-  t('抽屉顺序 = 图集 → 文件 → 操作按钮 → 说明 → 来源 → 信息', () =>
+  // 0.8.0 起三个界面共用一套抽屉：图集 → 标记与主操作 → 信息 → 文件 → 说明 → 来源
+  const bodyOrder = ['id="galleryBox"', 'id="drawerMarks"', 'id="drawerPrimary"',
+    'id="drawerInfo"', '<div class="lbl">说明</div>', '<div class="lbl">来源</div>']
+    .map(s => appJs.indexOf(s, appJs.indexOf('function openModDrawer(rec)')));
+  t('抽屉顺序 = 图集 → 标记/主操作 → 信息 → 说明 → 来源', () =>
     bodyOrder.every((v, i) => v > 0 && (i === 0 || v > bodyOrder[i - 1])) || JSON.stringify(bodyOrder));
-  t('浏览页详情不再用底部固定栏（#dFoot 清空）', () =>
-    /openNexusDrawer[\s\S]{0,4000}?\$\('#dFoot'\)\.innerHTML = '';/.test(appJs) || '底部栏没清空');
-  t('applyDrawerLocalState 按抽屉类型选按钮容器', () =>
-    appJs.includes("const foot = state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot');")
+  t('主操作在内容区顶部（#drawerPrimary），不靠滚到底', () =>
+    appJs.includes('id="drawerPrimary"') || '主操作没在内容区');
+  t('applyDrawerLocalState 只重写主操作那一行（标记不跟着被刷掉）', () =>
+    appJs.includes("const primary = $('#drawerPrimary');")
+    && appJs.includes("const foot = primary || (state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot'));")
     || '按钮容器没分流');
   t('renderFiles 跨两个容器找「加入下载队列」', () =>
     appJs.includes("document.querySelector('#dActions [data-dl-add], #dFoot [data-dl-add]')") || '没跨容器找');

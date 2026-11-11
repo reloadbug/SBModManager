@@ -1582,126 +1582,347 @@ function installedFilesHtml(g) {
     </div>`;
 }
 
+/* ---------------- 统一详情抽屉（0.8.0 P1） ---------------- */
+
+/** 按 Mod ID 拼 Nexus 页面地址（与已安装抽屉里那条兜底逻辑一致） */
+function modPageUrl(modId) {
+  const id = Number(modId) || 0;
+  return id ? 'https://www.nexusmods.com/stellarblade/mods/' + id : '';
+}
+
+/** 在线抽屉里的「本地状态」那一行 —— 详情回来重建信息表时要按原样放回去 */
+function localStateRowHtml() {
+  return '<div class="kv"><span>本地状态</span><span id="drawerLocalRow" style="color:var(--dim2)">检查中…</span></div>';
+}
+
+/** 信息表一行：空值统一显示「—」，免得表格缺格 */
+function kvHtml(label, value, cls) {
+  const has = !(value === undefined || value === null || value === '');
+  return `<div class="kv"><span>${esc(label)}</span><span${cls ? ` class="${cls}"` : ''}>${has ? value : '—'}</span></div>`;
+}
+
 /**
- * 已安装 Mod 的详情抽屉。
+ * 统一的 Mod 详情抽屉。
  *
- * 参数是**组对象**（`groupInstalled()` 的产出）：一个 Mod 装了多个文件时，
- * 「文件清单」升级成「已安装的文件」逐条列表，每条能单独启用 / 禁用 / 卸载
- * （用户 2026-10-14：「合并显示…点击单个 mod，可以看到不同模组文件」）。
- * 组对象与单个 installed 项**同形**，所以下面沿用 `m` 这个名字，改动最小。
+ * 用户 2026-11-11 定案：「已安装 / 已下载 / 浏览」三个界面并成一个 Mod 库之后，
+ * 详情抽屉也要只有一套 —— 同一个 Mod 不管现在处在什么状态，点开看到的是同一个
+ * 骨架（头部 → 标记 → 主操作 → 信息 → 文件 → 说明 → 来源 → 底部动作），
+ * 只是各段的取值来源不同：
+ *
+ *   · 已安装（kind='installed'）：信息与文件来自磁盘扫描的分组对象 `group`；
+ *   · 已下载（kind='downloaded'）：来自安装包库条目 `lib`，主操作是「安装到游戏」；
+ *   · 在线（kind='online'）：先用列表数据占位，随后 `nexus.detail()` 补齐说明与统计。
+ *
+ * 为什么这么写：以前两套抽屉各写一份 DOM，改一处忘一处的 bug 出了好几次
+ * （好评按钮被覆盖、文件行还写着「下载」、状态行只在其中一个抽屉里有）。
+ * 现在只有这一个渲染函数，两个老入口 `openInstalledDrawer()` / `openNexusDrawer()`
+ * 退化成薄包装，事件委托仍然沿用原来的 `data-*`，不新增一套。
  */
-function openInstalledDrawer(g) {
-  const m = g;
-  const meta = m.meta || {};
+function openModDrawer(rec) {
+  const r = rec || {};
+  const kind = r.kind || 'online';
+  const modId = Number(r.modId) || 0;
+  const group = kind === 'installed' ? (r.group || null) : null;
+  const lib = kind === 'downloaded' ? (r.lib || null) : null;
+  const meta = (group && group.meta) || {};
   const src = meta.source || {};
-  const imgs = cachedImagesOf(meta);
-  const img = meta.image || '';
-  const srcModId = Number(g.modId || src.modId || meta.modId || 0) || 0;
-  // 来源网址：安装时记下的优先，其次链接记录里的，最后按 Mod ID 拼一个 Nexus 页面。
-  // 三条都试不出来（连 modId 都没有）才算「未知来源」。
-  const srcUrlRecorded = String(meta.url || meta.sourceUrl || (m.link && m.link.url) || '');
-  const srcUrl = srcUrlRecorded || (srcModId ? `https://www.nexusmods.com/stellarblade/mods/${srcModId}` : '');
-  const srcUrlGuessed = !srcUrlRecorded && !!srcModId;
-  state.drawer = { open: true, kind: 'installed', mod: m, lang: 'zh', translated: null, translating: false, files: [] };
+  const srcModId = modId || Number((group && group.modId) || src.modId || meta.modId || 0) || 0;
+  const link = r.link || (group && group.link) || null;
+  const info = modId ? (libInfoOf(modId) || {}) : {};
 
-  $('#dTitle').textContent = m.name;
-  $('#dSub').textContent = [meta.nameZh, verText(meta.version), meta.author].filter(Boolean).join(' · ')
-    || KIND_LABEL[m.kind] || '';
+  // `state.drawer.mod` 是给 `doTranslate()` / `renderFiles()` / `applyDrawerLocalState()`
+  // 这些老代码读的，形状必须保持：已安装用组对象，下载用安装包条目，在线等详情回来再换。
+  const mod = group || lib || {
+    modId,
+    name: r.name || ('Mod #' + modId),
+    author: r.author || '',
+    version: r.version || '',
+    category: r.category || '',
+    url: modPageUrl(modId),
+    summary: r.summary || info.summary || '',
+    descriptionText: info.summary || '',
+    downloads: Number(r.downloads || info.downloads) || 0,
+    endorsements: Number(r.endorsements || info.endorsements) || 0,
+    createdAt: null,
+    updatedAt: r.updatedAt || info.updatedAt || null
+  };
+  if (kind === 'downloaded') {
+    mod.url = modPageUrl(modId);
+    mod.summary = mod.summary || info.summary || '';
+    mod.descriptionText = mod.descriptionText || info.summary || '';
+  }
 
-  // 关联出来的条目没有 meta.summary（那栏是管理器安装时才写的），
-  // 但「批量解析」把 Nexus 的简介存在 meta.source.summary 里，这里一并取用。
-  const desc = meta.description || meta.summary || src.summary || '';
-  const zhText = meta.descriptionZh || meta.summaryZh || '';
+  state.drawer = {
+    open: true,
+    kind: kind === 'installed' ? 'installed' : 'nexus',
+    mod,
+    rec: r,
+    lang: 'zh',
+    translated: null,
+    translating: false,
+    files: [],
+    localKey: null,
+    unified: true
+  };
+
+  // ---------- ① 头部 ----------
+  $('#dTitle').textContent = (kind === 'online' && !r.name && !mod.name) ? '加载中…' : (r.name || mod.name || '—');
+  $('#dSub').textContent = [
+    r.version || mod.version ? 'v' + String(r.version || mod.version).replace(/^v/i, '') : '',
+    r.author || mod.author,
+    r.category || mod.category
+  ].filter(Boolean).join(' · ')
+    || (group ? (KIND_LABEL[group.kind] || '') : (modId ? 'Mod #' + modId : ''));
+
+  // ---------- ② 图集 / 封面 ----------
+  const imgs = group ? cachedImagesOf(meta) : [];
+  const hero = r.image || meta.image || '';
+  const galleryHtml = imgs.length
+    ? imageGrid(imgs)
+    : (hero ? `<img class="hero" src="${esc(hero)}" alt="" onerror="this.style.display='none'">` : '');
+
+  // ---------- ③ 标记 + 主操作（不滚动就能点） ----------
+  const markId = srcModId || modId;
+  const isBug = markId ? state.bugIds.has(String(markId)) : false;
+  const isVer = markId ? state.verifiedIds.has(String(markId)) : false;
+  const markActs = [];
+  const primaryActs = [];
+  markActs.push(voteHtml({ modId: markId }));
+  if (markId) {
+    markActs.push(`<button class="btn bug" data-gbug="${esc(group ? group.key : 'mod:' + markId)}" title="${
+      isBug ? '点一下取消标记（之后批量安装不会再提示）' : '打个记号：这个 Mod 装了会出问题。批量安装前会先问你跳过它'
+    }">${isBug ? '⚠ 已标有 bug' : '⚠ 标为有 bug'}</button>`);
+    markActs.push(`<button class="btn ver${isVer ? ' on' : ''}" data-gver="${esc(group ? group.key : 'mod:' + markId)}" data-vername="${esc(r.name || (group && group.name) || '')}" title="${
+      isVer ? '点一下取消「已验证」标记' : '我实测过它能用 —— 打上「已验证」'
+    }">${isVer ? '✓ 已验证' : '✓ 标为已验证'}</button>`);
+  }
+  if (kind === 'downloaded' && modId) {
+    primaryActs.push(`<button class="btn p" data-lib-install="${modId}" title="把管理器里的这个安装包装进当前游戏目录">安装到游戏</button>`);
+  }
+  if (kind === 'installed' && group && group.kind !== 'prereq') {
+    const n = (group.items || []).length;
+    primaryActs.push(`<button class="btn" data-gtoggle="${esc(group.key)}" title="${n > 1
+      ? '作用于这个 Mod 已安装的全部 ' + n + ' 个文件' : '重命名文件以启用 / 禁用'}">${
+      group.partial ? '全部启用' : (group.enabled ? '全部禁用' : '全部启用')}</button>`);
+  }
+  if (kind === 'online' && modId) {
+    primaryActs.push(`<button class="btn" data-install="${modId}">手动安装</button>`);
+    primaryActs.push(`<button class="btn p" data-dl-add="${modId}">⬇ 加入下载队列</button>`);
+  }
+  const urlOpen = String(mod.url || (srcModId ? modPageUrl(srcModId) : '') || '');
+  if (urlOpen) primaryActs.push(`<button class="btn" data-openurl="${esc(urlOpen)}">在浏览器打开</button>`);
+  if (kind === 'online' && modId) primaryActs.push(`<button class="btn" data-gallery="${modId}">刷新图集</button>`);
+
+  // ---------- ④ 信息表 ----------
+  const stateText = group
+    ? (group.partial ? '部分启用' : (group.enabled ? '已启用' : '已禁用'))
+    : (kind === 'downloaded' ? '已下载，未安装' : '在线');
+  const stateColor = group ? (group.enabled ? 'var(--ok)' : 'var(--dim)') : (kind === 'downloaded' ? 'var(--blue)' : 'var(--accent)');
+  const rows = [];
+  if (kind === 'online') rows.push(localStateRowHtml());
+  rows.push(kvHtml('Mod ID', modId || srcModId ? '#' + (modId || srcModId) + (
+    (group && src.fileId) ? `<span style="color:var(--dim2)"> · 文件 ${esc(String(src.fileId))}</span>` : ''
+  ) : ''));
+  rows.push(`<div class="kv"><span>状态</span><span style="color:${stateColor}">${stateText}</span></div>`);
+  if (group) rows.push(kvHtml('类型', `${KIND_LABEL[group.kind] || group.kind}${group.builtin ? '（内置）' : ''}`));
+  rows.push(kvHtml('版本', (r.version || mod.version) ? 'v' + String(r.version || mod.version).replace(/^v/i, '') : ''));
+  rows.push(kvHtml('作者', esc(r.author || mod.author || '')));
+  rows.push(kvHtml('分类', esc(r.category || mod.category || '')));
+  if (group) {
+    rows.push(kvHtml('位置', esc(group.location || '')));
+    rows.push(kvHtml('文件数', group.fileCount));
+    rows.push(kvHtml('占用', fmtSize(group.size)));
+    rows.push(kvHtml('修改时间', fmtDate(group.mtime)));
+    if (group.enabledAt) {
+      rows.push(`<div class="kv"><span>开启时间</span><span data-i18n-skip>${esc(fmtWhen(group.enabledAt))}${
+        group.enabledAtGuess ? '（按安装时间推算）' : ''}</span></div>`);
+    }
+    rows.push(kvHtml('登记状态', group.registered
+      ? '已登记（含来源信息）'
+      : (group.linked ? '未登记 · 已关联 Nexus 来源' : '未登记（磁盘扫描发现）')));
+  } else if (kind === 'downloaded') {
+    rows.push(kvHtml('安装包', esc(lib && lib.filename ? lib.filename : (r.filename || ''))));
+    rows.push(kvHtml('大小', fmtSize((lib && lib.size) || r.size)));
+    rows.push(kvHtml('位置', esc(lib && lib.archivePath ? lib.archivePath : (r.archivePath || ''))));
+    if (info.downloads) rows.push(kvHtml('下载量', Number(info.downloads).toLocaleString()));
+    if (info.endorsements) rows.push(kvHtml('点赞数', Number(info.endorsements).toLocaleString()));
+  } else {
+    if (mod.downloads) rows.push(kvHtml('下载量', Number(mod.downloads).toLocaleString()));
+    if (mod.endorsements) rows.push(kvHtml('点赞数', Number(mod.endorsements).toLocaleString()));
+    if (mod.createdAt) rows.push(kvHtml('发布时间', fmtDate(mod.createdAt)));
+    if (mod.updatedAt) rows.push(kvHtml('更新时间', fmtDate(mod.updatedAt)));
+  }
+
+  // ---------- ⑤ 文件 / 内容 ----------
+  let filesHtml = '';
+  if (group) {
+    filesHtml = `<div class="lbl">文件</div>${installedFilesHtml(group)}${archiveBlockHtml(group)}`;
+  } else if (kind === 'downloaded') {
+    filesHtml = `<div class="lbl">安装包</div>
+      <div class="txt" style="color:var(--ok);font-size:11px;line-height:1.7">
+        管理器里已经有这个 Mod 的安装包（${esc(lib && lib.filename ? lib.filename : '')}），不用再下一次 —— 点上面的「安装到游戏」即可。
+      </div>`;
+  } else {
+    filesHtml = `<div class="lbl">文件</div>
+      <div id="filesBox" class="txt nxfiles" style="color:var(--dim2)">正在获取文件列表…</div>`;
+  }
+
+  // ---------- ⑥ 说明 / 来源 ----------
+  const descBody = descBoxHtml(state.drawer);
+  const srcUrlGuessed = !!(urlOpen && !meta.url && !meta.sourceUrl && !(link && link.url) && srcModId);
+  const linkNote = group && group.linked
+    ? (link && link.matchedBy === 'tag'
+      ? '<div class="txt" style="color:var(--dim2)">上面这个来源来自文件名里的标识 —— 安装时就写在名字上了，不是按名字猜的。</div>'
+      : '<div class="txt" style="color:var(--dim2)">上面这个来源是「批量解析」按名字比对出来的 —— 如果对错了，点下面的「解除关联」即可。</div>')
+    : '';
 
   $('#dBody').innerHTML = `
-    <div id="galleryBox">${imgs.length
-      ? imageGrid(imgs)
-      : (img ? `<img class="hero" src="${esc(img)}" alt="" onerror="this.style.display='none'">` : '')}</div>
-    <div class="lbl">说明</div>
-    ${desc || zhText ? `
-      <div class="langsw">
-        <button class="${state.drawer.lang === 'zh' ? 'on' : ''}" data-lang="zh" title="翻译成中文后显示在这里">中文</button>
-        <button class="${state.drawer.lang === 'en' ? 'on' : ''}" data-lang="en" title="Nexus 上的原文（无论英文中文）">English</button>
-      </div>
-      <div class="txt" id="descBox">${renderDesc(m, desc, zhText)}</div>`
-      : `<div class="txt" style="color:var(--dim2)">该 Mod 没有登记说明文字。${m.registered || m.linked ? '' : '（这是磁盘上扫描到的模组，尚未通过管理器安装，因此没有来源信息）'}</div>`}
-
-    <div class="lbl">来源</div>
-    ${srcUrl
-      ? `<div class="urlbox">
-           <a href="#" class="srclink" data-openurl="${esc(srcUrl)}" title="在浏览器里打开这个 Mod 的 Nexus 页面">${esc(srcUrl)}</a>
-           <button class="btn sm" data-openurl="${esc(srcUrl)}">打开</button>
-         </div>
-         ${srcUrlGuessed
-           ? '<div class="txt" style="color:var(--dim2)">这个地址是按 Mod ID 拼出来的 Nexus 页面（安装时没记下原网址）。</div>'
-           : ''}
-         ${m.linked
-           ? (m.link && m.link.matchedBy === 'tag'
-             ? '<div class="txt" style="color:var(--dim2)">上面这个来源来自文件名里的标识 —— 安装时就写在名字上了，不是按名字猜的。</div>'
-             : '<div class="txt" style="color:var(--dim2)">上面这个来源是「批量解析」按名字比对出来的，文件本身不是通过管理器安装的 —— 如果对错了，点下面的「解除关联」即可。</div>')
-           : ''}`
-      : `<div class="txt" style="color:var(--dim2)">未知来源（非管理器安装，也没有 Mod ID 可以拼 Nexus 地址）</div>`}
+    <div id="galleryBox">${galleryHtml}</div>
+    <div id="dActions">
+      <div class="dactrow" id="drawerMarks">${markActs.join('')}</div>
+      <div class="dactrow" id="drawerPrimary">${primaryActs.join('')}</div>
+    </div>
 
     <div class="lbl">信息</div>
-    <div class="kv"><span>类型</span><span>${KIND_LABEL[m.kind] || m.kind}${m.builtin ? '（内置）' : ''}</span></div>
-    ${srcModId ? `<div class="kv"><span>Mod ID</span><span>#${srcModId}${src.fileId
-      ? `<span style="color:var(--dim2)"> · 文件 ${esc(String(src.fileId))}</span>` : ''}</span></div>` : ''}
-    <div class="kv"><span>状态</span><span style="color:${m.enabled ? 'var(--ok)' : 'var(--dim)'}">${
-      g.partial ? '部分启用' : (m.enabled ? '已启用' : '已禁用')
-    }</span></div>
-    <div class="kv"><span>位置</span><span>${esc(m.location)}</span></div>
-    <div class="kv"><span>文件数</span><span>${m.fileCount}</span></div>
-    <div class="kv"><span>占用</span><span>${fmtSize(m.size)}</span></div>
-    <div class="kv"><span>修改时间</span><span>${fmtDate(m.mtime)}</span></div>
-    ${g.enabledAt ? `<div class="kv"><span>开启时间</span><span data-i18n-skip>${esc(fmtWhen(g.enabledAt))}${g.enabledAtGuess ? '（按安装时间推算）' : ''}</span></div>` : ''}
-    <div class="kv"><span>登记状态</span><span>${m.registered
-      ? '已登记（含来源信息）'
-      : (m.linked ? '未登记 · 已关联 Nexus 来源' : '未登记（磁盘扫描发现）')}</span></div>
+    <div id="drawerInfo">${rows.join('')}</div>
 
-    ${archiveBlockHtml(m)}
+    ${filesHtml}
 
-    ${installedFilesHtml(g)}
+    <div class="lbl">说明</div>
+    <div class="langsw">
+      <button class="${state.drawer.lang === 'zh' ? 'on' : ''}" data-lang="zh" title="翻译成中文后显示在这里">中文</button>
+      <button class="${state.drawer.lang === 'en' ? 'on' : ''}" data-lang="en" title="Nexus 上的原文（无论英文中文）">English</button>
+    </div>
+    <div class="txt" id="descBox">${descBody}</div>
+
+    <div class="lbl">来源</div>
+    ${urlOpen
+      ? `<div class="urlbox">
+           <a href="#" class="srclink" data-openurl="${esc(urlOpen)}" title="在浏览器里打开这个 Mod 的 Nexus 页面">${esc(urlOpen)}</a>
+           <button class="btn sm" data-openurl="${esc(urlOpen)}">打开</button>
+         </div>
+         ${srcUrlGuessed ? '<div class="txt" style="color:var(--dim2)">这个地址是按 Mod ID 拼出来的 Nexus 页面（安装时没记下原网址）。</div>' : ''}
+         ${linkNote}`
+      : '<div class="txt" style="color:var(--dim2)">未知来源（没有 Mod ID 可以拼 Nexus 地址）</div>'}
   `;
 
-  // 底部按钮作用于**整组**（这个 Mod 装的全部文件）。
-  // 单个文件的操作在上面 `installedFilesHtml()` 的每一行里。
-  const n = (g.items || []).length;
-  const multi = n > 1;
-  const footToggle = g.partial ? '全部启用' : (g.enabled ? '全部禁用' : '全部启用');
-  $('#dFoot').innerHTML = `
-    <button class="btn" data-reveal="${esc(m.id)}">打开所在文件夹</button>
-    ${srcUrl
-      ? `<button class="btn" data-openurl="${esc(srcUrl)}" title="在浏览器里打开这个 Mod 的 Nexus 页面">🌐 打开 Mod 网页</button>`
-      : ''}
-    ${m.archive && m.archive.exists
-      ? `<button class="btn" data-reveal-path="${esc(m.archive.path)}" title="在资源管理器中定位原压缩包：${esc(m.archive.path)}">📦 定位原压缩包</button>`
-      : ''}
-    ${m.linked
-      ? `<button class="btn" data-gunlink="${esc(g.key)}" title="只忘掉「它是 Nexus 上的哪个 Mod」，磁盘文件一个都不动">解除关联</button>`
-      : ''}
-    ${m.kind !== 'prereq' ? `
-      <button class="btn" data-gtoggle="${esc(g.key)}" title="${multi
-        ? '作用于这个 Mod 已安装的全部 ' + n + ' 个文件' : '重命名文件以启用 / 禁用'}">${
-        multi ? footToggle : (m.enabled ? '禁用' : '启用')}</button>
-      <button class="btn d" data-guninstall="${esc(g.key)}" title="${
-        multi ? '逐个移除这 ' + n + ' 个文件' : '移除这个文件'
-      }">${multi ? '卸载这个 Mod' : '卸载'}</button>` : ''}
-    ${srcModId ? `<button class="btn bug" data-gbug="${esc(g.key)}" title="${
-      state.bugIds.has(String(srcModId))
-        ? '点一下取消标记（之后批量安装不会再提示）'
-        : '打个记号：这个 Mod 装了会出问题。浏览页照常显示，批量安装前会先问你跳过它'
-    }">${state.bugIds.has(String(srcModId)) ? '⚠ 已标有 bug' : '⚠ 标为有 bug'}</button>` : ''}
-    ${srcModId ? `<button class="btn ver${state.verifiedIds.has(String(srcModId)) ? ' on' : ''}" data-gver="${esc(g.key)}" title="${
-      state.verifiedIds.has(String(srcModId))
-        ? '点一下取消「已验证」标记'
-        : '我实测过它能用：打上「已验证」，之后在 Mod 库里能直接筛出来'
-    }">${state.verifiedIds.has(String(srcModId)) ? '✓ 已验证' : '✓ 标为已验证'}</button>` : ''}
-  `;
+  // ---------- ⑦ 底部固定栏 ----------
+  const foot = [];
+  if (group) {
+    foot.push(`<button class="btn" data-reveal="${esc(group.id)}">打开所在文件夹</button>`);
+    if (urlOpen) foot.push(`<button class="btn" data-openurl="${esc(urlOpen)}" title="在浏览器里打开这个 Mod 的 Nexus 页面">🌐 打开 Mod 网页</button>`);
+    if (group.archive && group.archive.exists) {
+      foot.push(`<button class="btn" data-reveal-path="${esc(group.archive.path)}" title="在资源管理器中定位原压缩包：${esc(group.archive.path)}">📦 定位原压缩包</button>`);
+    }
+    if (group.linked) {
+      foot.push(`<button class="btn" data-gunlink="${esc(group.key)}" title="只忘掉「它是 Nexus 上的哪个 Mod」，磁盘文件一个都不动">解除关联</button>`);
+    }
+    if (group.kind !== 'prereq') {
+      const n = (group.items || []).length;
+      foot.push(`<button class="btn d" data-guninstall="${esc(group.key)}" title="${
+        n > 1 ? '逐个移除这 ' + n + ' 个文件' : '移除这个文件'
+      }">${n > 1 ? '卸载这个 Mod' : '卸载'}</button>`);
+    }
+  } else if (kind === 'downloaded') {
+    if (lib && lib.archivePath) {
+      foot.push(`<button class="btn" data-libreveal="${modId}" title="在资源管理器中定位这个安装包">📦 定位安装包</button>`);
+    }
+    foot.push(`<button class="btn d" data-libdel="${modId}" title="只删这个安装包，你的点赞 / 标记都保留">🗑 删掉安装包</button>`);
+    if (urlOpen) foot.push(`<button class="btn" data-openurl="${esc(urlOpen)}">🌐 打开 Mod 网页</button>`);
+  } else {
+    if (urlOpen) foot.push(`<button class="btn" data-openurl="${esc(urlOpen)}">🌐 打开 Mod 网页</button>`);
+  }
+  $('#dFoot').innerHTML = foot.join('');
 
   showDrawer();
 
-  // 没缓存过图集的老条目：按需去 Nexus 补一次（有 modId 才做，抓不到就保持原样）
-  if (srcModId && !imgs.length) fillGallery(srcModId);
+  // ---------- 补数据 ----------
+  if (kind === 'online' && modId) {
+    fillOnlineDrawer(modId);
+  } else if (markId) {
+    // 本地记录也把图集补上（已缓存就不联网，见 fillGallery 的两段式）
+    if (!imgs.length) fillGallery(markId);
+    if (kind === 'downloaded') applyDrawerLocalState(modId);
+  }
+}
+
+/** 在线抽屉的「详情回来之后」这一段：头部副标题、信息表统计、说明、文件列表、本地状态 */
+async function fillOnlineDrawer(modId) {
+  try {
+    const m = await call(window.api.nexus.detail(modId));
+    const d = state.drawer;
+    if (!d || !d.open || !d.unified) return;
+    if (Number((d.mod && d.mod.modId) || d.rec.modId) !== Number(modId)) return;
+    d.mod = m;
+
+    $('#dTitle').textContent = m.name || d.rec.name || '—';
+    $('#dSub').textContent = [m.version ? 'v' + m.version : '', m.author, m.category].filter(Boolean).join(' · ');
+
+    const box = $('#drawerInfo');
+    if (box) {
+      box.innerHTML = localStateRowHtml() + [
+        kvHtml('Mod ID', '#' + m.modId),
+        '<div class="kv"><span>状态</span><span style="color:var(--accent)">在线</span></div>',
+        kvHtml('版本', m.version ? 'v' + String(m.version).replace(/^v/i, '') : ''),
+        kvHtml('作者', esc(m.author || '')),
+        kvHtml('分类', esc(m.category || '')),
+        kvHtml('下载量', Number(m.downloads || 0).toLocaleString()),
+        kvHtml('点赞数', Number(m.endorsements || 0).toLocaleString()),
+        kvHtml('发布时间', fmtDate(m.createdAt)),
+        kvHtml('更新时间', fmtDate(m.updatedAt))
+      ].join('');
+    }
+
+    const dbox = $('#descBox');
+    if (dbox) dbox.innerHTML = descBoxHtml(d);
+
+    loadFiles(m.modId);
+    fillGallery(m.modId);
+    applyDrawerLocalState(m.modId);
+  } catch (e) {
+    const body = $('#dBody');
+    if (body) body.insertAdjacentHTML('afterbegin', `<div class="callout err">${esc(e.message)}</div>`);
+  }
+}
+
+/**
+ * 已安装抽屉的入口 —— 现在只是把组对象转成统一记录再转调（0.8.0）。
+ * 保留这个名字是因为调用点很多（卡片、批量操作后的重开、崩溃诊断等）。
+ */
+function openInstalledDrawer(g) {
+  if (!g) return;
+  return openModDrawer({
+    kind: 'installed',
+    key: g.key,
+    modId: Number(g.modId) || 0,
+    name: g.name,
+    author: g.author,
+    version: g.version,
+    image: g.image,
+    summary: g.zh,
+    size: g.size,
+    files: g.fileCount,
+    enabled: !!g.enabled,
+    partial: !!g.partial,
+    enabledAt: g.enabledAt || '',
+    enabledAtGuess: !!g.enabledAtGuess,
+    groupKind: g.kind,
+    builtin: !!g.builtin,
+    items: g.items || [],
+    group: g,
+    link: g.link || null
+  });
+}
+
+/**
+ * 在线抽屉的入口 —— 同样只做「找记录 + 转调」（0.8.0）。
+ * 找不到已有记录时给一个最小在线记录，抽屉会自己把详情拉回来。
+ */
+function openNexusDrawer(modId) {
+  const id = Number(modId) || 0;
+  const rec = (state.libRecords || []).find(x => Number(x.modId) === id && x.kind === 'online')
+    || { kind: 'online', key: String(id), modId: id };
+  return openModDrawer(rec);
 }
 
 function renderDesc(m, desc, zhText) {
@@ -3580,9 +3801,8 @@ function libToggleSelect(key) {
 function libOpenRecord(key) {
   const rec = (state.libRecords || []).find(r => r.key === key);
   if (!rec) return;
-  if (rec.kind === 'installed' && rec.group) { openInstalledDrawer(rec.group); return; }
-  if (rec.modId) { openNexusDrawer(Number(rec.modId)); return; }
-  toast('这条没有 Nexus Mod ID，先用「批量解析」把它对上号');
+  // 三种记录共用同一个抽屉（0.8.0）：已安装看文件、已下载给安装、在线拉详情
+  openModDrawer(rec);
 }
 
 /** 全选口径：本地档位用记录键，在线档位用 modId */
@@ -4291,80 +4511,6 @@ function scheduleCardStateRefresh() {
   }, 400);
 }
 
-async function openNexusDrawer(modId) {
-  state.drawer = { open: true, kind: 'nexus', mod: null, lang: 'zh', translated: null, translating: false, files: [], localKey: null };
-  $('#dTitle').textContent = '加载中…';
-  $('#dSub').textContent = 'Mod #' + modId;
-  $('#dBody').innerHTML = '<div class="txt" style="color:var(--dim2)">正在从 Nexus 获取详情…</div>';
-  $('#dFoot').innerHTML = '';
-  showDrawer();
-
-  try {
-    const m = await call(window.api.nexus.detail(modId));
-    state.drawer.mod = m;
-    $('#dTitle').textContent = m.name;
-    $('#dSub').textContent = [m.version ? 'v' + m.version : '', m.author, m.category].filter(Boolean).join(' · ');
-    // 🔴 内容顺序（2026-10-14 用户要求）：
-    // 「文件信息、操作按钮都放到顶部，尽量不滚动就能点；图片依然在最顶端，然后说文件信息」。
-    // 所以图集永远第一个，紧接着就是**文件信息 + 操作按钮**，说明 / 来源 / 信息这些
-    // 「看过一次就不用再看」的元数据一律往下排。
-    //
-    // ⚠️ 操作按钮不再是底部固定栏（`#dFoot`）——「下载主文件」是最高频的动作，
-    //    放在要滚到底才看得见的地方不合理。改挂 `#dActions`（内容区顶部）。
-    //    `#dFoot` 在这个抽屉里清空（CSS `.dfoot:empty` 不占位），
-    //    其余两个抽屉（已安装 / 下载详情）仍在底部用它。
-    $('#dBody').innerHTML = `
-      <div id="galleryBox">${m.image ? `<img class="hero" src="${esc(m.image)}" alt="" onerror="this.style.display='none'">` : ''}</div>
-
-      <div class="lbl">文件</div>
-      <div id="filesBox" class="txt nxfiles" style="color:var(--dim2)">正在获取文件列表…</div>
-      <div id="dActions" class="dactrow"></div>
-
-      <div class="lbl">说明</div>
-      <div class="langsw">
-        <button class="${state.drawer.lang === 'zh' ? 'on' : ''}" data-lang="zh" title="翻译成中文后显示在这里">中文</button>
-        <button class="${state.drawer.lang === 'en' ? 'on' : ''}" data-lang="en" title="Nexus 上的原文（无论英文中文）">English</button>
-      </div>
-      <div class="txt" id="descBox">${descBoxHtml(state.drawer)}</div>
-
-      <div class="lbl">来源</div>
-      <div class="urlbox"><span style="flex:1">${esc(m.url)}</span><button class="btn sm" data-openurl="${esc(m.url)}">打开</button></div>
-
-      <div class="lbl">信息</div>
-      <div class="kv"><span>本地状态</span><span id="drawerLocalRow" style="color:var(--dim2)">检查中…</span></div>
-      <div class="kv"><span>Mod ID</span><span>${m.modId}</span></div>
-      <div class="kv"><span>作者</span><span>${esc(m.author || '—')}</span></div>
-      <div class="kv"><span>版本</span><span>${esc(m.version || '—')}</span></div>
-      <div class="kv"><span>分类</span><span>${esc(m.category || '—')}</span></div>
-      <div class="kv"><span>下载量</span><span>${m.downloads.toLocaleString()}</span></div>
-      <div class="kv"><span>点赞数</span><span>${m.endorsements.toLocaleString()}</span></div>
-      <div class="kv"><span>发布时间</span><span>${fmtDate(m.createdAt)}</span></div>
-      <div class="kv"><span>更新时间</span><span>${fmtDate(m.updatedAt)}</span></div>
-    `;
-    $('#dFoot').innerHTML = '';                       // 这个抽屉不用底部栏
-    // 详情页也要有 👍 / 👎（用户 2026-11-10：「已下载的 mod 只要能与 nexus 关联上，
-    // 也要有点赞和不喜欢的按钮；详情页也要有」）。放在操作行最前面，与卡片上的位置一致；
-    // 这里 mod 一定来自 Nexus 列表，所以一定有 modId，不用判断。
-    // 本地已经有安装包时，给一颗「装进游戏」—— 省掉「加入下载队列」再等一遍下载。
-    const libOne = libItemOf(m.modId);
-    $('#dActions').innerHTML = `
-      ${voteHtml(m)}
-      <button class="btn" data-openurl="${esc(m.url)}">在浏览器打开</button>
-      <button class="btn" data-gallery="${m.modId}">刷新图集</button>
-      <button class="btn" data-install="${m.modId}">手动安装</button>
-      ${libOne ? `<button class="btn" data-lib-install="${m.modId}" title="管理器里已经有这份安装包（${esc(libOne.filename)}），直接装进当前游戏目录">装进游戏</button>` : ''}
-      ${m.modId ? `<button class="btn ver${state.verifiedIds.has(String(m.modId)) ? ' on' : ''}" data-libver="${m.modId}" data-vername="${esc(m.name || '')}" title="${state.verifiedIds.has(String(m.modId)) ? '点一下取消「已验证」标记' : '我实测过它能用 —— 打上「已验证」'}">${state.verifiedIds.has(String(m.modId)) ? '✓ 已验证' : '✓ 标为已验证'}</button>` : ''}
-      <button class="btn p" data-dl-add="${m.modId}">⬇ 加入下载队列</button>
-    `;
-    loadFiles(m.modId);
-    fillGallery(m.modId);
-    applyDrawerLocalState(m.modId);
-  } catch (e) {
-    $('#dTitle').textContent = '加载失败';
-    $('#dBody').innerHTML = `<div class="callout err">${esc(e.message)}</div>`;
-  }
-}
-
 /**
  * 详情抽屉里补上「本地状态」。
  * 列表接口不带这个信息（缓存层要保持干净），所以单独查一次。
@@ -4397,12 +4543,14 @@ async function applyDrawerLocalState(modId) {
 
   // ⚠️ 操作按钮所在容器**按抽屉类型分**：浏览页 Mod 详情把它们放在内容区顶部
   //    （`#dActions`，图片下方 —— 不滚动就能点），已安装 / 下载详情仍在底部固定栏。
-  const foot = state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot');
+  const primary = $('#drawerPrimary');
+  const foot = primary || (state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot'));
   if (!foot || !st) return;
   // 👍 / 👎 跟着一起重写：这一段会把整个操作行换掉（按本地状态只留「打开 / 装进游戏 / 去下载页」），
   // 用户 2026-11-10 要求详情页也要有点赞和不喜欢 —— 不带上就会被下面几行覆盖掉。
-  const vote = state.drawer.kind === 'nexus' ? voteHtml(cur) : '';
-  const openBtn = `${vote}<button class="btn" data-openurl="${esc(cur.url)}">在浏览器打开</button>`;
+  // 统一抽屉里标记（👍👎 / bug / 已验证）单独一行，这里只重写主操作，别再带一遍投票
+  const vote = (!primary && state.drawer.kind === 'nexus') ? voteHtml(cur) : '';
+  const openBtn = primary ? '' : `${vote}<button class="btn" data-openurl="${esc(cur.url)}">在浏览器打开</button>`;
   if (st.act === 'install') {
     // 库里的包没有 taskId，走 library:install（否则按钮点了没反应）
     foot.innerHTML = openBtn + (local.taskId

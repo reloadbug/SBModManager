@@ -253,7 +253,7 @@ async function main() {
   t('installFlow 会清理改名残留', () => (flowSrc.includes('staleRemoved') && flowSrc.includes('modTag.stripTag(') ? true : '没清理'));
   t('installFlow 返回 nameTag', () => (flowSrc.includes('nameTag: plan.nameTag') ? true : '缺'));
   t('渲染层显示「文件名带标识」', () => (appSrc.includes('文件名带标识') ? true : '没显示'));
-  t('渲染层按 matchedBy 区分来源说明', () => (appSrc.includes("m.link.matchedBy === 'tag'") ? true : '没区分'));
+  t('渲染层按 matchedBy 区分来源说明', () => (appSrc.includes("matchedBy === 'tag'") ? true : '没区分'));
   t('i18n 词条已补', () => (keyText.includes('文件名带标识') ? true : 'keys.json 里没有'));
 
   fs.rmSync(TMP, { recursive: true, force: true });

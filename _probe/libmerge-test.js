@@ -90,7 +90,7 @@ t('卡片封面上有蓝色「✓ 已验证」标签（合并卡 libCard 里也�
   const body = app.slice(i, i + 4200);
   return body.includes('class="tag ver"') || 'libCard 封面缺 tag ver';
 });
-  t('已安装抽屉底部有「标为已验证」', () => app.includes('data-gver="${esc(g.key)}"'));
+  t('抽屉标记行有「标为已验证」', () => app.includes('data-gver="') && app.includes('data-vername='));
   t('Nexus 抽屉动作里有「标为已验证」', () => app.includes('data-vername='));
   t('已验证用蓝色，不和绿的「不含 bug」撞色', () =>
     css.includes('.cover .tag.ver') && css.includes('.btn.ver.on') && css.includes('tone-ver'));
@@ -411,9 +411,9 @@ t('五颗按钮都有点击绑定，且接的是新的批量实现', () =>
   /#btnBatchUninstall'\)\.addEventListener\('click', \(\) => \{ libBatchUninstallSel\(\)/.test(app));
 t('状态 chip / 标记 chip 的点击委托就位', () =>
   app.includes("const libSt = t.closest('[data-libst]')") && app.includes("const libMk = t.closest('[data-libmk]')"));
-t('点卡片按记录键打开详情（装着→已安装抽屉，有 modId→Nexus 抽屉）', () =>
-  app.includes("if (lkey) { libOpenRecord(lkey); return; }") &&
-  /function libOpenRecord\(key\)[\s\S]{0,400}openInstalledDrawer\(rec\.group\)[\s\S]{0,200}openNexusDrawer\(Number\(rec\.modId\)\)/.test(app));
+t('点卡片按记录键打开详情（三种记录同一入口）', () =>
+  app.includes('if (lkey) { libOpenRecord(lkey); return; }') &&
+  /function libOpenRecord\(key\)[\s\S]{0,400}openModDrawer\(rec\)/.test(app));
 t('多选态点卡片 = 勾选（不弹抽屉）', () =>
   app.includes('if (state.sel.on) {') && app.includes('if (lkey) { libClickSelect(lkey, e); return; }'));
 t('卡片就绪三种状态的主按钮各不相同', () =>
