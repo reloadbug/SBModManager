@@ -782,3 +782,35 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 .card .acts{gap:4px}
 .card .acts .btn{padding:0 7px;font-size:10.5px}
 .card .acts .vbtn{width:24px}
+/* ===== 2026-11-11 用户定的硬规则（m10437）=====
+ * 1) 所有控件不许重叠、不许超出卡片 / 界面范围 —— 一律允许换行（弹性布局），不靠裁切；
+ * 2) 标签统一风格集中在卡片顶端，字号小但看得清；
+ * 3) 封面是封面，不再压状态徽标；
+ * 4) 标题 / 副标题 / 元信息这些「重要信息」放中间；
+ * 5) 操作按钮统一压到卡片底部。 */
+.card .cbody{display:flex;flex-direction:column;gap:2px;min-width:0}
+.card .zh{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:0}
+.card .ctags{display:flex;flex-wrap:wrap;align-items:center;gap:4px;height:auto;overflow:visible;margin:0 0 3px}
+.card .ctags .tag{font-size:9.5px;line-height:13px;padding:0 5px;border-radius:4px;border:1px solid transparent;white-space:nowrap}
+.card .ctags .tag.st{color:var(--text);border-color:var(--border);background:var(--panel2)}
+.card .ctags .tag.st.ok{color:#7EE0A0;border-color:rgba(63,185,80,.55);background:rgba(18,42,26,.6)}
+.card .ctags .tag.st.dl{color:#8CC4FF;border-color:rgba(74,158,255,.55);background:rgba(18,32,52,.6)}
+.card .ctags .tag.st.busy{color:#F0B95C;border-color:rgba(232,163,61,.55);background:rgba(48,36,16,.6)}
+.card .ctags .tag.st.part{color:#F0B95C;border-color:rgba(232,163,61,.45);background:rgba(48,36,16,.45)}
+.card .ctags .tag.st.off{color:var(--dim2);border-color:var(--border);background:var(--panel2)}
+.card .meta{flex-wrap:wrap;white-space:normal;overflow:visible;margin-top:0}
+.card .acts{margin-top:auto;flex-wrap:wrap;overflow:visible}
+.sline{flex-wrap:wrap;overflow:visible}
+.sline>.tabs{flex:0 1 auto;flex-wrap:wrap}
+.sline>.filters{flex:0 1 auto;min-width:0;flex-wrap:wrap;overflow:visible}
+.filters .fchips{flex-wrap:wrap;overflow:visible}
+
+/* 标签与它的 chips 绑成一组：换行时整组一起走，不会剩一个孤零零的「标记 / 分类」标签 */
+.grp{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.grp>.slabel,.grp>.fl{white-space:nowrap}
+.slabel,.fl{white-space:nowrap}
+.filters .frow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+
+/* 老样式里有一条全局 `.st{margin-left:auto}`（早期卡片右上角的状态文字用的），
+ * 会和卡片顶端标签行的 `.tag.st` 撞名 —— 这里把它按住，标签一律左对齐。 */
+.card .ctags .tag.st{margin-left:0;flex:0 0 auto}

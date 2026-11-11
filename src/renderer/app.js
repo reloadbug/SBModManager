@@ -2198,22 +2198,24 @@ function browseCard(n) {
       ${img ? `<img src="${esc(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'无封面图'}))">`
         : `<div class="ph">无封面图</div>`}
       <div class="ck${state.sel.ids.has(String(n.modId)) ? ' on' : ''}" data-ck="${n.modId}">✓</div>
-      ${st ? `<span class="lb ${st.cls}">${st.badge}</span>` : ''}
-      ${isBug ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>' : ''}
-      ${isVer ? '<span class="tag ver" title="我实测过它能用">✓ 已验证</span>' : ''}
-      ${n.categoryZh ? `<span class="cat">${esc(n.categoryZh)}</span>` : ''}
-      ${n.adult ? `<span class="tag" style="color:#E88;border-color:#5A2A28;background:rgba(217,83,79,.16)">成人内容</span>` : ''}
     </div>
     <div class="cbody">
-      <h3 data-i18n-skip title="${esc(n.name)}">${esc(n.name)}</h3>
-      <div class="zh" data-i18n-skip title="${esc(n.summary)}">${esc(n.summary || '—')}</div>
-      <div class="meta">
-        ${n.version ? `<span class="chip">v${esc(n.version)}</span>` : ''}
-        ${n.author ? `<span>${esc(n.author)}</span>` : ''}
-        <span>⬇ ${fmtNum(n.downloads)}</span>
-        <span>♥ ${fmtNum(n.endorsements)}</span>
-        <div class="acts">${voteHtml(n)}${action}</div>
+      <div class="ctags">
+        <span class="tag st ${st ? st.cls : ''}" title="这个 Mod 现在的状态">${st ? st.badge : '在线'}</span>
+        ${isBug ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>' : ''}
+        ${isVer ? '<span class="tag ver" title="我实测过它能用">✓ 已验证</span>' : ''}
+        ${n.categoryZh ? `<span class="tag" title="类型">${esc(n.categoryZh)}</span>` : ''}
+        ${n.adult ? '<span class="tag bad" title="成人内容">成人</span>' : ''}
       </div>
+      <h3 data-i18n-skip title="${esc(n.name)}">${esc(n.name)}</h3>
+      ${n.summary ? `<div class="zh" data-i18n-skip title="${esc(n.summary)}">${esc(n.summary)}</div>` : ''}
+      <div class="meta" data-i18n-skip>
+        ${n.version ? `<span>v${esc(n.version)}</span>` : ''}
+        ${n.author ? `<span class="sep">·</span><span>${esc(n.author)}</span>` : ''}
+        <span class="sep">·</span><span>⬇ ${fmtNum(n.downloads)}</span>
+        <span class="sep">·</span><span>♥ ${fmtNum(n.endorsements)}</span>
+      </div>
+      <div class="acts">${voteHtml(n)}${action}</div>
     </div>
   </div>`;
 }
@@ -3262,6 +3264,7 @@ function libCard(rec) {
    * 以前 bug/已验证 在封面角标和元信息里各出现一次，就是用户说的「标签显示了两次」。 */
   const typeZh = ({ cns: 'CNS 换装', prereq: '前置', script: '脚本', builtin: '内置', outfit: '服装', online: '在线' })[libTypeOf(rec)] || '';
   const tags = [
+    `<span class="tag st ${b.c}" title="这个 Mod 现在的状态">${b.t}</span>`,
     isBlocked ? '<span class="tag bad" title="你点过「不感兴趣」（黑名单）">👎 不感兴趣</span>' : '',
     isBug ? '<span class="tag bug" title="你标记过这个 Mod 有 bug —— 批量安装时会先问一句要不要跳过">⚠ 有 bug</span>' : '',
     isVer ? '<span class="tag ver" title="我实测过它能用">✓ 已验证</span>' : '',
@@ -3307,12 +3310,11 @@ function libCard(rec) {
       ${img ? `<img src="${esc(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'无封面图'}))">`
         : `<div class="ph">${rec.kind === 'installed' ? '本地文件<br>无封面图' : '无封面图'}</div>`}
       <div class="ck${selOn ? ' on' : ''}" data-lck="${esc(key)}">✓</div>
-      <span class="lb ${b.c}">${b.t}</span>
     </div>
     <div class="cbody">
-      <h3 data-i18n-skip title="${esc(rec.name)}">${esc(rec.name)}</h3>
-      <div class="zh" data-i18n-skip title="${esc(rec.summary || '')}">${esc(rec.summary || (rec.kind === 'installed' ? '本地已安装' : '—'))}</div>
       ${tags ? `<div class="ctags">${tags}</div>` : ''}
+      <h3 data-i18n-skip title="${esc(rec.name)}">${esc(rec.name)}</h3>
+      ${rec.summary ? `<div class="zh" data-i18n-skip title="${esc(rec.summary)}">${esc(rec.summary)}</div>` : ''}
       <div class="meta" data-i18n-skip>${meta}</div>
       <div class="acts">${vote}${acts}</div>
     </div>
@@ -3336,8 +3338,8 @@ function renderLibFilters(recs) {
     catMap.set(zh, (catMap.get(zh) || 0) + 1);
   }
   if (!catMap.size) {
-    box.innerHTML = '<div class="frow"><span class="fl">分类</span><div class="fchips"><span class="fnote" style="margin:0">本地记录的分类要等 Nexus 信息补全后才出现</span></div>'
-      + '<span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div></div>';
+    box.innerHTML = '<div class="frow"><span class="grp"><span class="fl">分类</span><div class="fchips"><span class="fnote" style="margin:0">本地记录的分类要等 Nexus 信息补全后才出现</span></div></span>'
+      + '<span class="grp"><span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div></span></div>';
     return;
   }
   const cnt = (n) => '<span class="n">' + Number(n).toLocaleString() + '</span>';
@@ -3346,10 +3348,10 @@ function renderLibFilters(recs) {
       .map(([zh, n]) => ({ value: zh, zh, count: n })));
   const chips = list.map(c => '<button class="fc' + (cur === c.value ? ' on' : '')
     + '" data-cat="' + esc(c.value) + '">' + esc(c.zh) + cnt(c.count) + '</button>').join('');
-  box.innerHTML = '<div class="frow"><span class="fl">分类</span>'
-    + '<div class="fchips">' + chips + '</div>'
-    + (cur ? '<button class="fclear" id="btnClearFilter">清除筛选</button>' : '')
-    + '<span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div>'
+  box.innerHTML = '<div class="frow">'
+    + '<span class="grp"><span class="fl">分类</span><div class="fchips">' + chips + '</div>'
+    + (cur ? '<button class="fclear" id="btnClearFilter">清除筛选</button>' : '') + '</span>'
+    + '<span class="grp"><span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div></span>'
     + '</div>';
 }
 

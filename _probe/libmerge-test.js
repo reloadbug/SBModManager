@@ -709,16 +709,43 @@ t('app.js：类型筛选的代码已清干净（没有 libKind / state.lib.kind 
 // ---------------------------------------------------------------------------
 // M. 卡片重排 + 全站尺寸统一（2026-11-11 用户要求：信息别重复、别互相遮挡）
 // ---------------------------------------------------------------------------
-t('卡片：封面只留状态徽标，标记/类型/文件数集中在 .ctags 一行', () => {
-  const i = app.indexOf('function libCard(');
-  const body = app.slice(i, i + 4600);
-  if (body.indexOf('class="ctags"') < 0) return '缺 .ctags 一行';
+t('卡片：封面是纯图片，状态/标记/类型/文件数全部集中在顶端 .ctags（m10437 硬规则）', () => {
+  const i2 = app.indexOf('function libCard(');
+  const body = app.slice(i2, i2 + 5200);
   const tpl = body.indexOf('<div class="cover">');
   const cbody = body.indexOf('class="cbody"');
   if (tpl < 0 || cbody < 0) return '找不到封面模板';
   const cover = body.slice(tpl, cbody);
-  if (cover.indexOf('class="lb ') < 0) return '封面缺状态徽标';
-  if (/class="tag (bug|ver|bad|like|nfile)"/.test(cover)) return '封面里还有标记角标（重复显示）';
+  if (cover.indexOf('class="lb ') >= 0) return '封面还压着状态徽标（盖住封面图）';
+  if (/class="(tag|cat) /.test(cover)) return '封面里还有标签（应全部移到顶端标签行）';
+  const tagPos = body.indexOf('class="ctags"');
+  const h3Pos = body.indexOf('<h3 ');
+  if (tagPos < 0 || h3Pos < 0) return '缺 .ctags 或标题';
+  if (tagPos > h3Pos) return '标签行不在卡片顶端（应在标题之前）';
+  if (body.indexOf('class="tag st ') < 0) return '标签行里缺状态那一颗';
+  if (body.indexOf('本地已安装') >= 0) return '副标题还在兜底成「本地已安装」（和状态标签重复）';
+  return true;
+});
+t('卡片：在线卡（browseCard）与 Mod 库卡（libCard）同一套排版', () => {
+  const i2 = app.indexOf('function browseCard(');
+  const body = app.slice(i2, i2 + 3200);
+  const tpl = body.indexOf('<div class="cover">');
+  const cbody = body.indexOf('class="cbody"');
+  if (tpl < 0 || cbody < 0) return '在线卡找不到封面模板';
+  if (/class="(lb|tag|cat) /.test(body.slice(tpl, cbody))) return '在线卡封面里还有标签';
+  const tagPos = body.indexOf('class="ctags"');
+  const h3Pos = body.indexOf('<h3 ');
+  if (tagPos < 0 || h3Pos < 0 || tagPos > h3Pos) return '在线卡标签行不在顶端';
+  return true;
+});
+t('style.css：标签行 / 操作行一律允许换行，不裁切不重叠；按钮压到卡片底部', () => {
+  const s = fs.readFileSync('src/renderer/style.css', 'utf8');
+  const ctags = (s.match(/\.card \.ctags\{[^}]*\}/g) || []).pop() || '';
+  const acts = (s.match(/\.card \.acts\{[^}]*\}/g) || []).pop() || '';
+  if (!/flex-wrap:wrap/.test(ctags)) return '.ctags 没有允许换行';
+  if (!/flex-wrap:wrap/.test(acts) || !/margin-top:auto/.test(acts)) return '.acts 没换行或没压到底部';
+  if (!/\.sline\{flex-wrap:wrap/.test(s)) return '顶部筛选条还在横向裁切';
+  if (!/\.grp\{display:inline-flex/.test(s)) return '标签和它的 chips 没有绑定成组';
   return true;
 });
 t('卡片：元信息只用「·」分隔的一行文字（不再套 chip）', () => {
