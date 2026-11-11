@@ -837,3 +837,21 @@ ol.steps code,.sus code,.crash-kv code{background:var(--panel2);border-radius:4p
 .bhead .tabs button .dir{margin-left:5px;font-size:10.5px;opacity:.75}
 .bhead .sline>.tabs,
 .bhead .grp> .tabs{flex:0 0 auto}
+
+/* ===== 2026-11-11 用户要求（m10841）=====
+   ① 顶栏放不下就换行，绝不许把按钮文字挤掉：之前 .top 是 nowrap 的 flex，
+      窗口一窄，最后那颗「导入」就被压到只剩半个字。
+   ② mod 列表与筛选框之间要留出和四周一致的间距（body 的 16px），
+      之前 .bhead 的 margin-bottom 是 0，卡片首行正好贴着筛选框底边。 */
+.top{flex-wrap:wrap;row-gap:6px;gap:8px}
+/* 2026-11-11：窗口 1146 宽时这一行还差约 40px 才装得下「导入」，
+   于是收紧三处：间距 11→8、副标题限宽 150（放不下就省略号）、搜索框限宽 200。 */
+.top>.sub{max-width:150px}
+.top>.search{max-width:200px}
+.top>h2,.top>.btn,.top>.verchip,.top>.search{flex:0 0 auto}
+/* 副标题可以缩、可以省略号；设成 0 1 auto 才能在窗口变窄时让位给右边的按钮，
+   而不是把整行挤到第二行（2026-11-11 实测：宽度 1360 时副标题带着计数会撑满整行）。 */
+.top>.sub{flex:0 1 auto;min-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top>.btn,.top>.verchip{white-space:nowrap}
+.top>.spacer{flex:1 1 auto}
+.bhead{margin-bottom:14px}

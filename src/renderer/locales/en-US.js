@@ -1304,5 +1304,8 @@
     '把选中的 Mod 全部打开（游戏就会加载它们）': 'Switch all selected mods on (the game loads them)',
     '把选中的 Mod 全部关掉（文件留在原地，游戏不加载）': 'Switch all selected mods off (files stay, game skips them)',
     '把选中的 Mod 从游戏目录里删掉（安装包和你的标记都保留）': 'Remove selected mods from the game folder (archives and marks kept)',
+    'Nexus官网': 'Nexus site',
+    '导入': 'Import',
+    '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'Bring an archive you already downloaded (.7z / .zip / .rar) into the manager, then install it into the game in one click',
   });
 })();

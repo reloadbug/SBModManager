@@ -1304,5 +1304,8 @@
     '把选中的 Mod 全部打开（游戏就会加载它们）': 'Seçili modları aç (oyun yükler)',
     '把选中的 Mod 全部关掉（文件留在原地，游戏不加载）': 'Seçili modları kapat (dosyalar kalır)',
     '把选中的 Mod 从游戏目录里删掉（安装包和你的标记都保留）': 'Seçili modları oyundan kaldır (arşiv ve işaretler kalır)',
+    'Nexus官网': 'Nexus sitesi',
+    '导入': 'İçe aktar',
+    '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'İndirdiğiniz arşivi (.7z / .zip / .rar) yöneticiye aktarın, tek tıkla oyuna kurun',
   });
 })();

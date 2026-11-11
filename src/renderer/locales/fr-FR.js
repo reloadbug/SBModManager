@@ -1304,5 +1304,8 @@
     '把选中的 Mod 全部打开（游戏就会加载它们）': 'Activer les mods choisis (le jeu les charge)',
     '把选中的 Mod 全部关掉（文件留在原地，游戏不加载）': 'Désactiver les mods choisis (fichiers conservés)',
     '把选中的 Mod 从游戏目录里删掉（安装包和你的标记都保留）': 'Retirer les mods choisis du jeu (archives et marques gardées)',
+    'Nexus官网': 'Site Nexus',
+    '导入': 'Importer',
+    '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'Importer une archive déjà téléchargée (.7z / .zip / .rar) dans le gestionnaire, puis l\'installer dans le jeu en un clic',
   });
 })();
