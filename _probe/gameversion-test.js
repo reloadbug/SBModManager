@@ -272,32 +272,29 @@ t('[4] ipc 里引入并给出 version', () => {
   if (!/return \{ found: true, \.\.\.info, layout, writable, version \}/.test(seg)) throw new Error('有游戏分支没带 version');
 });
 
-t('[4] 渲染层三个函数 + 侧栏/顶栏挂点', () => {
+t('[4] 渲染层两个函数 + 侧栏/设置页挂点（0.7.10：顶栏那枚 chip 已去掉）', () => {
   const src = read('src/renderer/app.js');
-  for (const f of ['function gameVerOf(', 'function gameVerText(', 'function syncGameVerChip(']) {
+  for (const f of ['function gameVerOf(', 'function gameVerText(']) {
     if (!src.includes(f)) throw new Error('缺 ' + f);
   }
-  if (!/syncGameVerChip\(ver\)/.test(src)) throw new Error('renderSidebar 没调 syncGameVerChip');
-  if (!/\$\('#gameVer'\)/.test(src)) throw new Error('syncGameVerChip 没找 #gameVer');
+  if (src.includes('syncGameVerChip')) throw new Error('顶栏 chip 删了，syncGameVerChip 也该一起删');
+  if (!/\$\('#gamePath'\)\.textContent = ok/.test(src)) throw new Error('侧栏没写 #gamePath');
+  if (!src.includes("'v' + ver + ' · '")) throw new Error('侧栏 #gamePath 没带版本号');
   if (!src.includes('读自主程序版本信息')) throw new Error('缺「读自主程序版本信息」');
   if (!src.includes('游戏版本')) throw new Error('设置页缺「游戏版本」');
   if (!src.includes('${gameVerText(g)}')) throw new Error('设置页没渲染 gameVerText');
   if (!src.includes('id="setGameVer"')) throw new Error('设置页缺 #setGameVer 容器');
 });
 
-t('[4] index.html 顶栏版本号 chip', () => {
+t('[4] index.html 顶栏不再放版本号（左下角已有）', () => {
   const src = read('src/renderer/index.html');
-  const at = src.indexOf('id="gameVer"');
-  if (at < 0) throw new Error('缺 #gameVer');
-  const seg = src.slice(Math.max(0, at - 400), at + 300);
-  if (!/id="btnLaunch"/.test(seg)) throw new Error('chip 没挨着启动按钮');
-  if (!/data-i18n-skip/.test(seg)) throw new Error('chip 没标 i18n-skip（版本号不该被翻译）');
+  if (src.includes('id="gameVer"')) throw new Error('顶栏还有 #gameVer');
+  if (!/id="gamePath"/.test(src)) throw new Error('左下角缺 #gamePath（版本号要在那儿显示）');
 });
 
-t('[4] style.css 有 .verchip', () => {
+t('[4] style.css 里 .verchip 已经清干净', () => {
   const src = read('src/renderer/style.css');
-  if (!/\.verchip\s*\{/.test(src)) throw new Error('缺 .verchip 样式');
-  if (!/font-family: Consolas/.test(src)) throw new Error('.verchip 没用等宽字体');
+  if (/\.verchip/.test(src)) throw new Error('还有 .verchip 残留样式');
 });
 
 t('[4] i18n 4 条键落在 keys.json 与 13 个语言包', () => {

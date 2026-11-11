@@ -389,7 +389,6 @@ function renderSidebar() {
   $('#gamePath').textContent = ok
     ? `${g.root}\n${ver ? 'v' + ver + ' · ' : ''}UE4SS ${g.ue4ss.installed ? '✓' : '✗'} · CNS ${g.cns.installed ? '✓' : '✗'}`
     : (g && g.configured) || '—';
-  syncGameVerChip(ver);
   syncInstalledNav();
 
   const active = (state.downloads || []).filter(t => DL_ACTIVE.has(t.status)).length;
@@ -9312,15 +9311,6 @@ function syncLaunchBtn() {
   btn.title = ok
     ? '直接启动游戏（不走 Steam，绿色版 / Steam / Epic 都行）'
     : '还没设置游戏目录，先到设置里选一下';
-}
-
-/** 顶栏按钮右边那枚小版本号：没有版本就整块藏起来，不留一个空壳 */
-function syncGameVerChip(ver) {
-  const el = $('#gameVer');
-  if (!el) return;
-  const v = String(ver || '');
-  el.textContent = v ? 'v' + v : '';
-  el.style.display = v ? '' : 'none';
 }
 
 async function refreshAll(showToast) {
