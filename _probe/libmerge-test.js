@@ -473,11 +473,12 @@ t('selUpdateBar 里同步这五颗：全标过时点亮并换成「取消…」�
   app.includes("on: '取消喜欢', off: '👍 喜欢'") &&
   app.includes("on: '取消「已验证」', off: '✓ 已验证'"));
 /* ---------- I. 恢复「Mod 库」缺的功能（用户 2026-11-11） ---------- */
-t('顶部有「显示内置脚本」开关（data-libbuiltin）', () =>
-  html.includes('data-libbuiltin="1"') && html.includes('显示内置脚本') && app.includes("t.closest('[data-libbuiltin]')"));
-t('开关点了会写回 config 并重画', () =>
-  /state\.showBuiltin = !state\.showBuiltin;[\s\S]{0,260}api\.config\.set\(/.test(app) &&
-  /state\.showBuiltin = !state\.showBuiltin;[\s\S]{0,400}renderBrowse\(\);/.test(app));
+t('顶部不再有「显示内置脚本」开关（0.7.2 按用户要求撤掉）', () =>
+  !html.includes('libBuiltin') && !app.includes('data-libbuiltin'));
+t('「开启时间 / 安装时间」做成与在线排序同排的 chip，不再用下拉', () =>
+  html.includes('id="libSortTabs"') && html.includes('data-libsort="on-desc"')
+  && !html.includes('id="libSort"') && app.includes("'button[data-libsort]'")
+  && app.includes("state.lib.sort = (state.lib.sort === v) ? '' : v;"));
 t('状态档补了「未登记」「已关联」', () =>
   app.includes("{ v: 'unreg', label: '未登记' }") && app.includes("{ v: 'linked', label: '已关联' }") &&
   app.includes("else if (st === 'unreg') { if (rec.modId) return false; }") &&
@@ -496,8 +497,8 @@ t('分类一条都匹配不上时当作没选（不至于把列表筛空）', ()
 t('成人内容三档生效', () =>
   app.includes("if (am === 'hide' && rec.adult) return false;") &&
   app.includes("if (am === 'only' && !rec.adult) return false;"));
-t('内置脚本默认藏起来（showBuiltin 关闭时剔掉 builtin）', () =>
-  app.includes('if (!state.showBuiltin && rec.builtin) return false;'));
+t('内置脚本不再被过滤掉（开关撤了，内置脚本一直在列表里）', () =>
+  !app.includes('if (!state.showBuiltin && rec.builtin) return false;'));
 t('合并态也有分类筛选条（renderLibFilters）', () =>
   app.includes('function renderLibFilters(recs)') && app.includes('renderLibFilters(recs);') &&
   app.includes('本地记录的分类要等 Nexus 信息补全后才出现'));
@@ -573,16 +574,15 @@ t('功能断言：成人「隐藏」剔掉成人条目、「只看成人」只�
   return (JSON.stringify(hide) === JSON.stringify(['b']) && JSON.stringify(only) === JSON.stringify(['a']))
     || 'hide=' + JSON.stringify(hide) + ' only=' + JSON.stringify(only);
 });
-t('功能断言：内置脚本开关控制 builtin 记录的去留', () => {
+t('功能断言：内置脚本记录一直在（不再跟 showBuiltin 走）', () => {
   const recs = [
     { key: 'a', kind: 'installed', modId: 1, builtin: true },
     { key: 'b', kind: 'installed', modId: 2 }
   ];
-  state.showBuiltin = false;
   const off = ctx.libFilterRecords(recs).map(r => r.key);
   state.showBuiltin = true;
   const on = ctx.libFilterRecords(recs).map(r => r.key);
-  return (JSON.stringify(off) === JSON.stringify(['b']) && JSON.stringify(on) === JSON.stringify(['a', 'b']))
+  return (JSON.stringify(off) === JSON.stringify(['a', 'b']) && JSON.stringify(on) === JSON.stringify(['a', 'b']))
     || 'off=' + JSON.stringify(off) + ' on=' + JSON.stringify(on);
 });
 t('功能断言：状态档 unreg / linked 各自只留对应记录', () => {
@@ -651,9 +651,19 @@ t('index.html：控件归属正确（状态+标记 / 信息 / 排序 / 操作）
   const need = (s, id) => s.indexOf('id="' + id + '"') >= 0;
   const s0 = parts[1] || '', s1 = parts[2] || '', s2 = parts[3] || '', s3 = parts[4] || '';
   return (need(s0, 'libStatus') && need(s0, 'libMarks')
-    && need(s1, 'browseFilters') && need(s1, 'libBuiltin') && need(s1, 'adultTabs')
-    && need(s2, 'sortTabs') && need(s2, 'libSort')
+    && need(s1, 'browseFilters') && need(s1, 'adultTabs')
+    && need(s2, 'sortTabs') && need(s2, 'libSortTabs')
     && need(s3, 'batchBar') && need(s3, 'batchMarks')) || '控件没落在对应的段里';
+});
+t('顶部控件外观统一：.tabs 按钮 / 分类 chip / 小按钮同高同圆角（用户 2026-11-11）', () => {
+  const css = fs.readFileSync('src/renderer/style.css', 'utf8');
+  const i = css.indexOf('顶部控件外观统一');
+  if (i < 0) return '缺统一样式段';
+  const seg = css.slice(i);
+  return (seg.includes('.bhead .tabs button,') && seg.includes('.bhead .filters .fc,')
+    && seg.includes('.bhead .btn.sm{') && seg.includes('height:24px')
+    && seg.includes('border-radius:7px') && seg.includes('font-size:11.5px'))
+    || '统一样式没覆盖到三类控件';
 });
 t('app.js：不再用 compactLibHead 搬节点（写死在 HTML 里了）', () =>
   !app.includes('function compactLibHead(') || '还在运行时搬节点');

@@ -122,11 +122,13 @@ section('C. 前端：带出时间 / 排序 / 入口');
     appSrc.includes('const shown = applyLibSort(libFilterRecords(recs));'));
   ok('state.lib 带 sort 字段',
     /kind: '', sort: '', catSet: false }/.test(appSrc));
-  ok('排序下拉有 change 绑定',
-    appSrc.includes("const libSortSel = $('#libSort');")
-    && appSrc.includes("libSortSel.addEventListener('change'"));
+  ok('本地排序改成同排 chip，走点击委托（不再有下拉）',
+    appSrc.includes("$('#libSortTabs').addEventListener('click'")
+    && appSrc.includes("'button[data-libsort]'")
+    && appSrc.includes("state.lib.sort = (state.lib.sort === v) ? '' : v;")
+    && !appSrc.includes("$('#libSort')"));
   ok('在线档位把本地排序藏起来（那边用 Nexus 的排序标签）',
-    appSrc.includes("const s = $('#libSort'); if (s) s.style.display = 'none';"));
+    appSrc.includes("const s = $('#libSortTabs'); if (s) s.style.display = 'none';"));
 
   ok('卡片上显示开启时间',
     appSrc.includes('开启于 ${esc(fmtWhen(rec.enabledAt))}'));
@@ -135,13 +137,13 @@ section('C. 前端：带出时间 / 排序 / 入口');
   ok('推算出来的时间会说明「按安装时间推算」',
     appSrc.includes('按安装时间推算'));
 
-  ok('index.html 有 #libSort 下拉', htmlSrc.includes('id="libSort"'));
-  ok('下拉里 5 个选项齐全',
-    htmlSrc.includes('<option value="">默认</option>')
-    && htmlSrc.includes('<option value="on-desc">开启时间 ↓</option>')
-    && htmlSrc.includes('<option value="on-asc">开启时间 ↑</option>')
-    && htmlSrc.includes('<option value="inst-desc">安装时间 ↓</option>')
-    && htmlSrc.includes('<option value="name">名称</option>'));
+  ok('index.html 有 #libSortTabs 本地排序 chip 组', htmlSrc.includes('id="libSortTabs"') && htmlSrc.includes('data-libsort="on-desc"'));
+  ok('本地排序 chip 四颗齐全，且没有「默认」这一档',
+    htmlSrc.includes('<button data-libsort="on-desc">开启时间 ↓</button>')
+    && htmlSrc.includes('<button data-libsort="on-asc">开启时间 ↑</button>')
+    && htmlSrc.includes('<button data-libsort="inst-desc">安装时间 ↓</button>')
+    && htmlSrc.includes('<button data-libsort="name">名称</button>')
+    && !htmlSrc.includes('value=""'));
 }
 
 /* ---------------- D. 排序真的排得对（把函数抠出来单跑） ---------------- */

@@ -3132,8 +3132,6 @@ function libFilterRecords(recs) {
     const tags = Array.isArray(state.browse.tags) ? state.browse.tags : [];
     if (tags.length && Array.isArray(rec.tags) && rec.tags.length
       && !tags.some(t => rec.tags.indexOf(t) >= 0)) return false;
-    // UE4SS 自带脚本：默认藏起来（和老「已安装」页的开关同一个口径）
-    if (!state.showBuiltin && rec.builtin) return false;
     if (!libRecordMatches(rec, q)) return false;   // 不命中就剔掉
     return true;
   });
@@ -3158,12 +3156,12 @@ function libStatusCounts(recs) {
 
 /** 画顶部状态行（chip + 类型下拉 + 标记 chip） */
 function paintLibHead(recs) {
-  { const s = $('#libSort'); if (s) s.style.display = ''; }
+  { const s = $('#libSortTabs'); if (s) s.style.display = ''; }
   // 顶部这几组控件（在线排序 / 成人范围 / 打开 Nexus）合并后仍然留着，
   // 选中态在这里统一同步 —— 老浏览页那套只在自己的渲染路径里同步。
-  $$('#sortTabs button').forEach(x => x.classList.toggle('on', x.dataset.sort === (state.browse.sort || 'downloads')));
+  $$('#sortTabs button').forEach(x => x.classList.toggle('on', !state.lib.sort && x.dataset.sort === (state.browse.sort || 'downloads')));
   $$('#adultTabs button').forEach(x => x.classList.toggle('on', x.dataset.adult === (state.browse.adultMode || 'all')));
-  { const bs = $('#libBuiltin'); if (bs) bs.classList.toggle('on', !!state.showBuiltin); }
+  $$('#libSortTabs button').forEach(x => x.classList.toggle('on', x.dataset.libsort === (state.lib.sort || '')));
   const counts = libStatusCounts(recs || []);
   const st = state.lib.status || 'all';
   const box = $('#libStatus');
@@ -3591,8 +3589,8 @@ function renderBrowse() {
   // 在线那一档继续走原来的 Nexus 分页引擎（分类 / 标签 / 成人 / 加载更多都在）。
   if ((state.lib.status || 'all') !== 'online') { renderLibMerged(); return; }
   // 「开启时间 / 安装时间」是本地记录的排序；在线档位用的是 Nexus 的排序标签，
-  // 两个下拉同时出现会让人不知道该用哪个 —— 在线时把本地这个藏起来。
-  { const s = $('#libSort'); if (s) s.style.display = 'none'; }
+  // 两排同时出现会让人不知道该用哪个 —— 在线时把本地这排藏起来。
+  { const s = $('#libSortTabs'); if (s) s.style.display = 'none'; }
   { const ad = $('#adultTabs'); if (ad) ad.style.display = ''; }
   const b = state.browse;
   const area = $('#browseArea');
@@ -7851,6 +7849,15 @@ function bindEvents() {
     loadBrowse(true);
   });
 
+  // 本地排序（开启时间 / 安装时间 / 名称）：与在线排序同一行，点了就地重排；再点一次回到不排序。
+  $('#libSortTabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-libsort]');
+    if (!b) return;
+    const v = b.dataset.libsort;
+    state.lib.sort = (state.lib.sort === v) ? '' : v;
+    renderBrowse();
+  });
+
   // 只看未安装（本地判定，Nexus 没这个筛选条件）—— 开/关都要重新拉
   const elNewOnly = $('#newOnlyTabs');
   if (elNewOnly) elNewOnly.addEventListener('click', async (e) => {
@@ -7925,7 +7932,6 @@ function bindEvents() {
   $('#btnBatchUninstall').addEventListener('click', () => { libBatchUninstallSel().catch(() => {}); });
   // 类型下拉：本地判定，不联网
     // 排序下拉（0.5.3）：放在类型筛选旁边，切换即重排，不需要重新拉列表
-    const libSortSel = $('#libSort');
     // 批量标记（0.5.4）：智能开关，全标过再点就是取消；「未验证」是明确取消已验证
     const bindMark = (id, kind, force) => {
       const el = $('#' + id);
@@ -7936,10 +7942,6 @@ function bindEvents() {
     bindMark('btnBatchBug', 'bug');
     bindMark('btnBatchVerify', 'verified');
     bindMark('btnBatchUnverify', 'verified', true);
-    if (libSortSel) {
-      libSortSel.value = state.lib.sort || '';
-      libSortSel.addEventListener('change', () => { state.lib.sort = libSortSel.value || ''; renderBrowse(); });
-    }
 
   // 浏览页：滚到底部自动加载下一页（阈值 420px 提前预取，滚动更顺）。
   // 「加载更多」按钮保留作兜底 —— 键盘翻页、终端里没有平滑滚动的场景照样能加载。
@@ -7992,6 +7994,7 @@ function bindEvents() {
     if (!b) return;
     $$('#sortTabs button').forEach(x => x.classList.toggle('on', x === b));
     state.browse.sort = b.dataset.sort;
+    state.lib.sort = '';   // 在线排序与本地排序互斥
     // 合并档位：按本地记录里同一批字段排（applyLibSort 认这四个键）
     if ((state.lib.status || 'all') !== 'online') { renderBrowse(); return; }
     loadBrowse(true);
@@ -8484,13 +8487,6 @@ function bindEvents() {
     if (libSt) { setLibStatus(libSt.dataset.libst); return; }
     const libMk = t.closest('[data-libmk]');
     if (libMk) { toggleLibMark(libMk.dataset.libmk); return; }
-    // UE4SS 自带脚本的显示开关（与原「已安装」页那颗 data-showbuiltin 同一个 state）
-    if (t.closest('[data-libbuiltin]')) {
-      state.showBuiltin = !state.showBuiltin;
-      try { window.api.config.set({ showBuiltin: !!state.showBuiltin }); } catch (err) { /* 存不上不影响本次 */ }
-      renderBrowse();
-      return;
-    }
     // 「已验证」开关（卡片、Nexus 抽屉、已安装抽屉都用同一颗）
     const libVer = t.closest('[data-libver]');
     if (libVer) { e.stopPropagation(); await toggleVerified(libVer.dataset.libver, libVer.dataset.vername || ''); return; }

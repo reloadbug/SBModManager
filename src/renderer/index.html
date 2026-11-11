@@ -106,8 +106,6 @@
                   <button data-adult="all" class="on">全部内容</button>
                   <button data-adult="only">只显示成人内容</button>
                 </div>
-                <button class="btn sm" id="libBuiltin" data-libbuiltin="1"
-                  title="显示 UE4SS 自带的 10 个内置脚本模组（默认藏起来，免得和真 Mod 混在一起）">显示内置脚本</button>
               </div>
             </div>
           </div>
@@ -121,13 +119,13 @@
                   <button data-sort="newest">最新发布</button>
                   <button data-sort="updated">最近更新</button>
                 </div>
-                <select class="libkind" id="libSort" title="本地记录的排序方式（「开启时间」用来排查新装的 Mod）">
-                  <option value="">默认</option>
-                  <option value="on-desc">开启时间 ↓</option>
-                  <option value="on-asc">开启时间 ↑</option>
-                  <option value="inst-desc">安装时间 ↓</option>
-                  <option value="name">名称</option>
-                </select>
+                <!-- 本地记录的排序：与在线排序同一行，外观与其它控件完全一致（用户 2026-11-11 要求统一） -->
+                <div class="tabs localsort" id="libSortTabs" title="本地记录的排序方式（「开启时间」用来排查新装的 Mod）">
+                  <button data-libsort="on-desc">开启时间 ↓</button>
+                  <button data-libsort="on-asc">开启时间 ↑</button>
+                  <button data-libsort="inst-desc">安装时间 ↓</button>
+                  <button data-libsort="name">名称</button>
+                </div>
               </div>
             </div>
           </div>
