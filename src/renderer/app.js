@@ -3182,9 +3182,10 @@ function paintLibHead(recs) {
       const cnt = mode === 'ex' ? (recs || []).length - hit : hit;
       const tone = ch.tone ? ` tone-${ch.tone}` : '';
       const cls = mode === 'in' ? ' on' : (mode === 'ex' ? ' ex' : '');
-      const flag = mode === 'in' ? '只看' : (mode === 'ex' ? '排除' : '任意');
-      const tip = `${ch.title || ch.label}｜现在是「${flag}」—— 再点一下切到${mode === '' ? (ch.neg ? '排除' : '只看') : (mode === (ch.neg ? 'ex' : 'in') ? (ch.neg ? '只看' : '排除') : '任意')}`;
-      return `<button data-libmk="${ch.k}" class="${cls.trim()}${tone}" title="${tip}">${ch.label}<span class="dir">${flag} ${fmtNum(cnt)}</span></button>`;
+      // 2026-11-11 用户：状态词放到标签文字前面，切到「排除」时读起来就是「排除 有bug」；「任意」改叫「全部」
+      const flag = mode === 'in' ? '只看' : (mode === 'ex' ? '排除' : '全部');
+      const tip = `${ch.title || ch.label}｜现在是「${flag}」—— 再点一下切到${mode === '' ? (ch.neg ? '排除' : '只看') : (mode === (ch.neg ? 'ex' : 'in') ? (ch.neg ? '只看' : '排除') : '全部')}`;
+      return `<button data-libmk="${ch.k}" class="${cls.trim()}${tone}" title="${tip}"><span class="dir">${flag} ${fmtNum(cnt)}</span>${ch.label}</button>`;
     }).join('');
   }
 }
