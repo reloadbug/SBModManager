@@ -1308,5 +1308,7 @@
     '导入': 'Importieren',
     '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'Ein bereits heruntergeladenes Archiv (.7z / .zip / .rar) in den Manager holen und mit einem Klick ins Spiel installieren',
     '工具': 'Werkzeuge',
+    '本地已有': 'Schon lokal',
+    'Nexus 上的文件': 'Dateien auf Nexus',
   });
 })();

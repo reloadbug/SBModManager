@@ -1308,5 +1308,7 @@
     '导入': 'İçe aktar',
     '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'İndirdiğiniz arşivi (.7z / .zip / .rar) yöneticiye aktarın, tek tıkla oyuna kurun',
     '工具': 'Araçlar',
+    '本地已有': 'Yerelde var',
+    'Nexus 上的文件': 'Nexus\'taki dosyalar',
   });
 })();

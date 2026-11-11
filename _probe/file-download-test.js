@@ -37,6 +37,12 @@ const end = code.indexOf('\n}\n', start);
 assert.ok(end > start, '应能找到 renderFiles 的结束花括号');
 const renderSrc = code.slice(start, end + 3);
 
+// renderFiles 现在用 fileRowHtml() 拼行（0.8.1 P2 统一三种记录），沙箱里要有它真身。
+const fsStart = code.indexOf('function fileRowHtml(');
+assert.ok(fsStart >= 0, 'app.js 里应能找到 fileRowHtml 函数定义');
+const fsEnd = code.indexOf('\n}\n', fsStart);
+const rowSrc = code.slice(fsStart, fsEnd + 3);
+
 /** 搭一个够真的假 DOM：只有 #filesBox 和那颗 data-dl-add 按钮 */
 function makeSandbox(files, mod, footBtn) {
   const box = { innerHTML: '', textContent: '' };
@@ -47,11 +53,11 @@ function makeSandbox(files, mod, footBtn) {
     state: { drawer: { files, mod } },
     // ⚠️ 选择器必须与 renderFiles 里的一字不差：那颗按钮现在可能在**内容区顶部**
     //    `#dActions`（浏览页 Mod 详情）或底部固定栏 `#dFoot`（已安装 / 下载详情）。
-    document: { querySelector: (sel) => (sel === '#dActions [data-dl-add], #dFoot [data-dl-add]' ? footBtn : null) },
+    document: { querySelector: (sel) => (sel === '#drawerPrimary [data-dl-add], #dActions [data-dl-add], #dFoot [data-dl-add]' ? footBtn : null) },
     box
   };
   vm.createContext(ctx);
-  vm.runInContext(renderSrc + '\nthis.renderFiles = renderFiles;', ctx);
+  vm.runInContext(rowSrc + '\n' + renderSrc + '\nthis.renderFiles = renderFiles;', ctx);
   return ctx;
 }
 

@@ -1534,6 +1534,24 @@ function installedFileName(it) {
  *    「前置组件不支持禁用」，`uninstall` 对没有回滚清单的前置也会拒绝。
  *    与其给两个点了就报错的按钮，不如如实说明。
  */
+/**
+ * 文件行 —— 在线 / 已下载 / 已安装三种记录共用同一种行（0.8.0 P2）。
+ * 左边名字 + 一行副信息，右边操作；chips 里放状态、主文件、分类、"本地已有" 这类小标。
+ */
+function fileRowHtml(o) {
+  const name = String((o && o.name) || '');
+  const sub = String((o && o.sub) || '');
+  const chips = (o && o.chips) || [];
+  const acts = (o && o.acts) || '';
+  return `<div class="fli${o && o.off ? ' off' : ''}">
+      <div class="fli-main">
+        <div class="fli-name" data-i18n-skip title="${esc(name)}">${esc(name)} ${chips.join(' ')}</div>
+        <div class="fli-sub">${esc(sub)}</div>
+      </div>
+      <div class="fli-act">${acts}</div>
+    </div>`;
+}
+
 function installedFilesHtml(g) {
   const items = (g && g.items) || [];
   if (!items.length) return '';
@@ -1542,7 +1560,6 @@ function installedFilesHtml(g) {
     const src = (it.meta && it.meta.source) || {};
     const fileId = src.fileId ? String(src.fileId) : '';
     const ver = (it.meta && it.meta.version) || src.version || '';
-    const shown = installedFileName(it);
     const sub = [
       KIND_LABEL[it.kind] || it.kind,
       ver ? verText(ver) : '',
@@ -1551,24 +1568,16 @@ function installedFilesHtml(g) {
       it.mtime ? fmtDate(it.mtime) : ''
     ].filter(Boolean).join(' · ');
 
-    const st = it.enabled
-      ? '<span class="dl-st ok">已启用</span>'
-      : '<span class="dl-st dim">已禁用</span>';
+    const chips = [it.enabled ? '<span class="dl-st ok">已启用</span>' : '<span class="dl-st dim">已禁用</span>'];
 
     const acts = it.kind === 'prereq'
-      ? `<span class="fli-note">前置组件，不可单独禁用或卸载</span>`
+      ? '<span class="fli-note">前置组件，不可单独禁用或卸载</span>'
       : `<button class="btn sm" data-iid="${esc(it.id)}" data-iact="toggle" title="${
           it.enabled ? '把这个文件重命名为 .disabled' : '去掉 .disabled 后缀恢复启用'
         }">${it.enabled ? '禁用' : '启用'}</button>
          <button class="btn sm d" data-iid="${esc(it.id)}" data-iact="uninstall" title="移除这个文件（移到 data\\backup\\uninstalled\\，可找回）">卸载</button>`;
 
-    return `<div class="fli${it.enabled ? '' : ' off'}">
-      <div class="fli-main">
-        <div class="fli-name" data-i18n-skip title="${esc(shown)}">${esc(shown)} ${st}</div>
-        <div class="fli-sub">${esc(sub)}</div>
-      </div>
-      <div class="fli-act">${acts}</div>
-    </div>`;
+    return fileRowHtml({ name: installedFileName(it), sub, chips, acts, off: !it.enabled });
   }).join('');
 
   const head = items.length > 1
@@ -1745,7 +1754,6 @@ function openModDrawer(rec) {
     rows.push(kvHtml('大小', fmtSize((lib && lib.size) || r.size)));
     rows.push(kvHtml('位置', esc(lib && lib.archivePath ? lib.archivePath : (r.archivePath || ''))));
     if (info.downloads) rows.push(kvHtml('下载量', Number(info.downloads).toLocaleString()));
-    if (info.endorsements) rows.push(kvHtml('点赞数', Number(info.endorsements).toLocaleString()));
   } else {
     if (mod.downloads) rows.push(kvHtml('下载量', Number(mod.downloads).toLocaleString()));
     if (mod.endorsements) rows.push(kvHtml('点赞数', Number(mod.endorsements).toLocaleString()));
@@ -1761,7 +1769,9 @@ function openModDrawer(rec) {
     filesHtml = `<div class="lbl">安装包</div>
       <div class="txt" style="color:var(--ok);font-size:11px;line-height:1.7">
         管理器里已经有这个 Mod 的安装包（${esc(lib && lib.filename ? lib.filename : '')}），不用再下一次 —— 点上面的「安装到游戏」即可。
-      </div>`;
+      </div>
+      <div class="lbl" style="margin-top:10px">Nexus 上的文件</div>
+      <div id="filesBox" class="txt nxfiles" style="color:var(--dim2)">正在获取文件列表…</div>`;
   } else {
     filesHtml = `<div class="lbl">文件</div>
       <div id="filesBox" class="txt nxfiles" style="color:var(--dim2)">正在获取文件列表…</div>`;
@@ -1842,7 +1852,10 @@ function openModDrawer(rec) {
   } else if (markId) {
     // 本地记录也把图集补上（已缓存就不联网，见 fillGallery 的两段式）
     if (!imgs.length) fillGallery(markId);
-    if (kind === 'downloaded') applyDrawerLocalState(modId);
+    if (kind === 'downloaded') {
+      applyDrawerLocalState(modId);
+      loadFiles(modId);
+    }
   }
 }
 
@@ -4597,8 +4610,7 @@ function renderFiles(showArchived, modId) {
 
   /**
    * 本地已经有这个 Mod 的安装包时，文件行不该再让人「下载」（用户 2026-11-10：
-   * 「对于已下载的详情页面要显示为安装到游戏」）——下过的再下一次纯属浪费流量，
-   * 装完还得再走一遍安装流程。
+   * 「对于已下载的详情页面要显示为安装到游戏」）—— 下过的再下一次纯属浪费流量。
    *
    * 为什么按「整包」而不是按文件：安装包库的条目里没有 fileId（见 localLibrary.parseArchiveName，
    * 文件名只带 modId 与版本），所以说不清「这个包是哪个文件的」。因此只在版本对得上的
@@ -4608,34 +4620,39 @@ function renderFiles(showArchived, modId) {
   const libVer = libOne ? String(libOne.version || '').replace(/^v/i, '') : '';
   const sameVer = f => !!libVer && String(f.version || '').replace(/^v/i, '') === libVer;
   const rowBtn = f => ((libOne && (sameVer(f) || list.length === 1))
-    ? `<button class="btn sm" style="margin-left:auto" data-lib-install="${esc(modId)}"
+    ? `<button class="btn sm" data-lib-install="${esc(modId)}"
           title="管理器里已经有这个 Mod 的安装包（${esc(libOne.filename)}），直接装进游戏 —— 不用再下一次">安装到游戏</button>`
-    : `<button class="btn sm p" style="margin-left:auto" data-dl-file="${f.fileId}"
+    : `<button class="btn sm p" data-dl-file="${f.fileId}"
           title="只下载这个文件：${esc(f.name)}（v${esc(f.version)}）">⬇ 下载</button>`);
   const libHint = libOne
     ? `<div style="color:var(--ok);font-size:11px;margin-bottom:8px;line-height:1.6">管理器里已经有这个 Mod 的安装包（${esc(libOne.filename)}），不用再下一次 —— 版本对得上的文件可以直接「安装到游戏」。</div>`
     : '';
 
-  box.innerHTML = libHint + list.map(f => `
-    <div style="border-bottom:1px dashed #262B33;padding:8px 0">
-      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-        ${f.primary ? '<span class="chip" style="color:var(--ok);border-color:rgba(63,185,80,.4)">主文件</span>' : ''}
-        <span class="chip">${esc(f.category)}</span>
-        <b style="color:var(--text);font-size:12px">${esc(f.name)}</b>
-        <span style="color:var(--dim2);font-size:11px">v${esc(f.version)} · ${fmtSize(f.sizeInBytes)}</span>
-        ${rowBtn(f)}
-      </div>
-      ${f.description ? `<div style="color:var(--dim2);font-size:11px;margin-top:4px;line-height:1.6">${esc(f.description).slice(0, 200)}</div>` : ''}
-    </div>`).join('') +
+  // 三种记录同一套行（0.8.0 P2）：本地包对得上的行额外挂一枚「本地已有」小标。
+  const rowsHtml = list.map(f => {
+    const local = !!(libOne && sameVer(f));
+    const chips = [];
+    if (f.primary) chips.push('<span class="dl-st ok">主文件</span>');
+    if (local) chips.push('<span class="dl-st ok" title="管理器里已经有这个文件对应的安装包，不用再下载">本地已有</span>');
+    const sub = [
+      f.category,
+      'v' + String(f.version || '').replace(/^v/i, ''),
+      fmtSize(f.sizeInBytes),
+      (f.description ? String(f.description).slice(0, 80) : '')
+    ].filter(Boolean).join(' · ');
+    return fileRowHtml({ name: f.name, sub, chips, acts: rowBtn(f) });
+  }).join('');
+
+  box.innerHTML = libHint + '<div class="flist">' + rowsHtml + '</div>' +
     (archivedCount && !showArchived
       ? `<button class="btn sm" style="margin-top:10px" data-showarchived="1">显示 ${archivedCount} 个已归档/旧版本文件</button>`
       : '');
 
   // 底部那颗「加入下载队列」在文件列表到位后改口径：多文件 mod 直接对准
   // 主文件，用户不用再到 Nexus 页面上从一堆按钮里挑。
-  // ⚠️ 它可能在内容区顶部（#dActions，浏览页 Mod 详情）或底部固定栏（#dFoot，其余抽屉）。
+  // ⚠️ 它可能在内容区顶部（#drawerPrimary，统一抽屉）或底部固定栏（#dFoot）。
   const main = list.find(f => f.primary) || list[0];
-  const footBtn = document.querySelector('#dActions [data-dl-add], #dFoot [data-dl-add]');
+  const footBtn = document.querySelector('#drawerPrimary [data-dl-add], #dActions [data-dl-add], #dFoot [data-dl-add]');
   if (main && footBtn && state.drawer.mod && Number(state.drawer.mod.modId) === Number(modId)) {
     if (libOne) {
       // 本地已有整包 —— 别再把按钮写成「下载主文件」，那会把人引回下载队列。
@@ -4649,9 +4666,7 @@ function renderFiles(showArchived, modId) {
       footBtn.title = main.name + '（v' + main.version + '）';
     }
   }
-}
-
-async function doTranslate() {
+}async function doTranslate() {
   const d = state.drawer;
   if (d.translating) return;
   d.translating = true;

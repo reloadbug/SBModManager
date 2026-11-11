@@ -452,11 +452,12 @@ console.log('\n[6] 抽屉文件行：显示磁盘实际文件名（不是被 Nex
   eq(fn(null), '', 'null 不抛异常');
 
   // ---- 接线：installedFilesHtml 必须用这个函数 ----
+  // 0.8.1 P2 起：行模板统一收进 fileRowHtml()，installedFilesHtml 只负责拼参数。
   t('installedFilesHtml 用 installedFileName(it) 取显示名',
-    () => /const shown = installedFileName\(it\);/.test(code) || '缺失');
-  t('fli-name 里显示的是 shown，不是 it.name',
-    () => /<div class="fli-name" data-i18n-skip title="\$\{esc\(shown\)\}">\$\{esc\(shown\)\}/.test(code)
-      || '仍在使用 it.name');
+    () => /name: installedFileName\(it\)/.test(code) || '缺失');
+  t('fileRowHtml 用传进来的 name 渲染（不再直接读 it.name）',
+    () => /<div class="fli-name" data-i18n-skip title="\$\{esc\(name\)\}">\$\{esc\(name\)\}/.test(code)
+      || '仍在用 it.name');
   t('文件行仍带 data-i18n-skip（文件名是运行时数据，不该进词表）',
     () => /class="fli-name" data-i18n-skip/.test(code) || '缺失');
 }

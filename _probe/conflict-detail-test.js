@@ -386,7 +386,7 @@ console.log('\n[8] 对比入口去重 + 对比框两侧信息完整（用户 202
     && appJs.includes("const foot = primary || (state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot'));")
     || '按钮容器没分流');
   t('renderFiles 跨两个容器找「加入下载队列」', () =>
-    appJs.includes("document.querySelector('#dActions [data-dl-add], #dFoot [data-dl-add]')") || '没跨容器找');
+    appJs.includes("document.querySelector('#drawerPrimary [data-dl-add], #dActions [data-dl-add], #dFoot [data-dl-add]')") || '没跨容器找');
   t('style.css .dfoot:empty 不占高度', () => /\.dfoot:empty\{display:none\}/.test(css) || '缺失');
   t('style.css .dactrow（内容区里的操作按钮行）', () => /\.dactrow\{[^}]*display:flex/.test(css) || '缺失');
   t('文件列表封顶高度，防止把操作按钮顶出屏幕', () => /\.nxfiles\{[^}]*max-height/.test(css) || '缺失');

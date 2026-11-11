@@ -1308,5 +1308,7 @@
     '导入': 'Importuj',
     '把下载好的压缩包（.7z / .zip / .rar）导入管理器，之后可以一键装进游戏': 'Dodaj pobrane już archiwum (.7z / .zip / .rar) do menedżera i zainstaluj je w grze jednym kliknięciem',
     '工具': 'Narzedzia',
+    '本地已有': 'Już lokalnie',
+    'Nexus 上的文件': 'Pliki na Nexus',
   });
 })();
