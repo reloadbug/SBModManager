@@ -775,6 +775,12 @@ t('style.css：筛选区 chip 与按钮统一 22px、段标签固定 40px', () =
   return (/\.sline \.tabs button[^{]*\{[^}]*height:22px/.test(s) && /\.slabel\{flex:0 0 40px/.test(s))
     || '筛选区尺寸没统一';
 });
+  t('「排除」后面的数字是「排掉几个」，不是剩下的数量', () => {
+    if (!app.includes('const cnt = hit;')) return '排除态数字口径不对';
+    if (/length\s*-\s*hit/.test(app)) return '还残留「总数 − 命中」的反向算法';
+    return true;
+  });
+
 t('样式里有「排除态」的视觉区分（.ex）', () => {
   const s = fs.readFileSync('src/renderer/style.css', 'utf8');
   return /\.tabs\.libmarks button\.ex\{/.test(s) || '排除态没有样式';

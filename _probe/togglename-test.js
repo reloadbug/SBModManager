@@ -126,18 +126,26 @@ function srcOf(rel) { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); }
     try { reg = JSON.parse(fs.readFileSync(real, 'utf8')); } catch { reg = {}; }
     const list = Array.isArray(reg) ? reg : (reg.mods || []);
     const dead = [];
+    const missing = [];   // 登记还在、文件全没了（不是文件名的问题，单独报一下）
     for (const m of list) {
       if (!['pak', 'logicmod', 'cns'].includes(m.kind)) continue;
       const man = m.manifest || [];
+      // 空记录（装到一半失败、或文件早被手工删掉却留着登记）不参与抽查 ——
+      // 它本来就没有受管文件，算不上「明明有文件却认不出来」。
+      if (!man.length) continue;
       let found = 0;
+      let exist = 0;
       for (const x of man) {
         const p = String(x.path || '');
         if (!p || !fs.existsSync(p)) continue;
+        exist++;
         if (T.renameStep(path.basename(p), false).managed) found++;
       }
-      if (!found) dead.push(m.id);
+      if (exist && !found) dead.push(m.id + '(文件名认不出)');
+      else if (!exist) missing.push(m.id);
     }
-    ok('真账本里没有「一个受管文件都没有」的条目', dead.length === 0, dead.slice(0, 5).join(', '));
+    ok('真账本里没有「有文件却认不出」的条目', dead.length === 0, dead.slice(0, 5).join(', '));
+    console.log('    （登记在、文件全没了的有 ' + missing.length + ' 条，属数据清理问题，不算开关判定）');
   } else {
     ok('真账本不存在（跳过抽查）', true);
   }

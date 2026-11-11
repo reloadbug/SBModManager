@@ -71,6 +71,8 @@ function makeHarness(cfg) {
         adultMode: 'all', category: '', tags: [], facets: null, gen: 0, onlyUninstalled: false,
         blocked: new Set(), blockMode: 'hide', liked: new Set(), onlyLiked: false
       },
+      // Mod 库那套筛选（2026-11-11 起也进存档）
+      lib: { status: 'all', marks: { liked: '', blocked: 'ex', bug: 'ex', verified: '' }, kind: '', sort: '', catSet: false },
       installedSort: 'time',
       installedSortDir: 'desc',   // 0.2.8：已安装页排序方向
       showBuiltin: false,
@@ -88,7 +90,7 @@ function makeHarness(cfg) {
   const ctx = vm.createContext(sb);
   const api = vm.runInContext(
     [SRC_SORTS, SRC_DIRS, SRC_DEFDIR, SRC].join('\n')
-      + '\n;({browseFilterSnapshot, applyLastFilters, saveFilters, syncBrowseFilterUI,'
+      + '\n;({browseFilterSnapshot, libFilterSnapshot, applyLastFilters, saveFilters, syncBrowseFilterUI,'
       + '_ready:(v) => { filtersReady = v; }, _readyVal:() => filtersReady});',
     ctx
   );
@@ -261,6 +263,99 @@ function makeHarness(cfg) {
     H2.api.applyLastFilters();
     eq(H2.state.browse.sort, 'newest', '只存了排序也能恢复');
     eq(H2.state.installedSort, 'time', '快照里没提已安装排序 → 保持默认');
+  }
+
+  // ============================================================ 2b. Mod 库那套筛选也要存档
+  console.log('\n[2b] Mod 库筛选：状态档 / 四颗标记 / 本地排序 / 分类点了没');
+
+  {
+    const H = makeHarness();
+    const snap = H.api.libFilterSnapshot();
+    eq(snap.status, 'all', '快照带状态档');
+    eq(snap.marks.blocked, 'ex', '快照带「排除不感兴趣」');
+    eq(snap.marks.bug, 'ex', '快照带「排除有 bug」');
+    eq(snap.sort, '', '快照带本地排序（默认空）');
+    eq(snap.catSet, false, '快照带「分类是否用户点过」');
+  }
+
+  {
+    // 默认态：系统默认就排除「有 bug / 不感兴趣」（用户 2026-11-11 的要求）
+    t('默认筛选排除「有 bug」和「不感兴趣」', () =>
+      /marks: \{ liked: '', blocked: 'ex', bug: 'ex', verified: '' \}/.test(code) || '默认值没改');
+  }
+
+  {
+    const H = makeHarness({
+      lastFilters: {
+        lib: {
+          status: 'installed',
+          marks: { liked: 'in', blocked: 'ex', bug: '', verified: 'in' },
+          sort: 'on-desc',
+          catSet: true
+        }
+      }
+    });
+    eq(H.api.applyLastFilters(), true, '有 Mod 库存档时返回 true');
+    eq(H.state.lib.status, 'installed', '恢复了状态档');
+    eq(H.state.lib.marks.liked, 'in', '恢复了「只看喜欢」');
+    eq(H.state.lib.marks.blocked, 'ex', '恢复了「排除不感兴趣」');
+    eq(H.state.lib.marks.bug, '', '恢复了「有 bug 全部」');
+    eq(H.state.lib.marks.verified, 'in', '恢复了「只看已验证」');
+    eq(H.state.lib.sort, 'on-desc', '恢复了本地排序');
+    eq(H.state.lib.catSet, true, '恢复了分类已点过');
+  }
+
+  {
+    const H = makeHarness({
+      lastFilters: { lib: { status: 'nonsense', marks: { liked: 'yes', bug: 42 }, sort: 'sideways', catSet: 'x' } }
+    });
+    H.api.applyLastFilters();
+    eq(H.state.lib.status, 'all', '非法状态档退回 all');
+    eq(H.state.lib.marks.liked, '', '非法标记值退回空');
+    eq(H.state.lib.marks.bug, '', '非字符串标记值退回空');
+    eq(H.state.lib.sort, '', '非法排序退回不排序');
+    eq(H.state.lib.catSet, false, 'catSet 只认布尔真值');
+  }
+
+  {
+    // 老存档（0.7.7 及以前）没有 lib 字段：不能把默认的「排除」清掉
+    const H = makeHarness({ lastFilters: { browse: { sort: 'newest' } } });
+    H.api.applyLastFilters();
+    eq(H.state.lib.marks.bug, 'ex', '老存档不动默认的「排除有 bug」');
+    eq(H.state.lib.marks.blocked, 'ex', '老存档不动默认的「排除不感兴趣」');
+  }
+
+  {
+    // 落盘载荷里要带 lib
+    const H = makeHarness();
+    H.state.lib.status = 'downloaded';
+    H.state.lib.marks.bug = 'in';
+    H.state.lib.sort = 'name';
+    H.api._ready(true);
+    H.api.saveFilters();
+    await sleep(420);
+    const payload = H.calls[H.calls.length - 1];
+    eq(payload[1].lastFilters.lib.status, 'downloaded', 'payload 里带状态档');
+    eq(payload[1].lastFilters.lib.marks.bug, 'in', 'payload 里带标记三态');
+    eq(payload[1].lastFilters.lib.sort, 'name', 'payload 里带本地排序');
+  }
+
+  {
+    // 四个入口都必须挂钩（改条件就写缓存）
+    t('状态档 / 标记 / 本地排序 三个入口都调 saveFilters', () => {
+      const pick = (start, end) => {
+        const i = code.indexOf(start);
+        const j = code.indexOf(end, i);
+        return i < 0 || j < 0 ? '' : code.slice(i, j);
+      };
+      const st = pick('function setLibStatus(', 'function toggleLibMark(');
+      const mk = pick('function toggleLibMark(', 'function libClickSelect(');
+      const ls = pick("$('#libSortTabs').addEventListener", "const elNewOnly");
+      if (!/saveFilters\(\)/.test(st)) return 'setLibStatus 没挂钩';
+      if (!/saveFilters\(\)/.test(mk)) return 'toggleLibMark 没挂钩';
+      if (!/saveFilters\(\)/.test(ls)) return '本地排序没挂钩';
+      return true;
+    });
   }
 
   // ============================================================ 3. saveFilters

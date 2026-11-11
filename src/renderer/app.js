@@ -47,7 +47,9 @@ const state = {
    */
   // 标记三态（用户 2026-11-11）：'' 任意 · 'in' 只看有 · 'ex' 排除掉有。
   // 负面标记（不感兴趣 / 有 bug）默认第一下就是「排除」，正常浏览时不碍眼。
-  lib: { status: 'all', marks: { liked: '', blocked: '', bug: '', verified: '' }, kind: '', sort: '', catSet: false },
+  // 系统默认筛选：先把「有 bug」和「不感兴趣」排除掉（用户 2026-11-11）——
+  // 装过坑的 Mod 默认不该再挡视线；要看得把对应 chip 点成「全部」或「只看」。
+  lib: { status: 'all', marks: { liked: '', blocked: 'ex', bug: 'ex', verified: '' }, kind: '', sort: '', catSet: false },
   libRecords: [],       // 最近一次拼出来的统一记录（全选 / 计数都走它）
   libShownRecords: [],  // 过滤之后真正显示的记录
   installedShown: [],   // 本次渲染后**真正显示出来**的分组（筛选之后），全选用它
@@ -3179,7 +3181,9 @@ function paintLibHead(recs) {
     marks.innerHTML = LIB_MARK_CHIPS.map(ch => {
       const mode = cur[ch.k] || '';
       const hit = (recs || []).filter(r => libHasMark(r, ch.k)).length;
-      const cnt = mode === 'ex' ? (recs || []).length - hit : hit;
+      // 2026-11-11 用户：数字要跟「排除」读得通 —— 排除 N 就是排掉 N 个，
+      // 不能写成「排除 305」（那是剩下的数量，看着像排错了）。
+      const cnt = hit;
       const tone = ch.tone ? ` tone-${ch.tone}` : '';
       const cls = mode === 'in' ? ' on' : (mode === 'ex' ? ' ex' : '');
       // 2026-11-11 用户：状态词放到标签文字前面，切到「排除」时读起来就是「排除 有bug」；「任意」改叫「全部」
@@ -3415,6 +3419,7 @@ function setLibStatus(v, opts = {}) {
   const val = LIB_STATUS_CHIPS.some(c => c.v === v) ? v : 'all';
   if (state.lib.status === val && !opts.force) return;
   state.lib.status = val;
+  saveFilters();   // 筛选条件一变就写缓存（用户 2026-11-11）
   // 「只看未安装 / 已下载」这两颗老开关会跟新状态打架，切状态时一并清掉
   state.browse.onlyUninstalled = false;
   state.browse.onlyDownloaded = false;
@@ -3466,6 +3471,7 @@ function toggleLibMark(k) {
   const cur = state.lib.marks[k] || '';
   const order = neg ? ['', 'ex', 'in'] : ['', 'in', 'ex'];
   state.lib.marks[k] = order[(order.indexOf(cur) + 1) % order.length];
+  saveFilters();
   renderBrowse();
 }
 
@@ -3861,6 +3867,24 @@ function browseFilterSnapshot(b) {
   };
 }
 
+/** Mod 库状态档的合法取值（与 LIB_STATUS_CHIPS 一一对应） */
+const LEVELS = ['all', 'online', 'downloaded', 'installed', 'enabled', 'disabled', 'partial', 'unreg', 'linked'];
+/** Mod 库本地排序的合法取值（'' = 不排序） */
+const LOCAL_SORTS = ['', 'on-desc', 'on-asc', 'inst-desc', 'name'];
+
+/** Mod 库这套筛选的快照（状态档 / 四颗标记 / 本地排序 / 分类是否用户点过） */
+function libFilterSnapshot() {
+  const l = state.lib || {};
+  const m = l.marks || {};
+  const mode = v => (v === 'in' || v === 'ex' ? v : '');
+  return {
+    status: l.status || 'all',
+    marks: { liked: mode(m.liked), blocked: mode(m.blocked), bug: mode(m.bug), verified: mode(m.verified) },
+    sort: l.sort || '',
+    catSet: !!l.catSet
+  };
+}
+
 let saveFiltersTimer = null;
 
 /**
@@ -3876,7 +3900,8 @@ function saveFilters() {
       browse: browseFilterSnapshot(),
       installedSort: state.installedSort,
       installedSortDir: state.installedSortDir,
-      showBuiltin: !!state.showBuiltin
+      showBuiltin: !!state.showBuiltin,
+      lib: libFilterSnapshot()
     };
     call(window.api.config.set({ lastFilters: last }), { silent: true }).catch(() => {});
   }, 350);
@@ -3918,6 +3943,21 @@ function applyLastFilters() {
     SORT_DIRS.includes(last.installedSortDir) && INSTALLED_SORTS.some(s => s.value === last.installedSort)
   ) ? last.installedSortDir : sortDefaultDir(state.installedSort);
   if (typeof last.showBuiltin === 'boolean') state.showBuiltin = last.showBuiltin;
+  // Mod 库那套（状态档 / 四颗标记 / 本地排序 / 分类是否用户点过）
+  const ll = last.lib;
+  if (ll && typeof ll === 'object') {
+    const l = state.lib;
+    // 取值白名单写在这里而不是查 LIB_STATUS_CHIPS / LIB_SORTS：这两组常量定义在文件后半段，
+    // 探针会把这段源码抠进沙箱单跑，跨段引用会 ReferenceError。
+    if (LEVELS.includes(ll.status)) l.status = ll.status;
+    const cm = ll.marks;
+    if (cm && typeof cm === 'object') {
+      const mode = v => (v === 'in' || v === 'ex' ? v : '');
+      l.marks = { liked: mode(cm.liked), blocked: mode(cm.blocked), bug: mode(cm.bug), verified: mode(cm.verified) };
+    }
+    l.sort = LOCAL_SORTS.includes(ll.sort) ? ll.sort : '';
+    l.catSet = ll.catSet === true;
+  }
   return true;
 }
 
@@ -7850,6 +7890,7 @@ function bindEvents() {
     // 注意用 $（$ 是单元素，没有 forEach）—— 这里再踩一次就会「状态改了但界面不重画」
     $$('#adultTabs button, #browseFilters button[data-adult]').forEach(x => x.classList.toggle('on', x.dataset.adult === mode));
     // 合并档位（在线以外）是本地记录，就地重画即可；在线档位才需要回 Nexus 重拉
+    saveFilters();
     if ((state.lib.status || 'all') !== 'online') { renderBrowse(); return; }
     loadBrowse(true);
   });
@@ -7860,6 +7901,7 @@ function bindEvents() {
     if (!b) return;
     const v = b.dataset.libsort;
     state.lib.sort = (state.lib.sort === v) ? '' : v;
+    saveFilters();
     renderBrowse();
   });
 
@@ -7973,6 +8015,7 @@ function bindEvents() {
       b.category = '';
       b.tags = [];
       state.lib.catSet = false;
+      saveFilters();
       if (merged) { renderBrowse(); return; }
       loadBrowse(true);
       return;
@@ -7981,6 +8024,7 @@ function bindEvents() {
     if (cat) {
       b.category = cat.dataset.cat || '';
       state.lib.catSet = true;
+      saveFilters();
       if (merged) { renderBrowse(); return; }
       loadBrowse(true);
       return;
@@ -7989,6 +8033,7 @@ function bindEvents() {
     if (tag) {
       const v = tag.dataset.tag;
       b.tags = b.tags.includes(v) ? b.tags.filter(x => x !== v) : b.tags.concat(v);
+      saveFilters();
       if (merged) { renderBrowse(); return; }
       loadBrowse(true);
     }
@@ -8001,6 +8046,7 @@ function bindEvents() {
     state.browse.sort = b.dataset.sort;
     state.lib.sort = '';   // 在线排序与本地排序互斥
     // 合并档位：按本地记录里同一批字段排（applyLibSort 认这四个键）
+    saveFilters();
     if ((state.lib.status || 'all') !== 'online') { renderBrowse(); return; }
     loadBrowse(true);
   });
