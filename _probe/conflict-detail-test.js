@@ -381,9 +381,11 @@ console.log('\n[8] 对比入口去重 + 对比框两侧信息完整（用户 202
     bodyOrder.every((v, i) => v > 0 && (i === 0 || v > bodyOrder[i - 1])) || JSON.stringify(bodyOrder));
   t('主操作在内容区顶部（#drawerPrimary），不靠滚到底', () =>
     appJs.includes('id="drawerPrimary"') || '主操作没在内容区');
+  // 0.8.2 P3：抽屉只剩一套，主操作容器就是 `#drawerPrimary`，下载任务抽屉才回落 `#dFoot`。
   t('applyDrawerLocalState 只重写主操作那一行（标记不跟着被刷掉）', () =>
     appJs.includes("const primary = $('#drawerPrimary');")
-    && appJs.includes("const foot = primary || (state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot'));")
+    && appJs.includes("const foot = primary || $('#dFoot');")
+    && !appJs.includes("state.drawer.kind === 'nexus' ? $('#dActions')")
     || '按钮容器没分流');
   t('renderFiles 跨两个容器找「加入下载队列」', () =>
     appJs.includes("document.querySelector('#drawerPrimary [data-dl-add], #dActions [data-dl-add], #dFoot [data-dl-add]')") || '没跨容器找');

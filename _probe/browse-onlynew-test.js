@@ -183,10 +183,13 @@ console.log('\n=== installedIdsOf：本地状态 IPC ===');
   t('已下载卡片也带 👍 / 👎（有 modId 才显示）', () =>
     /<div class="acts">\r?\n\s*\$\{it\.modId \? voteHtml\(it\) : ''\}/.test(code));
   t('详情抽屉标记行也带 👍 / 👎', () => /markActs\.push\(voteHtml\(\{ modId: markId \}\)\)/.test(code));
+// 0.8.2 P3：投票单独一行（`#drawerMarks`），主操作那行只写 `#drawerPrimary`，
+// 所以 applyDrawerLocalState 里不该再出现 vote，重写也不会把它刷掉。
 t('applyDrawerLocalState 重写主操作时不吞掉 👍👎', () =>
-  /const vote = \(!primary && state\.drawer\.kind === 'nexus'\)/.test(code) &&
-  /const openBtn = primary \? '' :/.test(code));
-  t('三个本地状态分支都带着 vote 一起写', () =>
+  /const openBtn = primary \? '' :/.test(code) &&
+  !/const vote = \(!primary/.test(code) &&
+  /markActs\.push\(voteHtml\(\{ modId: markId \}\)\)/.test(code));
+  t('三个本地状态分支都只写 openBtn（不再各自带 vote）', () =>
     /if \(st\.act === 'install'\)[\s\S]{0,400}\$\{vote\}/.test(code) === false &&
     /foot\.innerHTML = openBtn \+/.test(code));
 t('详情抽屉里本地有安装包时给「安装到游戏」', () =>

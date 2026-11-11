@@ -4554,16 +4554,14 @@ async function applyDrawerLocalState(modId) {
   if (state.drawer.localKey === key) return;
   state.drawer.localKey = key;
 
-  // ⚠️ 操作按钮所在容器**按抽屉类型分**：浏览页 Mod 详情把它们放在内容区顶部
-  //    （`#dActions`，图片下方 —— 不滚动就能点），已安装 / 下载详情仍在底部固定栏。
+  // 统一抽屉（0.8.0 起只有一套）把主操作放在内容区顶部 `#drawerPrimary`；
+  // 下载任务那个抽屉（`openDownloadDrawer`）没有这一段，仍是底部固定栏 `#dFoot`。
   const primary = $('#drawerPrimary');
-  const foot = primary || (state.drawer.kind === 'nexus' ? $('#dActions') : $('#dFoot'));
+  const foot = primary || $('#dFoot');
   if (!foot || !st) return;
-  // 👍 / 👎 跟着一起重写：这一段会把整个操作行换掉（按本地状态只留「打开 / 装进游戏 / 去下载页」），
-  // 用户 2026-11-10 要求详情页也要有点赞和不喜欢 —— 不带上就会被下面几行覆盖掉。
-  // 统一抽屉里标记（👍👎 / bug / 已验证）单独一行，这里只重写主操作，别再带一遍投票
-  const vote = (!primary && state.drawer.kind === 'nexus') ? voteHtml(cur) : '';
-  const openBtn = primary ? '' : `${vote}<button class="btn" data-openurl="${esc(cur.url)}">在浏览器打开</button>`;
+  // 标记（👍👎 / bug / 已验证）在统一抽屉里单独占一行，这里只重写主操作 —— 别再带一遍投票，
+  // 否则会把上面那一行刷掉（用户 2026-11-10 要求详情页也要有点赞和不喜欢）。
+  const openBtn = primary ? '' : `<button class="btn" data-openurl="${esc(cur.url)}">在浏览器打开</button>`;
   if (st.act === 'install') {
     // 库里的包没有 taskId，走 library:install（否则按钮点了没反应）
     foot.innerHTML = openBtn + (local.taskId

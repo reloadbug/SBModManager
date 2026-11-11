@@ -1,5 +1,16 @@
 # 更新日志
 
+## [0.8.2] - 2026-11-11
+
+### 修改
+
+- **抽屉收尾（P3）**：`applyDrawerLocalState` 里那段「按抽屉类型分流容器」的老逻辑删掉了 —— 现在只有统一抽屉的 `#drawerPrimary`，下载任务抽屉才回落 `#dFoot`；投票（👍👎）本来就单独占一行，不再在主操作那行重复写一遍。
+- 注释同步改口径（原来还写着「浏览页 Mod 详情放 `#dActions`」）。
+
+### 测试
+
+- 探针跟进口径变化：`browse-onlynew`（51，改为断言「applyDrawerLocalState 里不该再有 vote」）、`conflict-detail`（99，断言容器只剩 `#drawerPrimary | #dFoot` 两条路）；全量 56 个脚本 0 失败。
+
 ## [0.8.1] - 2026-11-11
 
 ### 新增
