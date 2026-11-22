@@ -113,19 +113,20 @@ section('C. 前端：带出时间 / 排序 / 入口');
     && appSrc.includes('enabledAtGuess: !!g.enabledAtGuess,')
     && appSrc.includes("installedAt: g.mtime || '',"));
 
-  ok('有 LIB_SORTS 且含开启时间两档',
+  ok('有 LIB_SORTS 且含开启时间 / 安装时间 / 名称三个本地维度',
     appSrc.includes('const LIB_SORTS = [')
-    && appSrc.includes("value: 'on-desc'")
-    && appSrc.includes("value: 'on-asc'")
-    && appSrc.includes("value: 'inst-desc'"));
+    && appSrc.includes("value: 'on',")
+    && appSrc.includes("value: 'inst',")
+    && appSrc.includes("value: 'name'"));
   ok('renderLibMerged 走 applyLibSort',
     appSrc.includes('const shown = applyLibSort(libFilterRecords(recs));'));
-  ok('state.lib 带 sort 字段',
-    /kind: '', sort: '', catSet: false }/.test(appSrc));
-  ok('本地排序改成同排 chip，走点击委托（不再有下拉）',
+  ok('state.lib 带 sort + sortDir 字段',
+    appSrc.includes("sort: 'downloads', sortDir: 'desc'"));
+  ok('本地排序 chip + 一颗方向按钮，走点击委托（不再有下拉）',
     appSrc.includes("$('#libSortTabs').addEventListener('click'")
     && appSrc.includes("'button[data-libsort]'")
-    && appSrc.includes("state.lib.sort = (state.lib.sort === v) ? '' : v;")
+    && /const dirBtn = \$\('#sortDirBtn'\);[\s\S]{0,80}dirBtn\.addEventListener\('click'/.test(appSrc)
+    && appSrc.includes("state.lib.sortDir = state.lib.sortDir === 'asc' ? 'desc' : 'asc';")
     && !appSrc.includes("$('#libSort')"));
   ok('在线档位把本地排序藏起来（那边用 Nexus 的排序标签）',
     appSrc.includes("const s = $('#libSortTabs'); if (s) s.style.display = 'none';"));
@@ -137,13 +138,13 @@ section('C. 前端：带出时间 / 排序 / 入口');
   ok('推算出来的时间会说明「按安装时间推算」',
     appSrc.includes('按安装时间推算'));
 
-  ok('index.html 有 #libSortTabs 本地排序 chip 组', htmlSrc.includes('id="libSortTabs"') && htmlSrc.includes('data-libsort="on-desc"'));
-  ok('本地排序 chip 四颗齐全，且没有「默认」这一档',
-    htmlSrc.includes('<button data-libsort="on-desc">开启时间 ↓</button>')
-    && htmlSrc.includes('<button data-libsort="on-asc">开启时间 ↑</button>')
-    && htmlSrc.includes('<button data-libsort="inst-desc">安装时间 ↓</button>')
+  ok('index.html 有 #libSortTabs 本地排序 chip 组', htmlSrc.includes('id="libSortTabs"') && htmlSrc.includes('data-libsort="on"'));
+  ok('本地排序三颗维度 chip（不带 ↓↑）+ 一颗方向按钮',
+    htmlSrc.includes('<button data-libsort="on">开启时间</button>')
+    && htmlSrc.includes('<button data-libsort="inst">安装时间</button>')
     && htmlSrc.includes('<button data-libsort="name">名称</button>')
-    && !htmlSrc.includes('value=""'));
+    && htmlSrc.includes('id="sortDirBtn"')
+    && !htmlSrc.includes('data-libsort="on-desc"'));
 }
 
 /* ---------------- D. 排序真的排得对（把函数抠出来单跑） ---------------- */
@@ -160,7 +161,7 @@ section('D. applyLibSort 行为');
     else if (c === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
   }
   const src = appSrc.slice(s, end);
-  const sandbox = { state: { lib: { sort: '' }, browse: { sort: '' } } };
+  const sandbox = { state: { lib: { sort: 'downloads', sortDir: 'desc' }, browse: { sort: '' } } };
   vm.createContext(sandbox);
   vm.runInContext(src + '\n;this.__apply = applyLibSort;', sandbox);
   const apply = sandbox.__apply;
@@ -172,26 +173,26 @@ section('D. applyLibSort 行为');
     { key: 'd', name: 'delta', enabledAt: '2026-11-05T00:00:00.000Z', installedAt: '2026-11-08T00:00:00.000Z' }
   ];
 
-  ok('默认档不动顺序', apply(recs).map(r => r.key).join('') === 'abcd');
+  ok('默认档（downloads，无下载量）不动顺序', apply(recs).map(r => r.key).join('') === 'abcd');
   // 合并态默认跟着顶部在线排序 chip 走（实测本机是「下载最多」），所以默认档也会排一次、返回副本。
   ok('默认档跟着在线排序排一次（返回副本，不动原数组）', apply(recs) !== recs && recs.map(r => r.key).join('') === 'abcd');
 
-  sandbox.state.lib.sort = 'on-desc';
+  sandbox.state.lib.sort = 'on'; sandbox.state.lib.sortDir = 'desc';
   ok('开启时间 ↓：最近的在前，没时间的沉底',
     apply(recs).map(r => r.key).join('') === 'bdac');
 
-  sandbox.state.lib.sort = 'on-asc';
+  sandbox.state.lib.sort = 'on'; sandbox.state.lib.sortDir = 'asc';
   ok('开启时间 ↑：最早的在前，没时间的仍在最后',
     apply(recs).map(r => r.key).join('') === 'adbc');
 
-  sandbox.state.lib.sort = 'inst-desc';
+  sandbox.state.lib.sort = 'inst'; sandbox.state.lib.sortDir = 'desc';
   ok('安装时间 ↓ 与开启时间不是一回事（d 比 b 装得晚）',
     apply(recs).map(r => r.key).join('') === 'dbac');
 
-  sandbox.state.lib.sort = 'name';
+  sandbox.state.lib.sort = 'name'; sandbox.state.lib.sortDir = 'asc';
   ok('名称：不区分大小写', apply(recs).map(r => r.key).join('') === 'bcad');
 
-  sandbox.state.lib.sort = 'on-desc';
+  sandbox.state.lib.sort = 'on'; sandbox.state.lib.sortDir = 'desc';
   ok('排序不改动入参数组', recs.map(r => r.key).join('') === 'abcd');
 }
 

@@ -303,7 +303,9 @@ t('跑批中不覆盖进度文案', () => {
 });
 
 console.log('\n=== 静态接线断言（防回归） ===');
-t('工具栏有「多选」开关', () => /id="batchBar"[\s\S]{0,400}id="btnBatchMode">多选</.test(html));
+t('统计行有「多选」开关（0.9.0：从工具栏挪到 statsrow，非多选不占吸顶高度）', () =>
+  /class="statsrow"[\s\S]{0,300}id="btnBatchMode"[^>]*>多选</.test(html)
+  && !/id="batchBar"[\s\S]{0,600}id="btnBatchMode"/.test(html));
 t('工具栏有「全选」和「批量下载」', () => /id="btnSelectAll"[\s\S]{0,200}id="btnBatchDownload"/.test(html));
 t('批量下载按钮有解释性 title', () => /id="batchBar" title="[^"]*多选模式[^"]*"/.test(html));
 t('CSS 有多选态复选框（默认隐藏，body.sel 才显示）', () => /\.cover \.ck\{display:none/.test(css) && /body\.sel \.cover \.ck\{display:block\}/.test(css));

@@ -79,81 +79,76 @@
       <div class="page on" id="p-browse">
         <!-- 吸顶区：排序 / 范围 / 筛选 / 统计 —— 滚动时不消失（用户 2026-10-13 要求） -->
         <div class="bhead" id="browseHead">
-          <!-- 顶部按「问题的性质」分五段（用户 2026-11-11 要求）：
-               状态 = 磁盘说了算（装没装、开没开）；信息 = Nexus 给的（分类、成人范围）；
-               标记 = 自己打的（喜欢 / 不感兴趣 / 有 bug / 已验证）；排序；操作。
-               每段左列固定 40px 标签、右列一行控件，横平竖直，字号统一。 -->
+          <!-- 顶部按「问题的性质」分四段（2026-11-23 改版）：
+               每段左侧一条 40px 标签列，所有行第一颗 chip 从同一 x 起排；
+               状态=磁盘说了算、标记=自己打的、分类=信息范围、排序/操作=动作。 -->
           <div class="sect">
-            <div class="sbody">
-              <div class="sline">
-                <span class="grp"><span class="slabel">状态</span><div class="tabs libst" id="libStatus"></div></span>
-                <span class="grp"><span class="slabel ml">标记</span><div class="tabs libmarks" id="libMarks"
-                  title="点一下切三态：任意 → 排除 → 只看（正面标记反过来：任意 → 只看 → 排除）"></div></span>
-              </div>
-            </div>
+            <span class="slabel">状态</span>
+            <div class="sbody"><div class="sline"><div class="tabs libst" id="libStatus"></div></div></div>
           </div>
           <div class="sect">
-            <!-- 2026-11-22 用户要求：这颗「信息」标签去掉（分类/成人 自带名字，重复了）；留空 span 只为让左侧 40px 标签列继续对齐 -->
-            <span class="slabel" aria-hidden="true"></span>
-            <div class="sbody">
-              <div class="sline">
-                <!-- 分类 chips（合并态由 renderLibFilters() 把成人三档画在同一行） -->
-                <div class="filters" id="browseFilters"></div>
-                <!-- 在线档位用的成人三档（合并态隐藏） -->
-                <div class="tabs adult" id="adultTabs" title="成人内容显示范围">
-                  <button data-adult="hide" title="不显示成人内容（露骨的单独藏起来）">隐藏成人</button>
-                  <button data-adult="all" class="on" title="成人内容也照常显示">全部内容</button>
-                  <button data-adult="only" title="只列出成人内容">只看成人</button>
-                </div>
+            <span class="slabel">标记</span>
+            <div class="sbody"><div class="sline"><div class="tabs libmarks" id="libMarks"
+              title="点一下切三态：任意 → 排除 → 只看（正面标记反过来：任意 → 只看 → 排除）"></div></div></div>
+          </div>
+          <div class="sect">
+            <span class="slabel">分类</span>
+            <div class="sbody"><div class="sline">
+              <!-- 分类 chips（合并态由 renderLibFilters() 把成人三档画在同一行） -->
+              <div class="filters" id="browseFilters"></div>
+              <!-- 在线档位用的成人三档（合并态隐藏） -->
+              <div class="tabs adult" id="adultTabs" title="成人内容显示范围">
+                <button data-adult="hide" title="不显示成人内容（露骨的单独藏起来）">隐藏成人</button>
+                <button data-adult="all" class="on" title="成人内容也照常显示">全部内容</button>
+                <button data-adult="only" title="只列出成人内容">只看成人</button>
               </div>
-            </div>
+            </div></div>
           </div>
           <div class="sect">
             <span class="slabel">排序</span>
-            <div class="sbody">
-              <div class="sline">
-                <div class="tabs" id="sortTabs">
-                  <button data-sort="downloads" class="on">下载最多</button>
-                  <button data-sort="endorsements">最多点赞</button>
-                  <button data-sort="newest">最新发布</button>
-                  <button data-sort="updated">最近更新</button>
-                </div>
-                <!-- 本地记录的排序：与在线排序同一行，外观与其它控件完全一致（用户 2026-11-11 要求统一） -->
-                <div class="tabs localsort" id="libSortTabs" title="本地记录的排序方式（「开启时间」用来排查新装的 Mod）">
-                  <button data-libsort="on-desc">开启时间 ↓</button>
-                  <button data-libsort="on-asc">开启时间 ↑</button>
-                  <button data-libsort="inst-desc">安装时间 ↓</button>
-                  <button data-libsort="name">名称</button>
-                </div>
+            <div class="sbody"><div class="sline">
+              <div class="tabs" id="sortTabs">
+                <button data-sort="downloads" class="on">下载最多</button>
+                <button data-sort="endorsements">最多点赞</button>
+                <button data-sort="newest">最新发布</button>
+                <button data-sort="updated">最近更新</button>
               </div>
-            </div>
+              <!-- 本地维度只留一颗（方向统一交给右边的 ↓/↑，不再一个维度摆两颗）——2026-11-23 用户要求 -->
+              <div class="tabs localsort" id="libSortTabs" title="本地记录的排序方式（「开启时间」用来排查新装的 Mod）">
+                <button data-libsort="on">开启时间</button>
+                <button data-libsort="inst">安装时间</button>
+                <button data-libsort="name">名称</button>
+              </div>
+              <button class="btn sm" id="sortDirBtn" title="翻转排序方向；在线四档由 Nexus 固定为从多到少 / 从新到旧">↓</button>
+            </div></div>
           </div>
-          <div class="sect">
+          <!-- 操作行：只在多选态出现（非多选不占高度，2026-11-23 用户要求） -->
+          <div class="sect" id="opSect" style="display:none">
             <span class="slabel">操作</span>
-            <div class="sbody">
-              <div class="sline">
-                <div class="tabs batch" id="batchBar" title="多选模式：勾选多个 Mod，按它们当前的状态批量下载 / 安装 / 启用 / 卸载">
-                  <button id="btnBatchMode">多选</button>
-                  <button id="btnSelectAll" style="display:none">全选</button>
-                  <button id="btnBatchDownload" class="bdl" style="display:none" title="把选中的在线 Mod 全部加入下载队列">批量下载</button>
-                  <button id="btnBatchInstall" class="bdl" style="display:none" title="把选中的已下载安装包全部装进游戏">批量安装</button>
-                  <button id="btnBatchOn" class="bdl" style="display:none" title="把选中的 Mod 全部打开（游戏就会加载它们）">批量启用</button>
-                  <button id="btnBatchOff" class="bdl" style="display:none" title="把选中的 Mod 全部关掉（文件留在原地，游戏不加载）">批量禁用</button>
-                  <button id="btnBatchUninstall" class="bdl" style="display:none" title="把选中的 Mod 从游戏目录里删掉（安装包和你的标记都保留）">批量卸载</button>
-                </div>
-                <!-- 批量标记：多选之后一次给这批 Mod 打上 / 取消标记；按钮文字跟着「是不是已经全标过」变 -->
-                <div class="tabs batch marks" id="batchMarks" style="display:none" title="多选模式：给选中的 Mod 批量打标记">
-                  <button id="btnBatchLike">👍 喜欢</button>
-                  <button id="btnBatchDislike">👎 不喜欢</button>
-                  <button id="btnBatchBug">⚠ 有 bug</button>
-                  <button id="btnBatchVerify">✓ 已验证</button>
-                  <button id="btnBatchUnverify">未验证</button>
-                </div>
-                <button class="btn sm" id="btnLoadMore" style="display:none">加载更多</button>
+            <div class="sbody"><div class="sline">
+              <div class="tabs batch" id="batchBar" title="多选模式：勾选多个 Mod，按它们当前的状态批量下载 / 安装 / 启用 / 卸载">
+                <button id="btnSelectAll" style="display:none">全选</button>
+                <button id="btnBatchDownload" class="bdl" style="display:none" title="把选中的在线 Mod 全部加入下载队列">批量下载</button>
+                <button id="btnBatchInstall" class="bdl" style="display:none" title="把选中的已下载安装包全部装进游戏">批量安装</button>
+                <button id="btnBatchOn" class="bdl" style="display:none" title="把选中的 Mod 全部打开（游戏就会加载它们）">批量启用</button>
+                <button id="btnBatchOff" class="bdl" style="display:none" title="把选中的 Mod 全部关掉（文件留在原地，游戏不加载）">批量禁用</button>
+                <button id="btnBatchUninstall" class="bdl" style="display:none" title="把选中的 Mod 从游戏目录里删掉（安装包和你的标记都保留）">批量卸载</button>
               </div>
-            </div>
+              <div class="tabs batch marks" id="batchMarks" style="display:none" title="多选模式：给选中的 Mod 批量打标记">
+                <button id="btnBatchLike">👍 喜欢</button>
+                <button id="btnBatchDislike">👎 不喜欢</button>
+                <button id="btnBatchBug">⚠ 有 bug</button>
+                <button id="btnBatchVerify">✓ 已验证</button>
+                <button id="btnBatchUnverify">未验证</button>
+              </div>
+              <button class="btn sm" id="btnLoadMore" style="display:none">加载更多</button>
+            </div></div>
           </div>
-          <div class="stats" id="browseStats"></div>
+          <div class="statsrow">
+<div class="stats" id="browseStats"></div>
+            <button class="btn sm" id="btnBatchMode" title="勾选多个 Mod，批量下载 / 安装 / 启用 / 卸载">多选</button>
+          </div>
+
         </div>
         <div id="browseArea"></div>
       </div>

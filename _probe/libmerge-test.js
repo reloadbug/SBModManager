@@ -475,10 +475,12 @@ t('selUpdateBar 里同步这五颗：全标过时点亮并换成「取消…」�
 /* ---------- I. 恢复「Mod 库」缺的功能（用户 2026-11-11） ---------- */
 t('顶部不再有「显示内置脚本」开关（0.7.2 按用户要求撤掉）', () =>
   !html.includes('libBuiltin') && !app.includes('data-libbuiltin'));
-t('「开启时间 / 安装时间」做成与在线排序同排的 chip，不再用下拉', () =>
-  html.includes('id="libSortTabs"') && html.includes('data-libsort="on-desc"')
-  && !html.includes('id="libSort"') && app.includes("'button[data-libsort]'")
-  && app.includes("state.lib.sort = (state.lib.sort === v) ? '' : v;"));
+t('本地排序三颗维度 chip + 一颗方向按钮（0.9.0：正反合成一颗）', () =>
+  html.includes('id="libSortTabs"') && html.includes('data-libsort="on"')
+  && html.includes('data-libsort="inst"') && html.includes('data-libsort="name"')
+  && html.includes('id="sortDirBtn"') && !html.includes('id="libSort"')
+  && app.includes("'button[data-libsort]'") && app.includes("$('#sortDirBtn')")
+  && app.includes("state.lib.sortDir = state.lib.sortDir === 'asc' ? 'desc' : 'asc';"));
 t('状态档补了「未登记」「已关联」', () =>
   app.includes("{ v: 'unreg', label: '未登记' }") && app.includes("{ v: 'linked', label: '已关联' }") &&
   app.includes("else if (st === 'unreg') { if (rec.modId) return false; }") &&
@@ -505,10 +507,15 @@ t('合并态也有分类筛选条（renderLibFilters）', () =>
 t('本地记录的元信息靠 info.local 一次性补齐（不联网）', () =>
   app.includes('function libPrefetchInfo(recs)') && app.includes('window.api.info.local(') &&
   app.includes('const want = [];') && app.includes('state.libInfoAsked'));
-t('在线四档排序已接进 applyLibSort', () =>
-  app.includes("online === 'downloads' || online === 'endorsements'") &&
-  app.includes("online === 'newest' || online === 'updated'") &&
-  app.includes('if (!fa) return 1;'));
+t('在线四档排序已接进 applyLibSort（0.9.0：统一走 state.lib.sort + sortDir）', () => {
+  const i = app.indexOf('function applyLibSort(');
+  if (i < 0) return '没有 applyLibSort';
+  const seg = app.slice(i, i + 1800);
+  return (seg.includes("by === 'downloads' || by === 'endorsements'") &&
+    seg.includes("by === 'updated' || by === 'newest'") &&
+    seg.includes("state.lib.sortDir === 'asc' ? 1 : -1") &&
+    seg.includes('if (!fa) return 1;')) || 'applyLibSort 没接全四个在线维度 / 方向';
+});
 t('paintLibHead 用 $$ 选按钮（单个 $ 没有 forEach）', () => {
   const i = app.indexOf('function paintLibHead(');
   if (i < 0) return 'paintLibHead 不见了';
@@ -631,7 +638,7 @@ t('app.js：老入口 p-installed 会被导向 p-browse 并把状态切到「已
 //    上一版是把节点在 JS 里搬来搬去（compactLibHead），现在直接写死在 HTML 里，
 //    顺序固定、不依赖运行时搬迁。
 // ---------------------------------------------------------------------------
-t('index.html：#browseHead 按「状态 / 分类成人 / 排序 / 操作」分行（「信息」标签 2026-11-22 已撤）', () => {
+t('index.html：#browseHead 用 40px 标签列把五行对齐（0.9.0：状态/标记/分类/排序/操作）', () => {
   const html = fs.readFileSync('src/renderer/index.html', 'utf8');
   const i = html.indexOf('id="browseHead"');
   const j = html.indexOf('id="browseArea"');
@@ -639,24 +646,26 @@ t('index.html：#browseHead 按「状态 / 分类成人 / 排序 / 操作」分�
   const seg = html.slice(i, j);
   const secs = (seg.match(/class="sect"/g) || []).length;
   const need = (t) => seg.includes('>' + t + '<');
-  if (seg.includes('<span class="slabel">信息</span>')) return '「信息」标签应该已经删掉（2026-11-22 用户要求）';
-  const blank = /<span class="slabel" aria-hidden="true"><\/span>/.test(seg);
-  if (!blank) return '删掉「信息」之后没留空 span，标签列会错位';
-  return (secs === 4 && need('状态') && need('标记') && need('排序') && need('操作'))
-    || '顶栏段数不对：' + secs;
+  if (seg.includes('<span class="slabel">信息</span>')) return '「信息」标签应该已经删掉';
+  // 0.9.0：分类这一行现在有自己的真标签（不再用 aria-hidden 空 span 占位）。
+  return (secs === 5 && need('状态') && need('标记') && need('分类')
+    && need('排序') && need('操作')) || '顶栏段数不对：' + secs;
 });
-t('index.html：控件归属正确（状态+标记 / 信息 / 排序 / 操作）', () => {
+t('index.html：控件归属正确（状态 / 标记 / 分类成人 / 排序 / 操作+统计行）', () => {
   const html = fs.readFileSync('src/renderer/index.html', 'utf8');
   const i = html.indexOf('id="browseHead"');
   const j = html.indexOf('id="browseArea"');
   const seg = html.slice(i, j);
   const parts = seg.split('class="sect"');
   const need = (s, id) => s.indexOf('id="' + id + '"') >= 0;
-  const s0 = parts[1] || '', s1 = parts[2] || '', s2 = parts[3] || '', s3 = parts[4] || '';
-  return (need(s0, 'libStatus') && need(s0, 'libMarks')
-    && need(s1, 'browseFilters') && need(s1, 'adultTabs')
-    && need(s2, 'sortTabs') && need(s2, 'libSortTabs')
-    && need(s3, 'batchBar') && need(s3, 'batchMarks')) || '控件没落在对应的段里';
+  const s0 = parts[1] || '', s1 = parts[2] || '', s2 = parts[3] || '';
+  const s3 = parts[4] || '', s4 = parts[5] || '';
+  return (need(s0, 'libStatus') && need(s1, 'libMarks')
+    && need(s2, 'browseFilters') && need(s2, 'adultTabs')
+    && need(s3, 'sortTabs') && need(s3, 'libSortTabs') && need(s3, 'sortDirBtn')
+    && need(s4, 'batchBar') && need(s4, 'batchMarks')
+    && seg.includes('id="statsrow"') === false && /class="statsrow"/.test(seg)
+    && /id="btnBatchMode"/.test(seg)) || '控件没落在对应的段里';
 });
 t('顶部控件外观统一：.tabs 按钮 / 分类 chip / 小按钮同高同圆角（用户 2026-11-11）', () => {
   const css = fs.readFileSync('src/renderer/style.css', 'utf8');
@@ -833,13 +842,17 @@ t('未下载档（2026-11-22）：算「本地筛过」的一档，否则续翻�
   const seg = app.slice(i, i + 700);
   return seg.includes("if (libSt === 'online') return true;") || 'isLocalFiltering 没认未下载档';
 });
-t('筛选区标签统一（2026-11-22）：分类与成人同色同字号', () => {
+t('筛选区标签统一（0.9.0：分类在左列 .slabel，成人用 .fl sep 同行）', () => {
   const css = fs.readFileSync('src/renderer/style.css', 'utf8');
-  if (!/\.filters \.grp>\.fl\{[^}]*color:var\(--dim2\)/.test(css)) return '没有把 .filters .grp>.fl 钉成 var(--dim2)';
-  const i = app.indexOf('function renderLibFilters');
-  const seg = app.slice(i, i + 2000);
-  if (!seg.includes('<span class="fl">分类</span>')) return '分类标签不是 .fl';
-  if (!seg.includes('<span class="fl sep">成人</span>')) return '成人标签不是 .fl sep';
+  const i = css.indexOf('2026-11-23 筛选区整体改版');
+  if (i < 0) return '缺 0.9.0 改版样式段';
+  const seg = css.slice(i);
+  if (!seg.includes('grid-template-columns:40px 1fr')) return '没用 40px 标签列网格';
+  if (!seg.includes('#sortDirBtn{')) return '方向按钮没统一样式';
+  const ai = app.indexOf('function renderLibFilters');
+  const as = app.slice(ai, ai + 2200);
+  if (as.includes('<span class="fl">分类</span>')) return 'renderLibFilters 还在内嵌重复的「分类」标签';
+  if (!as.includes('<span class="fl sep">成人</span>')) return '成人标签不是 .fl sep';
   return true;
 });
 t('顶栏「信息」标签已撤（2026-11-22）', () => {

@@ -72,7 +72,7 @@ function makeHarness(cfg) {
         blocked: new Set(), blockMode: 'hide', liked: new Set(), onlyLiked: false
       },
       // Mod 库那套筛选（2026-11-11 起也进存档）
-      lib: { status: 'all', marks: { liked: '', blocked: 'ex', bug: 'ex', verified: '' }, kind: '', sort: '', catSet: false },
+      lib: { status: 'all', marks: { liked: '', blocked: 'ex', bug: 'ex', verified: '' }, kind: '', sort: 'downloads', sortDir: 'desc', catSet: false },
       installedSort: 'time',
       installedSortDir: 'desc',   // 0.2.8：已安装页排序方向
       showBuiltin: false,
@@ -274,7 +274,8 @@ function makeHarness(cfg) {
     eq(snap.status, 'all', '快照带状态档');
     eq(snap.marks.blocked, 'ex', '快照带「排除不感兴趣」');
     eq(snap.marks.bug, 'ex', '快照带「排除有 bug」');
-    eq(snap.sort, '', '快照带本地排序（默认空）');
+    eq(snap.sort, 'downloads', '快照带排序维度（默认下载最多）');
+    eq(snap.sortDir, 'desc', '快照带排序方向（默认降序）');
     eq(snap.catSet, false, '快照带「分类是否用户点过」');
   }
 
@@ -290,7 +291,7 @@ function makeHarness(cfg) {
         lib: {
           status: 'installed',
           marks: { liked: 'in', blocked: 'ex', bug: '', verified: 'in' },
-          sort: 'on-desc',
+          sort: 'on-desc',   // 老格式，applyLastFilters 要迁移成 on + desc
           catSet: true
         }
       }
@@ -301,7 +302,8 @@ function makeHarness(cfg) {
     eq(H.state.lib.marks.blocked, 'ex', '恢复了「排除不感兴趣」');
     eq(H.state.lib.marks.bug, '', '恢复了「有 bug 全部」');
     eq(H.state.lib.marks.verified, 'in', '恢复了「只看已验证」');
-    eq(H.state.lib.sort, 'on-desc', '恢复了本地排序');
+    eq(H.state.lib.sort, 'on', '恢复了本地排序维度（老 on-desc 迁移成 on）');
+    eq(H.state.lib.sortDir, 'desc', '老 on-desc 迁移成方向 desc');
     eq(H.state.lib.catSet, true, '恢复了分类已点过');
   }
 
@@ -313,7 +315,8 @@ function makeHarness(cfg) {
     eq(H.state.lib.status, 'all', '非法状态档退回 all');
     eq(H.state.lib.marks.liked, '', '非法标记值退回空');
     eq(H.state.lib.marks.bug, '', '非字符串标记值退回空');
-    eq(H.state.lib.sort, '', '非法排序退回不排序');
+    eq(H.state.lib.sort, 'downloads', '非法排序退回默认 downloads');
+    eq(H.state.lib.sortDir, 'desc', '非法排序方向退回 desc');
     eq(H.state.lib.catSet, false, 'catSet 只认布尔真值');
   }
 

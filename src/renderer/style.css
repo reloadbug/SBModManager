@@ -880,3 +880,25 @@ body.sel .card .cover .sw{display:none}
    这里把两者钉成同一套：同色、同字号、同字间距、同高。 */
 .filters .grp>.fl{flex:0 0 auto;width:30px;text-align:right;color:var(--dim2);font-size:11px;letter-spacing:.5px;line-height:22px}
 .filters .grp>.fl.sep{margin-left:4px;padding-left:10px;border-left:1px solid var(--border)}
+
+/* ===== 2026-11-23 筛选区整体改版（0.9.0）=====
+   用户要求：按钮对齐排放均匀、分区清晰简洁、分类行与其它行左对齐（原来右移 189px）、
+   排序正反只用一颗按钮。做法：每行 .sect 用 grid 两列（40px 标签 + 1fr 控件），
+   所有行第一颗 chip 从同一 x 起排；chip 统一规格；分区用 1px 上边框。 */
+.bhead .sect{display:grid;grid-template-columns:40px 1fr;column-gap:9px;align-items:center;
+  margin-bottom:2px;padding-top:2px;border-top:1px solid var(--border)}
+.bhead .sect:first-of-type{border-top:none;padding-top:0}
+.bhead .sect .slabel{flex:none;text-align:right;line-height:24px;color:var(--dim2);
+  font-size:11px;letter-spacing:.5px;user-select:none}
+.bhead .sect .sbody{min-width:0}
+.bhead .sect .sline{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  overflow:visible;margin-bottom:0}
+.bhead .sline>.tabs,.bhead .sline>.filters{flex:0 0 auto}
+.bhead .sline>.btn{flex:0 0 auto}
+.bhead .tabs button,.bhead .filters .fc{min-width:84px;justify-content:center;text-align:center}
+#sortDirBtn{width:30px;min-width:30px;padding:0;font-size:13px;font-weight:700}
+#sortDirBtn:disabled{opacity:.4;cursor:not-allowed}
+.bhead .filters .fchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;overflow:visible}
+.statsrow{display:flex;align-items:center;gap:10px}
+.statsrow .stats{flex:1 1 auto;min-width:0}
+.statsrow #btnBatchMode{flex:0 0 auto}
