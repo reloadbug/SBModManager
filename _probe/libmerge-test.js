@@ -631,7 +631,7 @@ t('app.js：老入口 p-installed 会被导向 p-browse 并把状态切到「已
 //    上一版是把节点在 JS 里搬来搬去（compactLibHead），现在直接写死在 HTML 里，
 //    顺序固定、不依赖运行时搬迁。
 // ---------------------------------------------------------------------------
-t('index.html：#browseHead 按「状态 / 信息 / 排序 / 操作」分行，状态与标记共用一行', () => {
+t('index.html：#browseHead 按「状态 / 分类成人 / 排序 / 操作」分行（「信息」标签 2026-11-22 已撤）', () => {
   const html = fs.readFileSync('src/renderer/index.html', 'utf8');
   const i = html.indexOf('id="browseHead"');
   const j = html.indexOf('id="browseArea"');
@@ -639,7 +639,10 @@ t('index.html：#browseHead 按「状态 / 信息 / 排序 / 操作」分行，�
   const seg = html.slice(i, j);
   const secs = (seg.match(/class="sect"/g) || []).length;
   const need = (t) => seg.includes('>' + t + '<');
-  return (secs === 4 && need('状态') && need('标记') && need('信息') && need('排序') && need('操作'))
+  if (seg.includes('<span class="slabel">信息</span>')) return '「信息」标签应该已经删掉（2026-11-22 用户要求）';
+  const blank = /<span class="slabel" aria-hidden="true"><\/span>/.test(seg);
+  if (!blank) return '删掉「信息」之后没留空 span，标签列会错位';
+  return (secs === 4 && need('状态') && need('标记') && need('排序') && need('操作'))
     || '顶栏段数不对：' + secs;
 });
 t('index.html：控件归属正确（状态+标记 / 信息 / 排序 / 操作）', () => {
@@ -805,6 +808,49 @@ t('样式里有「排除态」的视觉区分（.ex）', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// N. 「未下载」档（2026-11-22 用户要求：状态里要有「没下载过、也没装过」的那一档）
+// ---------------------------------------------------------------------------
+t('未下载档（2026-11-22）：状态 chip 里叫「未下载」，不再叫「在线」', () => {
+  const label = (ctx.LIB_STATUS_CHIPS.find((c) => c.v === 'online') || {}).label;
+  if (label !== '未下载') return '「在线」那一档应该改名成「未下载」，现在是 ' + label;
+  if (ctx.LIB_STATUS_CHIPS.some((c) => c.label === '在线')) return '旧的「在线」还在';
+  const badge = (ctx.LIB_BADGE.online || {}).t;
+  return badge === '未下载' || '卡片徽标也该叫「未下载」，现在是 ' + badge;
+});
+t('未下载档（2026-11-22）：本地有安装包或已装进游戏的都不算，靠 localSeenIdsOf 剔（不是只看 installed）', () => {
+  if (!/async function localSeenIdsOf\b/.test(app)) return '缺 localSeenIdsOf';
+  if (!app.includes('window.api.nexus.localState(')) return 'localSeenIdsOf 没走 localState';
+  const i = app.indexOf('async function applyLocalFilter');
+  const seg = app.slice(i, i + 1600);
+  if (!seg.includes("const libStatus = ")) return 'applyLocalFilter 里没算 libStatus';
+  if (!seg.includes("if (libStatus === 'online')")) return 'applyLocalFilter 里没接未下载档';
+  if (!seg.includes('await localSeenIdsOf(kept)')) return '未下载档没调 localSeenIdsOf';
+  return true;
+});
+t('未下载档（2026-11-22）：算「本地筛过」的一档，否则续翻会提前停（页面只剩半页）', () => {
+  const i = app.indexOf('function isLocalFiltering');
+  const seg = app.slice(i, i + 700);
+  return seg.includes("if (libSt === 'online') return true;") || 'isLocalFiltering 没认未下载档';
+});
+t('筛选区标签统一（2026-11-22）：分类与成人同色同字号', () => {
+  const css = fs.readFileSync('src/renderer/style.css', 'utf8');
+  if (!/\.filters \.grp>\.fl\{[^}]*color:var\(--dim2\)/.test(css)) return '没有把 .filters .grp>.fl 钉成 var(--dim2)';
+  const i = app.indexOf('function renderLibFilters');
+  const seg = app.slice(i, i + 2000);
+  if (!seg.includes('<span class="fl">分类</span>')) return '分类标签不是 .fl';
+  if (!seg.includes('<span class="fl sep">成人</span>')) return '成人标签不是 .fl sep';
+  return true;
+});
+t('顶栏「信息」标签已撤（2026-11-22）', () => {
+  return !fs.readFileSync('src/renderer/index.html', 'utf8').includes('<span class="slabel">信息</span>') || '「信息」还在';
+});
+// 在线档（「未下载」）也要把状态 / 标记两排 chip 画出来，否则进去就回不去（2026-11-22）
+t('在线档（未下载）也要画出顶部状态 / 标记两排，否则进去回不来（2026-11-22）', () => {
+  if (!/2026-11-22 用户报「进到某一档就回不去了」/.test(app)) throw new Error('renderBrowse 在线档缺少说明注释');
+  if (!/paintLibHead\(state\.libRecords \|\| \[\]\)/.test(app)) throw new Error('renderBrowse 在线档没有调 paintLibHead(state.libRecords || [])');
+});
+
 console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
 if (fail) {
   console.log('\n失败项：');

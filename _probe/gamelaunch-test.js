@@ -61,15 +61,20 @@ console.log('\n=== B) 能不能起的判定 ===');
 
 console.log('\n=== C) spawn 参数（不真起） ===');
 {
+  // 2026-11-22：游戏目录从 C:\\Star Blade 搬到了 C:\\games\\Star Blade，探针不能再写死旧路径 ——
+  // 造一个临时「游戏根」，里面放个同名空文件当 exe，launch 的 existsSync 就过得去。
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sbmm-gl-'));
+  fs.mkdirSync(path.join(tmpRoot, 'SB', 'Binaries', 'Win64'), { recursive: true });
+  fs.writeFileSync(path.join(tmpRoot, 'SB', 'Binaries', 'Win64', 'SB-Win64-Shipping.exe'), '');
   const calls = [];
   const fakeSpawn = (exe, args, opts) => { calls.push({ exe, args, opts }); return { pid: 4321, unref() { } }; };
-  const r = gameLaunch.launch('C:\\Star Blade', { spawnImpl: fakeSpawn });
+  const r = gameLaunch.launch(tmpRoot, { spawnImpl: fakeSpawn });
   eq(calls.length, 1, '只 spawn 一次');
-  eq(calls[0].exe, gameLaunch.exeOf('C:\\Star Blade'), 'spawn 的是游戏主程序');
+  eq(calls[0].exe, gameLaunch.exeOf(tmpRoot), 'spawn 的是游戏主程序');
   eq(JSON.stringify(calls[0].args), '[]', '不传参数');
   eq(calls[0].opts.detached, true, 'detached（关掉管理器不带走游戏）');
   eq(calls[0].opts.stdio, 'ignore', 'stdio=ignore（不接管道）');
-  eq(calls[0].opts.cwd, path.join('C:\\Star Blade', 'SB', 'Binaries', 'Win64'), 'cwd 是 exe 那一层');
+  eq(calls[0].opts.cwd, path.join(tmpRoot, 'SB', 'Binaries', 'Win64'), 'cwd 是 exe 那一层');
   eq(r.pid, 4321, '返回 pid');
   eq(r.ok, true, '返回 ok');
 
@@ -77,10 +82,10 @@ console.log('\n=== C) spawn 参数（不真起） ===');
   try { gameLaunch.launch(''); } catch (e) { threw = e.message; }
   ok(threw.includes('还没设置游戏目录'), '没目录时直接抛错');
 
-  const dry = gameLaunch.launch('C:\\Star Blade', { dryRun: true });
+  const dry = gameLaunch.launch(tmpRoot, { dryRun: true });
   eq(dry.pid, 0, 'dryRun 不起进程');
   eq(dry.dryRun, true, 'dryRun 有标记');
-  eq(dry.cwd, path.join('C:\\Star Blade', 'SB', 'Binaries', 'Win64'), 'dryRun 也给 cwd');
+  eq(dry.cwd, path.join(tmpRoot, 'SB', 'Binaries', 'Win64'), 'dryRun 也给 cwd');
 }
 
 console.log('\n=== D) 真文件系统：合成游戏根 ===');

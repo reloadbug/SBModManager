@@ -40,8 +40,23 @@ function writeJson(file, data) {
 
 /* ---------------- 配置 ---------------- */
 
+/**
+ * ⚠️ 不许内置任何机器相关的绝对路径。
+ *
+ * 这里曾经写着开发机上的 `'D:\\games\\Star Blade'`：配置缺失、或配置里没有 gameRoot 这个键时，
+ * 就会静默回落到它。2026-11-22 的事故就是这么来的 —— 用户把游戏从 `c:\Star Blade` 搬到
+ * `C:\games\Star Blade`（.sbmod 里 313 条记录），管理器却认成了 `D:\games\Star Blade`
+ * 那份旧副本，还在那儿新建了一个只有 1 条记录的空 .sbmod。
+ *
+ * 真正的根目录只有四条来源，按优先级：
+ *   ① 指针文件（userData 里的 bootstrap，记上次游戏在哪儿）
+ *   ② 游戏目录里的 `.sbmod\config.json`（跟着游戏走的那份）
+ *   ③ 自动探测（`game.detectCandidates`，只给用户挑，**不许**当默认值）
+ *   ④ 用户手选（`game:chooseRoot` / `game:setRoot`）
+ * 四条都不成立时保持空串 —— 空 = 未配置，界面请用户去选，**绝不猜**。
+ */
 const DEFAULT_CONFIG = {
-  gameRoot: 'D:\\games\\Star Blade',
+  gameRoot: '',
   nexusApiKey: '',
   translateBackend: 'mymemory',
   targetLang: 'zh-CN',

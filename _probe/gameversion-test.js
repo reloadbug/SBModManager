@@ -268,7 +268,7 @@ t('[4] ipc 里引入并给出 version', () => {
   const at = src.indexOf('function inspectGame(');
   const seg = src.slice(at, at + 2200);
   if (!/gameVersion\.detect\(root\)/.test(seg)) throw new Error('inspectGame 没调 detect');
-  if (!/found: false[^}]*version: \{ ok: false, version: '' \}/.test(seg)) throw new Error('无游戏分支没给空 version');
+  if (!/found: false[\s\S]{0,900}version: \{ ok: false, version: '' \}/.test(seg)) throw new Error('无游戏分支没给空 version');
   if (!/return \{ found: true, \.\.\.info, layout, writable, version \}/.test(seg)) throw new Error('有游戏分支没带 version');
 });
 

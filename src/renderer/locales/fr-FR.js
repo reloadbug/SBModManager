@@ -1310,5 +1310,13 @@
     '工具': 'Outils',
     '本地已有': 'Déjà en local',
     'Nexus 上的文件': 'Fichiers sur Nexus',
+    '选择目录': 'Choisir un dossier',
+    '选一个剑星游戏目录（里面有 SB\\Binaries\\Win64\\SB-Win64-Shipping.exe）': 'Choisir un dossier de jeu Stellar Blade (il contient SB\\Binaries\\Win64\\SB-Win64-Shipping.exe)',
+    '找到 %s 个游戏目录': '%s dossiers de jeu trouvés',
+    '当前目录里只有 %s 条 Mod 记录，这些目录里有更多：': 'Le dossier actuel ne contient que %s enregistrements de mods, ces dossiers en ont plus :',
+    '这个目录里没有 Mod 记录，候选列表里另一个目录有 %s 条': 'Ce dossier ne contient aucun enregistrement de mod ; un autre dossier de la liste en a %s',
+    '未下载': 'Non téléchargé',
+    'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）': 'Sur Nexus mais pas encore téléchargé (cliquez pour parcourir en ligne)',
+    '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」': 'Choisir le dossier du jeu dans une fenêtre système ; enregistré et vérifié aussitôt',
   });
 })();

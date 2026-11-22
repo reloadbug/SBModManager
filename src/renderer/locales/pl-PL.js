@@ -1310,5 +1310,13 @@
     '工具': 'Narzedzia',
     '本地已有': 'Już lokalnie',
     'Nexus 上的文件': 'Pliki na Nexus',
+    '选择目录': 'Wybierz folder',
+    '选一个剑星游戏目录（里面有 SB\\Binaries\\Win64\\SB-Win64-Shipping.exe）': 'Wybierz folder gry Stellar Blade (zawiera SB\\Binaries\\Win64\\SB-Win64-Shipping.exe)',
+    '找到 %s 个游戏目录': 'Znaleziono %s folderów gry',
+    '当前目录里只有 %s 条 Mod 记录，这些目录里有更多：': 'Bieżący folder ma tylko %s wpisów modów, te foldery mają więcej:',
+    '这个目录里没有 Mod 记录，候选列表里另一个目录有 %s 条': 'Ten folder nie ma wpisów modów; inny folder z listy ma %s',
+    '未下载': 'Nie pobrano',
+    'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）': 'Jest na Nexus, ale nie pobrano (kliknij, aby przeglądać online)',
+    '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」': 'Wybierz folder gry w oknie systemowym; zapis i sprawdzenie od razu',
   });
 })();

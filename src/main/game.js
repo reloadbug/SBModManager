@@ -56,12 +56,17 @@ function detectCandidates(extra = []) {
   for (const p of extra) push(p);
 
   const names = ['Star Blade', 'StellarBlade', 'Stellar Blade', 'star blade'];
-  const parents = ['D:\\games', 'D:\\Games', 'D:\\Game', 'C:\\games', 'E:\\games', 'D:\\', 'E:\\',
+  // ⚠️ 顺序有讲究：**C 盘优先**。系统盘上的路径最稳定（用户换盘/清理 D、E 盘时它还在），
+  //    而且历史上那次事故就是「D 盘排前面」把一份旧副本排到了真副本之前。
+  //    注意：探测顺序只是候选的**排列**，真正的取舍看 rankCandidates 的 records。
+  const parents = ['C:\\games', 'C:\\Games',
     'C:\\Program Files (x86)\\Steam\\steamapps\\common',
     'C:\\Program Files\\Steam\\steamapps\\common',
+    'D:\\games', 'D:\\Games', 'D:\\Game', 'E:\\games',
     'D:\\Steam\\steamapps\\common',
     'D:\\SteamLibrary\\steamapps\\common',
-    'E:\\SteamLibrary\\steamapps\\common'];
+    'E:\\SteamLibrary\\steamapps\\common',
+    'D:\\', 'E:\\'];
 
   for (const parent of parents) {
     for (const n of names) push(path.join(parent, n));
@@ -441,8 +446,93 @@ function ensureLogicModsDir(root) {
   return L.logicModsDir;
 }
 
+/**
+ * 一个候选游戏目录的「画像」—— 用来判断**哪一份才是活的**。
+ *
+ * 2026-11-22 的事故背景：用户把游戏从 `c:\Star Blade` 搬到 `C:\games\Star Blade`
+ * （.sbmod 里 313 条 Mod 记录），但机器上 `D:\games\Star Blade` 还留着一份旧副本。
+ * 管理器只比路径、不看内容，于是"认"了 D 盘那份，还在那儿 seed 了一个只有 1 条记录的
+ * 空 .sbmod —— 用户看到的是「Mod 全没了」「游戏路径变成 D 盘」。
+ *
+ * 所以候选不能只是字符串，得带上内容指纹：
+ *   · `records` 是判断"哪份是活的"唯一硬指标（`mtime` 只能参考 —— 自动 seed 出来的
+ *     空 .sbmod 反而可能是最新的，这场事故里 D 盘那份的 mods.json 就比 C 盘的新）；
+ *   · `mods` 是 `~Mods` 里的文件数，作最后兜底。
+ *
+ * @param {string} root 候选游戏根目录
+ * @returns {{root:string, mods:number, records:number, sbmodAt:string, mtime:string}}
+ */
+function candidateInfo(root) {
+  const out = { root: root || '', mods: 0, records: 0, sbmodAt: '', mtime: '' };
+  if (!root) return out;
+  const L = layout(root);
+
+  // ~Mods 里的文件数（便宜的 readdir 计数，不递归、不 stat）
+  out.mods = countFiles(L.modsDir);
+
+  // `<根>\.sbmod\mods.json` 里登记了多少条；读不到 / 坏了都算 0，绝不抛
+  const modsJson = path.join(root, '.sbmod', 'mods.json');
+  try {
+    const j = JSON.parse(fs.readFileSync(modsJson, 'utf8'));
+    out.records = Array.isArray(j && j.mods) ? j.mods.length : 0;
+  } catch { out.records = 0; }
+  try { out.sbmodAt = fs.statSync(modsJson).mtime.toISOString(); } catch { out.sbmodAt = ''; }
+
+  const st = dirStat(L.modsDir);
+  out.mtime = st.exists ? (st.mtime || '') : '';
+  return out;
+}
+
+/**
+ * 路径归一化键（只用来判"两个写法是不是同一个目录"）：
+ * 小写 + 正斜杠统一成反斜杠 + 去掉尾部反斜杠。NTFS 不区分大小写，所以这么比是安全的。
+ *
+ * ⚠️ 不要拿它当"路径"去用（大小写信息丢了）—— 只做去重键。
+ */
+function pathKeyOf(p) {
+  return String(p || '').trim().replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+}
+
+/**
+ * 候选排序：**records 多的优先** → 其次 `mtime` 新的优先 → 其次 `~Mods` 文件多的优先。
+ * 完全相同的两项按传入顺序（稳定）。
+ *
+ * ⚠️ 这份排序是给**用户挑「哪个才是我的游戏目录」**用的。
+ *    **不许**被当成默认值直接采用（`candidates[0]` 不是答案，只是"最像的那一份"）——
+ *    自动替用户做决定正是那场事故的成因。
+ *
+ * @param {Array<string|{root:string}>} list 候选（字符串，或已带 root 的对象）
+ * @returns {Array<{root:string, mods:number, records:number, sbmodAt:string, mtime:string}>}
+ */
+function rankCandidates(list) {
+  const rows = (Array.isArray(list) ? list : [])
+    .map(x => (x && typeof x === 'object' ? x.root : x))
+    .filter(r => typeof r === 'string' && r.trim())
+    .map((r, i) => ({ info: candidateInfo(r.trim()), i }));
+  const ms = (s) => { const n = Date.parse(s || ''); return Number.isFinite(n) ? n : 0; };
+  rows.sort((a, b) =>
+    (b.info.records - a.info.records) ||
+    (ms(b.info.mtime) - ms(a.info.mtime)) ||
+    (b.info.mods - a.info.mods) ||
+    (a.i - b.i));
+  // 同一个目录的不同写法（C:\games\Star Blade / C:\Games\star blade / 带尾斜杠）在 Windows 上
+  // 指的是同一个地方。不去重的话下拉里会出现 8 条重复项（用户 2026-11-22 实测到过）。
+  // NTFS 大小写不敏感 → 按「小写 + 统一成反斜杠 + 去掉尾部反斜杠」归一后去重；
+  // 排序在前的那条（records 最多的）自然留下，显示名沿用第一次遇到时的写法。
+  const out = [];
+  const seen = new Set();
+  for (const r of rows) {
+    const k = pathKeyOf(r.info.root);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(r.info);
+  }
+  return out;
+}
+
 module.exports = {
   EXE_REL, layout, isGameRoot, detectCandidates, inspect,
+  candidateInfo, rankCandidates, pathKeyOf,
   ensureModsDir, ensureLogicModsDir, listDrives,
   CNS_MARKERS, atoolStatus
 };

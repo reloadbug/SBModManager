@@ -312,6 +312,19 @@ function init() {
   // 之后每次写盘都镜像一份（下次启动就直接用游戏目录里那份）
   initGameHome();
 
+  // 没有有效游戏目录就**什么都不做**：不 seed、不探测、不搬、不写指针。
+  // 这里曾是「拿 candidates[0] 当默认值」的温床 —— 2026-11-22 静默换到 D 盘旧副本
+  // 并 seed 出空 .sbmod 就是那条隐形回退干的。现在只记一条日志，等用户去设置里选。
+  if (!currentRoot()) {
+    try {
+      const ptr = paths.readPointer();
+      logger.event('game:noRoot', {
+        configured: config.get('gameRoot') || '',
+        pointer: typeof ptr.gameRoot === 'string' ? ptr.gameRoot.trim() : ''
+      });
+    } catch { /* 日志失败不影响启动 */ }
+  }
+
   initWatcher();
 }
 
@@ -1322,11 +1335,28 @@ async function searchCatalog(query, limit = 20) {
   return hits.slice(0, max).map(h => shape(h.m));
 }
 
+/**
+ * 当前游戏目录的实况。
+ *
+ * ⚠️ 没配好（`currentRoot()` 为 null）时这里**只回报事实**：配置原值、一句人话原因、
+ *    以及带记录数的候选清单（供用户挑）。**绝不**把 `candidates[0]` 当默认值 ——
+ *    那正是 2026-11-22 那场事故的成因。
+ */
 function inspectGame() {
   const root = currentRoot();
   if (!root) {
-    const candidates = game.detectCandidates([config.get('gameRoot')]);
-    return { found: false, configured: config.get('gameRoot'), candidates, version: { ok: false, version: '' } };
+    const configured = config.get('gameRoot') || '';
+    return {
+      found: false,
+      configured,
+      current: '',
+      reason: configured
+        ? '当前配置的游戏目录无效（找不到 SB\\Binaries\\Win64\\SB-Win64-Shipping.exe）：' + configured + '，请在设置里重新选择'
+        : '还没有配置游戏目录，请在设置里选择剑星根目录',
+      // 候选是**对象**（{root, mods, records, sbmodAt, mtime}），不再是字符串
+      candidates: game.rankCandidates(game.detectCandidates([configured])),
+      version: { ok: false, version: '' }
+    };
   }
   const info = game.inspect(root);
   delete info.layout; // 路径细节通过 layoutOf 单独给
@@ -1937,7 +1967,15 @@ function register() {
 
   /* 游戏 */
   handle('game:inspect', () => inspectGame());
-  handle('game:detect', () => ({ candidates: game.detectCandidates([config.get('gameRoot')]) }));
+  /**
+   * 自动探测到的候选目录 —— **只给界面看，绝不当默认值用**。
+   * `candidates` 是带记录数的对象（与 inspectGame 同一套字段）；
+   * `roots` 另留一份纯字符串，给还没适配对象形状的老代码兜底。
+   */
+  handle('game:detect', () => {
+    const roots = game.detectCandidates([config.get('gameRoot')]);
+    return { candidates: game.rankCandidates(roots), roots };
+  });
   /**
    * 顶栏「启动游戏」：直接拉起游戏主程序（不走 Steam，绿色版/Steam/Epic 都行）。
    * 起不来就抛带人话的错误（没设目录 / exe 不在 / 没权限），前端直接 toast 出来。
@@ -1955,8 +1993,56 @@ function register() {
       throw new Error('启动失败：' + e.message);
     }
   });
+  /**
+   * 弹目录选择框 —— **只选不生效**。
+   *
+   * 不写 config、不 seed 数据、不 relocate：先让用户在候选列表里看清「哪一份带着真实的
+   * Mod 记录」，再由用户自己决定。真正生效走 `game:setRoot`。
+   */
+  handle('game:chooseRoot', async () => {
+    const r = await dialog.showOpenDialog({
+      title: '选择剑星游戏目录',
+      properties: ['openDirectory', 'dontAddToRecent']
+    });
+    if (!r || r.canceled || !r.filePaths || !r.filePaths.length) return { canceled: true };
+    return { canceled: false, root: path.resolve(r.filePaths[0]) };
+  });
+
+  /**
+   * 三个"可能是我的游戏目录"的来源（指针文件 / 配置 / 当前生效）+ 自动探测的候选，
+   * 一起交给界面挑。元素是 `{ root, mods, records, sbmodAt, mtime }`，记录数多的排前面。
+   */
+  handle('game:rootCandidates', () => {
+    const ptr = paths.readPointer();
+    const pointer = typeof ptr.gameRoot === 'string' ? ptr.gameRoot.trim() : '';
+    const configured = config.get('gameRoot') || '';
+    const current = currentRoot() || '';
+    return {
+      pointer,
+      configured,
+      current,
+      candidates: game.rankCandidates(game.detectCandidates([configured, current, pointer]))
+    };
+  });
+
   handle('game:setRoot', (root) => {
     if (!game.isGameRoot(root)) throw new Error('该目录不是有效的剑星根目录（未找到 SB\\Binaries\\Win64\\SB-Win64-Shipping.exe）');
+    // 换目录之前先看一眼「新目录里本来登记着几条 Mod」。
+    // 0 条 = 这很可能是个空副本（2026-11-22：用户搬到 C 盘，管理器却指到 D 盘旧副本，
+    // 在那儿 seed 出只有 1 条记录的 .sbmod）。这里**不拒绝、也不自动搬数据** ——
+    // 只把事实回报给界面，由用户确认「真的是这份吗」。
+    const before = game.candidateInfo(root).records;
+    let warn = null;
+    if (before === 0) {
+      const richer = game.rankCandidates(game.detectCandidates([root]))
+        .find(c => c.records > 0 && path.resolve(c.root).toLowerCase() !== path.resolve(root).toLowerCase());
+      warn = { emptyTarget: true, richer: richer ? { root: richer.root, records: richer.records } : null };
+      logger.event('game:setRootEmptyTarget', {
+        root,
+        richer: richer ? richer.root : null,
+        richerRecords: richer ? richer.records : 0
+      });
+    }
     config.set({ gameRoot: root });
     // 数据跟着新游戏目录走：先把状态铺进去（已有则不覆盖）、记指针、挂镜像
     const home = initGameHome(root);
@@ -1970,7 +2056,7 @@ function register() {
       engine.syncFromInstalled(list, { reconcile: true });
     } catch { /* 对齐失败不影响换目录本身 */ }
     return {
-      ...inspectGame(), relocation, home,
+      ...inspectGame(), relocation, home, warn,
       reconciled: reconciled
         ? { dropped: reconciled.dropped, trimmed: reconciled.trimmed, flagged: reconciled.flagged, summary: reconcile.summarize(reconciled) }
         : null

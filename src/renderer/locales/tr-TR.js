@@ -1310,5 +1310,13 @@
     '工具': 'Araçlar',
     '本地已有': 'Yerelde var',
     'Nexus 上的文件': 'Nexus\'taki dosyalar',
+    '选择目录': 'Klasör seç',
+    '选一个剑星游戏目录（里面有 SB\\Binaries\\Win64\\SB-Win64-Shipping.exe）': 'Bir Stellar Blade oyun klasörü seç (içinde SB\\Binaries\\Win64\\SB-Win64-Shipping.exe var)',
+    '找到 %s 个游戏目录': '%s oyun klasörü bulundu',
+    '当前目录里只有 %s 条 Mod 记录，这些目录里有更多：': 'Geçerli klasörde yalnızca %s mod kaydı var, bu klasörlerde daha fazlası var:',
+    '这个目录里没有 Mod 记录，候选列表里另一个目录有 %s 条': 'Bu klasörde mod kaydı yok; listedeki başka bir klasörde %s kayıt var',
+    '未下载': 'İndirilmedi',
+    'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）': 'Nexus\'ta var ama indirilmedi (çevrimiçi göz atmak için tıkla)',
+    '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」': 'Oyun klasörünü sistem penceresinden seç; hemen kaydedilir ve doğrulanır',
   });
 })();

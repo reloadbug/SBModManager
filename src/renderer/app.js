@@ -162,6 +162,50 @@ async function call(promise, { silent = false } = {}) {
   return r.data;
 }
 
+/**
+ * 设置页「游戏目录」行要用的界面文案 —— 集中放在一处，方便一次性登记 i18n。
+ * ⚠️ 这 5 条是**新增中文**（还没进 `_probe/i18n-keys.json`）：改字必须同步交给 probe 补词，
+ *    否则 `_probe/i18n-test.js` 的「13 个语言包 = 1301 条」断言会红。
+ */
+const ROOT_UI_TEXT = {
+  pickRoot: '选择目录',
+  pickTitle: '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」',
+  foundN: '找到 %s 个游戏目录',
+  fewer: '当前目录里只有 %s 条 Mod 记录，这些目录里有更多：',
+  emptyWarn: '这个目录里没有 Mod 记录，候选列表里另一个目录有 %s 条'
+};
+
+/** 把 `%s` 按顺序换成实参（占位符最多一处，够用且不引第三方格式化） */
+function rootFmt(tpl, ...vals) {
+  let i = 0;
+  return String(tpl == null ? '' : tpl).replace(/%s/g, () => (i < vals.length ? String(vals[i++]) : ''));
+}
+
+/**
+ * `candidates` 兼容层：主进程 0.9 起给的是对象数组 `{ root, mods, records, sbmodAt, mtime }`，
+ * 更早的版本 / 兜底路径还是纯字符串数组。两种都吃，统一成带 `root` 的对象，
+ * 免得界面上冒出 `[object Object]` 或「使用 undefined」。
+ */
+function rootCands(raw) {
+  return (Array.isArray(raw) ? raw : [])
+    .map(c => (typeof c === 'string' ? { root: c } : c))
+    .filter(c => c && typeof c.root === 'string' && c.root);
+}
+
+/** 候选游戏目录 → 悬停提示：完整路径 + Mod 记录数 / ~Mods 文件数（没有的字段就不提） */
+function rootCandTip(c) {
+  const bits = [];
+  if (c.records != null) bits.push(`Mod 记录 ${fmtNum(Number(c.records) || 0)} 条`);
+  if (c.mods != null) bits.push(`~Mods 文件 ${fmtNum(Number(c.mods) || 0)} 个`);
+  return c.root + (bits.length ? `（${bits.join(' · ')}）` : '');
+}
+
+/** 候选游戏目录 → 按钮上的短名：只取最后一段，太长就省略（完整路径在 title 里） */
+function rootCandLabel(c) {
+  const seg = String(c.root || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || String(c.root || '');
+  return seg.length > 16 ? seg.slice(0, 15) + '…' : seg;
+}
+
 /* ---------------- 通用模态框 ---------------- */
 
 function openModal(title, bodyHtml, buttons) {
@@ -1474,14 +1518,16 @@ function syncInstalledNav() {
 }
 
 function emptyNoGame() {
-  const cands = (state.game && state.game.candidates) || [];
+  // 主进程的 `candidates` 现在是对象数组（{root, mods, records, sbmodAt, mtime}），
+  // 老版本才是纯字符串 —— 统一过一遍 rootCands()，别再拿对象直接拼进 HTML。
+  const cands = rootCands(state.game && state.game.candidates);
   return `
     <div class="empty">
       <h3>没有找到剑星游戏目录</h3>
       <p>需要指向包含 <code>SB\\Binaries\\Win64\\SB-Win64-Shipping.exe</code> 的目录。
       ${cands.length ? '下面是自动探测到的候选路径：' : '请在「设置」里手动填写。'}</p>
       ${cands.length ? `<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:14px">
-        ${cands.map(c => `<button class="btn sm" data-setroot="${esc(c)}">使用 ${esc(c)}</button>`).join('')}
+        ${cands.map(c => `<button class="btn sm" data-setroot="${esc(c.root)}" title="${esc(rootCandTip(c))}">使用 ${esc(rootCandLabel(c))}</button>`).join('')}
       </div>` : ''}
       <button class="btn p" onclick="switchPage('p-settings')">去设置游戏目录</button>
     </div>`;
@@ -2893,6 +2939,10 @@ function renderBrowseFilters() {
  */
 function isLocalFiltering(b = state.browse) {
   if (b.blockMode === 'only') return false;
+  // 「未下载」档也算：整页从 Nexus 拉回来之后还要剔掉本地已有的（见 applyLocalFilter），
+  // 不这么标的话续翻条件会以为「条数够了」而提前停下，页面只剩半页。
+  const libSt = (typeof state !== 'undefined' && state && state.lib && state.lib.status) || 'all';
+  if (libSt === 'online') return true;
   return !!b.onlyUninstalled || (b.blockMode === 'hide' && b.blocked.size > 0);
 }
 
@@ -3093,7 +3143,7 @@ function renderBrowseDownloaded() {
 /* 状态 chip：文字最多 4 个字（用户 2026-11-11 要求），说不清的放 title 里悬停看 */
 const LIB_STATUS_CHIPS = [
   { v: 'all', label: '全部', title: '所有 Mod（在线 + 已下载 + 已安装），不筛' },
-  { v: 'online', label: '在线', title: '只在 Nexus 上，本地还没有' },
+  { v: 'online', label: '未下载', title: 'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）' },
   { v: 'downloaded', label: '已下载', title: '安装包在管理器里，还没装进游戏' },
   { v: 'installed', label: '已安装', title: '已经装进游戏目录（含已启用 / 已禁用）' },
   { v: 'enabled', label: '已启用', title: '装进游戏并且开关是开着的' },
@@ -3123,7 +3173,7 @@ const LIB_BADGE = {
   partial: { t: '◐ 部分启用', c: 'part' },
   installed: { t: '✓ 已安装', c: 'ok' },
   downloaded: { t: '↓ 已下载', c: 'dl' },
-  online: { t: '在线', c: '' }
+  online: { t: '未下载', c: '' }
 };
 
 /** 标记集合取哪个（liked / blocked / bug） */
@@ -3446,7 +3496,9 @@ function paintLibHead(recs) {
   if (box) {
     box.innerHTML = LIB_STATUS_CHIPS.map(c => {
       const n = counts[c.v];
-      const num = typeof n === 'number' && c.v !== 'all' ? `<span class="dir">${fmtNum(n)}</span>` : '';
+      // 「未下载」那一档不写数字：它背后是 Nexus 的整站分页（3000+ 个），本地只能数到当前加载过的那几页，
+      // 写个 0 或 25 都会被当成「只有这么多个」（用户 2026-11-22 点名要这一档时就问过）。
+      const num = (typeof n === 'number' && c.v !== 'all' && c.v !== 'online') ? `<span class="dir">${fmtNum(n)}</span>` : '';
       return `<button data-libst="${c.v}" class="${st === c.v ? 'on' : ''}" title="${esc(c.title || c.label)}">${c.label}${num}</button>`;
     }).join('');
   }
@@ -3705,7 +3757,7 @@ function renderLibMerged() {
   if (stats) {
     const parts = [`共 <b>${fmtNum(shown.length)}</b> 个 Mod`];
     const c = libStatusCounts(recs);
-    parts.push(`已安装 ${fmtNum(c.installed)} · 已下载 ${fmtNum(c.downloaded)} · 在线 ${fmtNum(c.online)}`);
+    parts.push(`已安装 ${fmtNum(c.installed)} · 已下载 ${fmtNum(c.downloaded)} · 未下载 ${fmtNum(c.online)}`);
     if (shown.length !== recs.length) parts.push(`（筛选自 ${fmtNum(recs.length)} 个）`);
     const q = String(state.browse.search || state.instFilters.q || '').trim();
     if (q) parts.push(`关键词「${esc(q)}」`);
@@ -3913,6 +3965,10 @@ function renderBrowse() {
   // 两排同时出现会让人不知道该用哪个 —— 在线时把本地这排藏起来。
   { const s = $('#libSortTabs'); if (s) s.style.display = 'none'; }
   { const ad = $('#adultTabs'); if (ad) ad.style.display = ''; }
+  // 2026-11-22 用户报「进到某一档就回不去了」：状态 / 标记那两排 chip 原来只在合并档渲染，
+  // 一进「未下载」（走 Nexus 分页的在线档）整排 chip 就空了 —— 界面看着像坏了，也没法切回去。
+  // 在线档也要把它们画出来（数字按本地已知记录算，未下载那颗本身不写数字）。
+  try { paintLibHead(state.libRecords || []); } catch (e) { /* 顶部条画不出来不该拦住列表 */ }
   const b = state.browse;
   const area = $('#browseArea');
   renderBrowseFilters();
@@ -3999,7 +4055,28 @@ async function installedIdsOf(items) {
 }
 
 /**
- * 前端本地筛选：**黑名单（默认隐藏）** + 只看未安装 + **喜欢的排前面**。
+ * 这批 mod 里「本地已经有记录」的 modId 集合（= 下载过 **或** 装过）。
+ *
+ * 用户 2026-11-22 要的「未下载」档就是这个口径：「没下载过的 nexus 上的 mod」——
+ * 只要本地有安装包（downloaded）或者已装进游戏（installed），都不算「未下载」。
+ * 与 `installedIdsOf` 一样，取不到状态就返回空集合：宁可少筛，也不能把没下载的藏掉。
+ */
+async function localSeenIdsOf(items) {
+  const ids = items.map(m => Number(m.modId)).filter(Boolean);
+  if (!ids.length) return new Set();
+  try {
+    const map = await call(window.api.nexus.localState(ids), { silent: true });
+    const out = new Set();
+    for (const k of Object.keys(map || {})) {
+      const st = map[k] && map[k].state;
+      if (st) out.add(Number(k));
+    }
+    return out;
+  } catch { return new Set(); }
+}
+
+/**
+ * 前端本地筛选：**黑名单（默认隐藏）** + 只看未安装 + **未下载档** + **喜欢的排前面**。
  *
  * 前两者都要「整页拉回来再剔」（Nexus 没有这两个筛选条件），所以合成一处 ——
  * 分开写会让 `loadBrowse` 的续翻条件算错（见 `isLocalFiltering` 的说明）。
@@ -4016,6 +4093,15 @@ async function applyLocalFilter(items) {
   if (b.onlyUninstalled) {
     const installed = await installedIdsOf(items);
     kept = kept.filter(m => !installed.has(Number(m.modId)));
+  }
+
+  // 「未下载」档（状态 chip 里那一档）：本地只要有安装包、或已经装进游戏，就都不算「未下载」——
+  // 用户 2026-11-22 的原话是「筛选没有下载和安装过的 mod」。
+  // state.lib 在探针沙箱里可能没造（只造了 browse），所以这里跟 isLocalFiltering 一样做空值兜底。
+  const libStatus = (typeof state !== 'undefined' && state && state.lib && state.lib.status) || 'all';
+  if (libStatus === 'online') {
+    const seen = await localSeenIdsOf(kept);
+    kept = kept.filter(m => !seen.has(Number(m.modId)));
   }
   if (b.blockMode === 'hide' && b.blocked.size) {
     kept = kept.filter(m => !b.blocked.has(String(m.modId)));
@@ -6845,7 +6931,13 @@ function renderSettings() {
       <div class="f">
         <label>游戏目录</label>
         <input type="text" id="setGameRoot" value="${esc(c.gameRoot || '')}">
+        <button class="btn sm" id="btnPickRoot" title="${esc(ROOT_UI_TEXT.pickTitle)}">${esc(ROOT_UI_TEXT.pickRoot)}</button>
         <button class="btn sm" id="btnSaveRoot">保存并校验</button>
+      </div>
+      <div class="f" id="rootCandRow" hidden>
+        <label></label>
+        <div class="hint" id="rootWarn" hidden></div>
+        <select id="setRootCand" class="libkind" hidden></select>
       </div>
       <div class="f">
         <label></label>
@@ -7155,6 +7247,7 @@ function renderSettings() {
   refreshDataHomeLine();
   refreshLedgerBox();
   refreshLibDirBox();
+  refreshRootCandidates();
 
   window.api.translate.stats().then(r => {
     const el = $('#transStats');
@@ -8928,11 +9021,22 @@ function bindEvents() {
     if (e.target.id === 'btnSaveRoot') {
       const v = $('#setGameRoot').value.trim();
       await doSetRoot(v);
+    } else if (e.target.id === 'btnPickRoot') {
+      // 弹系统目录框挑游戏目录 → 选完**立刻保存并校验**：用户原先只能粘贴路径，选完再点一次太啰嗦
+      let picked = null;
+      try { picked = await call(window.api.game.chooseRoot()); } catch { return; }
+      const root = picked && picked.root ? String(picked.root) : '';
+      if (!root) return;                                  // 用户点了取消：什么都不做
+      const inp = $('#setGameRoot');
+      if (inp) inp.value = root;
+      await doSetRoot(root);
     } else if (e.target.id === 'btnDetect') {
       try {
         const r = await call(window.api.game.detect());
-        if (!r.candidates.length) toast('没有探测到剑星目录，请手动填写', 'err');
-        else toast('探测到：' + r.candidates.join('  |  '));
+        // `candidates` 已是对象数组（老版本是字符串）：直接 join 会打出 [object Object]
+        const found = rootCands(r && r.candidates);
+        if (!found.length) toast('没有探测到剑星目录，请手动填写', 'err');
+        else toast('探测到：' + found.map(c => c.root).join('  |  '));
       } catch { /* 已提示 */ }
     } else if (e.target.id === 'btnLinker') {
       openLinkerModal();
@@ -9188,6 +9292,11 @@ function bindEvents() {
         toast(on ? '已开启下载目录监听' : '已关闭下载目录监听', 'ok');
         await refreshWatchLine();
       } catch { /* 已提示 */ }
+    } else if (e.target.id === 'setRootCand') {
+      // 候选目录只负责把值填进输入框，**不自动保存**（换哪个目录由「保存并校验」决定，免得误点就换了）
+      const picked = String(e.target.value || '');
+      const inp = $('#setGameRoot');
+      if (picked && inp) inp.value = picked;
     } else if (e.target.id === 'setWatchAuto') {
       try {
         const on = e.target.value === '1';
@@ -9208,6 +9317,11 @@ async function doSetRoot(root) {
     state.config = await call(window.api.config.get());
     await refreshAll();
     toast('游戏目录已设置', 'ok');
+    // 选了个「一条 Mod 记录都没有」的目录：不拦着（可能刚装游戏），只提醒候选里另一个有数据
+    const wn = g && g.warn;
+    if (wn && wn.emptyTarget && wn.richer) {
+      toast(rootFmt(ROOT_UI_TEXT.emptyWarn, fmtNum(Number(wn.richer.records) || 0)));
+    }
     if (rl && (rl.applied || rl.imported)) {
       const parts = [];
       if (rl.imported) parts.push(`从游戏目录账本恢复 ${fmtNum(rl.imported)} 条`);
@@ -9215,6 +9329,57 @@ async function doSetRoot(root) {
       toast('账本已跟随新目录：' + parts.join('，'), 'ok');
     }
   } catch { /* 已提示 */ }
+}
+
+/**
+ * 「游戏目录」那一行的辅助信息：本机还有没有别的游戏目录？
+ *
+ * 用户的困惑（2026-11-22）：「默认游戏路径什么时候改成 D 盘的了」—— 换过盘之后，
+ * 管理器认的是那个空壳目录，真正装着几十个 Mod 的反而不认。主进程 `game:rootCandidates`
+ * 已经把候选按「Mod 记录数多的优先」排好序，这里只负责摆出来：
+ *   · 候选 ≥2 个 → 亮出下拉 + 「找到 N 个游戏目录」；
+ *   · 当前目录 0 条记录、别的目录里有 → 换成更直白的橙色警告，并亮出下拉。
+ * 下拉选中只填进输入框、不保存 —— 换目录这事必须再点一次「保存并校验」，不能误点就换。
+ */
+async function refreshRootCandidates() {
+  const row = $('#rootCandRow');
+  const warn = $('#rootWarn');
+  const sel = $('#setRootCand');
+  if (!row || !warn || !sel) return;         // 不在设置页：什么都不做
+  row.hidden = true;                         // 整行一起藏起来：不留一条空白行占高度
+  warn.hidden = true;
+  sel.hidden = true;
+  warn.textContent = '';
+  let r = null;
+  // silent：主进程还没提供这条通道时（老版本 / 正在改）静默跳过，不弹错误
+  try { r = await call(window.api.game.rootCandidates(), { silent: true }); } catch { return; }
+  const list = (r && Array.isArray(r.candidates) ? r.candidates : []).filter(x => x && x.root);
+  if (!list.length) return;
+  const current = String((r && r.current) || '');
+  const curHit = list.find(x => samePath(x.root, current));
+  const curRec = Number((curHit && curHit.records) || 0);
+  // 照主进程给的顺序摆（Mod 记录多的在前），当前用的那个标成 selected
+  sel.innerHTML = list.map(x =>
+    `<option value="${esc(x.root)}"${samePath(x.root, current) ? ' selected' : ''}>`
+    + `${esc(x.root)}（${fmtNum(Number(x.records) || 0)} 条 Mod 记录）</option>`
+  ).join('');
+  const richer = list.some(x => Number(x.records) > 0 && !samePath(x.root, current));
+  // `current` 可能是空串（从没配过 / 配的那个目录已经不在了）：这时别说
+  // 「当前目录里只有 0 条 Mod 记录」—— 没有「当前」这回事，直接报找到几个让用户挑。
+  if (current && richer && curRec === 0) {
+    // 当前目录是空壳、别的目录里才有记录 —— 这条最要紧，先说它
+    warn.textContent = rootFmt(ROOT_UI_TEXT.fewer, fmtNum(curRec));
+  } else if (list.length >= 2) {
+    warn.textContent = rootFmt(ROOT_UI_TEXT.foundN, fmtNum(list.length));
+  } else if (!current && richer) {
+    // 没配过目录、只探测到 1 个：也提一句，否则整块都不显示，用户连线索都没有
+    warn.textContent = rootFmt(ROOT_UI_TEXT.foundN, fmtNum(list.length));
+  } else {
+    return;                                  // 只有一个候选、而且正是当前在用的：不打扰
+  }
+  row.hidden = false;
+  warn.hidden = false;
+  sel.hidden = false;
 }
 
 /* ---------------- 已安装记录（账本 + 搬移修复） ----------------

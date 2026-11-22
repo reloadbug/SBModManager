@@ -860,3 +860,23 @@ body.sel .card .cover .sw{display:none}
 
 /* 批量开关跑起来时，按钮上走「禁用 3/39」的进度（2026-11-11） */
 .bhead .btn.busy{opacity:.65;pointer-events:none;font-variant-numeric:tabular-nums}
+
+/* ---------- 设置页「游戏目录」行：候选下拉 + 橙色警告（2026-11-22） ---------- */
+/* 与同一行的 .btn.sm 统一规格：高 26px、圆角 7px、字号 11.5px；放不下就整体换行，不压字 */
+#rootWarn{flex:1 1 240px;min-width:0;margin:0;font-size:11px;line-height:1.55;color:#E8C98A}
+#rootWarn[hidden]{display:none}
+#setRootCand{flex:0 0 auto;height:26px;min-height:26px;min-width:180px;max-width:340px;padding:0 9px;
+  border-radius:7px;border:1px solid var(--border);background:var(--panel2);color:var(--text);
+  font-family:inherit;font-size:11.5px;line-height:24px;cursor:pointer}
+#setRootCand[hidden]{display:none}
+#setRootCand:hover{border-color:var(--border2);background:var(--panel3)}
+#setRootCand:focus{outline:none;border-color:var(--accent)}
+
+
+/* 2026-11-22 用户要求：「分类」的字体颜色要与同类标签一致。
+
+
+   它俩都是筛选区里的小标签，但原先 分类 吃的是默认正文色（亮）、成人 稍淡，看着不像一伙的 ——
+   这里把两者钉成同一套：同色、同字号、同字间距、同高。 */
+.filters .grp>.fl{flex:0 0 auto;width:30px;text-align:right;color:var(--dim2);font-size:11px;letter-spacing:.5px;line-height:22px}
+.filters .grp>.fl.sep{margin-left:4px;padding-left:10px;border-left:1px solid var(--border)}

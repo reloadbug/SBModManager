@@ -51,6 +51,10 @@ contextBridge.exposeInMainWorld('api', {
     /** 顶栏「启动游戏」：直接拉起游戏主程序（不走 Steam） */
     launch: () => invoke('game:launch'),
     setRoot: (root) => invoke('game:setRoot', root),
+    /** 弹系统目录选择框挑游戏根目录 —— **只选不生效**（不写配置），应用由渲染层再走一次 setRoot */
+    chooseRoot: () => invoke('game:chooseRoot'),
+    /** 已知的游戏根目录候选（主进程已按「Mod 记录数多的优先」排好序），用来发现「换过盘、旧目录里还有数据」 */
+    rootCandidates: () => invoke('game:rootCandidates'),
     ensureModsDir: () => invoke('game:ensureModsDir'),
     ensureLogicModsDir: () => invoke('game:ensureLogicModsDir'),
     /** 游戏目录搬移：试算 / 落实 / 账本状态 / 导出 / 从账本恢复 */
