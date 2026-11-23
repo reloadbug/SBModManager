@@ -2919,18 +2919,16 @@ function renderBrowseFilters() {
     return `<button class="fc${on ? ' on' : ''}${zero}" data-tag="${esc(t.value)}">${esc(t.zh)}${cnt(t.count)}</button>`;
   }).join('');
 
-  box.innerHTML = `
-    <div class="frow">
-      <span class="fl">分类</span>
-      <div class="fchips">${catChips}</div>
-      ${hasFilter ? '<button class="fclear" id="btnClearFilter">清除筛选</button>' : ''}
-    </div>
-    <div class="frow">
-      <span class="fl">标签</span>
-      <div class="fchips">${tagChips}</div>
-    </div>
-    ${f.degraded ? '<div class="fnote">筛选器计数暂时取不到（网络问题），筛选本身仍可用</div>'
-      : hasFilter ? '<div class="fnote">标签可多选，选多个时取并集</div>' : ''}`;
+  // 与合并档 renderLibFilters() 用同一套 .frow > .grp > .fchips 结构：
+  // 左列 .slabel 已经写了「分类」，这里再写一遍就会看到两个「分类」；
+  // 老竖排 .frow>.fl 和新横排 .grp 结构不同，切档时看起来就像「窜位置」。
+  box.innerHTML = '<div class="frow">'
+    + '<span class="grp"><div class="fchips">' + catChips + '</div>'
+    + (hasFilter ? '<button class="fclear" id="btnClearFilter">清除筛选</button>' : '') + '</span>'
+    + '<span class="grp"><div class="fchips">' + tagChips + '</div></span>'
+    + '</div>'
+    + (f.degraded ? '<div class="fnote">筛选器计数暂时取不到（网络问题），筛选本身仍可用</div>'
+      : hasFilter ? '<div class="fnote">标签可多选，选多个时取并集</div>' : '');
 }
 
 /**
@@ -3810,7 +3808,10 @@ function setLibStatus(v, opts = {}) {
   state.browse.onlyUninstalled = false;
   state.browse.onlyDownloaded = false;
   if (!opts.silent) {
-    if (val === 'online' && !state.browse.items.length && !state.browse.loading) loadBrowse(true);
+    // 「未下载」走 Nexus 分页 + 本地剔除（applyLocalFilter）。从别的档切进来时
+    // b.items 还是上一档的原样数据，直接 render 会把已装/已下载的又显示出来 ——
+    // 2026-11-23 用户实测就是这个症状，所以这里无条件重拉一次。
+    if (val === 'online' && !state.browse.loading) loadBrowse(true);
     else renderBrowse();
   }
 }
@@ -4082,15 +4083,25 @@ async function installedIdsOf(items) {
 async function localSeenIdsOf(items) {
   const ids = items.map(m => Number(m.modId)).filter(Boolean);
   if (!ids.length) return new Set();
+  const out = new Set();
+  // ① 主进程按磁盘回答（scanner + 下载队列 + 安装包库）
   try {
     const map = await call(window.api.nexus.localState(ids), { silent: true });
-    const out = new Set();
     for (const k of Object.keys(map || {})) {
-      const st = map[k] && map[k].state;
-      if (st) out.add(Number(k));
+      if (map[k] && map[k].state) out.add(Number(k));
     }
-    return out;
-  } catch { return new Set(); }
+  } catch { /* 拿不到主进程状态也不能放行已装的 —— 下面还有界面自己的记录 */ }
+  // ② 界面上已经看到的本地记录：chip 上写「已安装 244」，
+  //    那这 244 个就绝不能同时出现在「未下载」里（主进程那次查询失败/过期时兜底）。
+  for (const g of (state.installedGroups || [])) {
+    const id = Number(g && g.modId);
+    if (id) out.add(id);
+  }
+  for (const it of ((state.library && state.library.items) || [])) {
+    const id = Number(it && it.modId);
+    if (id) out.add(id);
+  }
+  return out;
 }
 
 /**

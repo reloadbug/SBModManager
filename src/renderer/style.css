@@ -902,3 +902,14 @@ body.sel .card .cover .sw{display:none}
 .statsrow{display:flex;align-items:center;gap:10px}
 .statsrow .stats{flex:1 1 auto;min-width:0}
 .statsrow #btnBatchMode{flex:0 0 auto}
+
+
+/* ===== 2026-11-23 用户要求：筛选区字体改白色，与顶部一致 =====
+   原来未选中的 chip 吃 var(--dim)（灰），跟顶栏那排白字放一起像两套东西。
+   选中态（橙色 / 标记三态）保持原样，只把默认态钉成正文白。 */
+.bhead .tabs button,
+.bhead .filters .fc,
+.bhead .filters .grp>.fl,
+.bhead .sect .slabel{color:var(--text)}
+.bhead .tabs button:hover,
+.bhead .filters .fc:hover{color:var(--text)}

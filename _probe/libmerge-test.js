@@ -864,6 +864,37 @@ t('在线档（未下载）也要画出顶部状态 / 标记两排，否则进�
   if (!/paintLibHead\(state\.libRecords \|\| \[\]\)/.test(app)) throw new Error('renderBrowse 在线档没有调 paintLibHead(state.libRecords || [])');
 });
 
+// 2026-11-23（0.9.1）：三个新修的用户反馈
+t('未下载档从别的档切进来必须重拉（原来只在 items 空时才拉，旧列表带着已装/已下载的混进来）', () => {
+  if (!app.includes("if (val === 'online' && !state.browse.loading) loadBrowse(true);")) return 'setLibStatus 进未下载档没有无条件重拉';
+  if (app.includes("if (val === 'online' && !state.browse.items.length && !state.browse.loading) loadBrowse(true);")) return '还在用旧的「items 空才拉」条件';
+  return true;
+});
+t('localSeenIdsOf：主进程状态 + 界面已见的本地记录双保险（主进程查失败也不放行已装/已下载）', () => {
+  const i = app.indexOf('async function localSeenIdsOf(');
+  const seg = app.slice(i, i + 1400);
+  if (!seg.includes('window.api.nexus.localState(')) return '没查主进程';
+  if (!seg.includes('state.installedGroups')) return '没并入已安装分组';
+  if (!seg.includes('state.library')) return '没并入本地安装包库';
+  return true;
+});
+t('在线档筛选条结构与合并档一致，不再内嵌重复「分类 / 标签」标签（0.9.1）', () => {
+  const i = app.indexOf('function renderBrowseFilters(');
+  const seg = app.slice(i, i + 2600);
+  if (seg.includes('<span class="fl">分类</span>')) return 'renderBrowseFilters 还内嵌「分类」';
+  if (seg.includes('<span class="fl">标签</span>')) return 'renderBrowseFilters 还内嵌「标签」';
+  if (!seg.includes('<span class="grp"><div class="fchips">')) return '没用 .grp > .fchips 结构';
+  return true;
+});
+t('筛选区字体改白色，与顶部一致（0.9.1）', () => {
+  const css = fs.readFileSync('src/renderer/style.css', 'utf8');
+  const i = css.indexOf('2026-11-23 用户要求：筛选区字体改白色');
+  if (i < 0) return '缺字体改白样式段';
+  const seg = css.slice(i);
+  if (!seg.includes('.bhead .tabs button') || !seg.includes('color:var(--text)')) return '没把 chip 钉成 --text';
+  return true;
+});
+
 console.log('\n===== 结果：' + pass + ' 通过 / ' + fail + ' 失败 =====');
 if (fail) {
   console.log('\n失败项：');
