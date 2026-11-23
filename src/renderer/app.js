@@ -2690,8 +2690,10 @@ function selUpdateBar() {
   if (!mode) return;
   mode.textContent = state.sel.on ? '完成' : '多选';
   mode.classList.toggle('on', state.sel.on);
-  // 操作行只在多选态出现（2026-11-23 用户要求：非多选不占吸顶区高度）。
-  { const op = $('#opSect'); if (op) op.style.display = state.sel.on ? '' : 'none'; }
+  // 操作行始终可见：2026-11-23 用户要求「多选按钮跟筛选一样靠左、放在开头」，
+  // 那颗「多选/完成」就住在这一行的最左侧。非多选态时行内其余按钮各自隐藏，
+  // 只剩「多选」一颗（在线档还会有一颗「加载更多」），所以不会显得空。
+  { const op = $('#opSect'); if (op) op.style.display = ''; }
   const keys = (typeof libSelectableKeys === 'function') ? libSelectableKeys() : [];
   if (allBtn) {
     allBtn.style.display = state.sel.on ? '' : 'none';
@@ -2965,7 +2967,13 @@ function shouldLoadMore(scrollTop, clientHeight, scrollHeight, b) {
 function updateBrowseChrome() {
   // Mod 库的本地档位由 renderLibMerged() 自己写统计行：在线那一页抓回来的时候只当「补数据」，
   // 别把「共 366 个 Mod · 已安装 117 · 已下载 207」覆盖成在线那套「已加载 N 个 · 分类「服装」」（2026-11-10 实测到过）。
-  if ((state.lib.status || 'all') !== 'online') return;
+  if ((state.lib.status || 'all') !== 'online') {
+    // 本地档不该有「加载更多在线页」——操作行现在常显，这颗按钮必须显式藏掉，
+    // 否则从在线档切过来会残留一个点了就混入在线 Mod 的按钮（2026-11-23 用户报）。
+    const lb = $('#btnLoadMore');
+    if (lb) lb.style.display = 'none';
+    return;
+  }
   const b = state.browse;
   const stats = $('#browseStats');
   const btn = $('#btnLoadMore');
@@ -4632,8 +4640,11 @@ async function loadBrowse(reset) {
   } finally {
     if (stale()) return;   // 旧请求的收尾一律跳过（loading 属于新请求）
     b.loading = false;
-    // 追加模式：只把新卡片接到 .grid 末尾，别整页重画（否则图片重新解码、滚动位置跳）
-    if (!reset && before > 0 && b.items.length > before) {
+    // 追加模式：只把新卡片接到 .grid 末尾，别整页重画（否则图片重新解码、滚动位置跳）。
+    // 2026-11-23：非在线档绝不 append 在线卡片——本地档的 grid 由 renderLibMerged 管，
+    // 这里 append 的 browseCard 会绕过状态过滤，把筛选条件以外的在线 Mod 混进来。
+    const isOnlineNow = ((state.lib && state.lib.status) || 'all') === 'online';
+    if (!reset && before > 0 && b.items.length > before && isOnlineNow) {
       const grid = $('#browseArea .grid');
       if (grid) {
         // 「全选」状态下新追加的卡片自动并入选择（用户意图是「全都要」）
@@ -8369,6 +8380,8 @@ function bindEvents() {
 
   $('#btnLoadMore').addEventListener('click', () => {
     if (state.browse.loading) return;
+    // 只有在线档能续页（本地档混在线 Mod 的第二道闸，2026-11-23）
+    if ((state.lib && state.lib.status || 'all') !== 'online') return;
     loadBrowse(false);
   });
 
@@ -8399,6 +8412,11 @@ function bindEvents() {
   let scrollTick = false;
   $('#body').addEventListener('scroll', () => {
     if (!$('#p-browse').classList.contains('on')) return;
+    // 只有「未下载」（在线）档才允许滚动续页拉 Nexus（2026-11-23 用户报：
+    // 在「已启用」等本地档往下滚，混进了筛选条件以外的在线 Mod）。
+    // 本地档的列表由 renderLibMerged 全量渲染，根本不需要翻在线页。
+    const lst = (state.lib && state.lib.status) || 'all';
+    if (lst !== 'online') return;
     if (scrollTick) return;
     scrollTick = true;
     requestAnimationFrame(() => {

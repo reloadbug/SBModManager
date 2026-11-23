@@ -55,9 +55,15 @@ t('「只看未安装」且服务端还有货 → 正常续加载', () =>
 t('b 为 null 不炸', () => shouldLoadMore(0, 0, 0, null) === false);
 
 console.log('\n=== 静态接线断言（防回归） ===');
-t('scroll 监听绑在滚动容器 #body 上', () => /\$\('#body'\)\.addEventListener\('scroll'[\s\S]{0,400}passive:\s*true/.test(code));
+t('scroll 监听绑在滚动容器 #body 上', () => /\$\('#body'\)\.addEventListener\('scroll'[\s\S]{0,900}passive:\s*true/.test(code));
 t('监听里调用 shouldLoadMore', () => /shouldLoadMore\(el\.scrollTop/.test(code));
 t('监听里判断当前是浏览页', () => /addEventListener\('scroll'[\s\S]{0,320}p-browse'\)\.classList\.contains\('on'\)/.test(code));
+t('只有「未下载」(online) 档才滚动续页，本地档不拉在线 Mod（0.9.3 用户报混入）', () =>
+  /addEventListener\('scroll'[\s\S]{0,420}const lst = \(state\.lib && state\.lib\.status\) \|\| 'all';[\s\S]{0,80}if \(lst !== 'online'\) return;/.test(code));
+t('loadBrowse 追加分支加在线档闸门（非在线档不 append 在线卡片）', () =>
+  /const isOnlineNow = \(\(state\.lib && state\.lib\.status\) \|\| 'all'\) === 'online';[\s\S]{0,200}if \(!reset && before > 0 && b\.items\.length > before && isOnlineNow\)/.test(code));
+t('updateBrowseChrome 本地档隐藏「加载更多」按钮', () =>
+  /function updateBrowseChrome\(\) \{[\s\S]{0,400}!== 'online'\) \{[\s\S]{0,240}const lb = \$\('#btnLoadMore'\);\s*if \(lb\) lb\.style\.display = 'none';/.test(code));
 t('rAF 节流（不会每像素都跑）', () => /scrollTick[\s\S]{0,80}requestAnimationFrame/.test(code));
 t('切页保存滚动位置', () => /pageScroll\.set\(curId, \$\('#body'\)\.scrollTop\)/.test(code));
 t('切回时恢复位置（rAF + 延时双保险）', () => /pageScroll\.get\(id\)[\s\S]{0,240}setTimeout/.test(code));

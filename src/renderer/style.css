@@ -926,3 +926,22 @@ body.sel .card .cover .sw{display:none}
 /* 顶行静态「清除筛选」按钮：白字、不被 chip 的等宽规则撑大 */
 .bhead #btnClearFilter{color:var(--text);min-width:0;padding:4px 11px}
 .bhead #btnClearFilter:hover{color:var(--red)}
+
+/* ===== 2026-11-23 0.9.3：多选行按筛选同款配色 + 左对齐 =====
+   用户：「多选按钮跟筛选一样靠左对齐、放开头；有 bug 红、已验证蓝、未验证灰，
+   风格跟筛选里一样。」批量标记五颗住在 .tabs.batch 里，原来的 tone 规则只管
+   .tabs.libmarks，所以这里补一套同样色值的选择器；「多选/完成」开关留在操作行
+   最左（.sline 第一颗），跟筛选 chip 同高同圆角（沿用 .bhead .btn.sm 的规格）。 */
+.bhead #opSect .sline #btnBatchMode{min-width:0;padding:0 12px;flex:0 0 auto}
+.bhead .tabs.batch button.tone-bad{color:#ff6b60;border-color:rgba(229,52,43,.45)}
+.bhead .tabs.batch button.tone-bad.on{
+  background:rgba(229,52,43,.2);color:#fff;font-weight:600;
+  box-shadow:inset 0 0 0 1px rgba(229,52,43,.75);
+}
+.bhead .tabs.batch button.tone-ver{color:#8fd3ff;border-color:rgba(76,160,255,.4)}
+.bhead .tabs.batch button.tone-ver.on{
+  background:rgba(38,110,190,.3);color:#eaf6ff;font-weight:600;
+  box-shadow:inset 0 0 0 1px rgba(76,160,255,.7);
+}
+.bhead .tabs.batch button.tone-dim{color:var(--dim2)}
+.bhead .tabs.batch button.tone-dim.on{background:var(--panel2);color:var(--text);font-weight:600}

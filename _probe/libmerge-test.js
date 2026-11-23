@@ -665,8 +665,8 @@ t('index.html：控件归属正确（状态 / 标记 / 分类成人 / 排序 / �
     && need(s3, 'sortTabs') && need(s3, 'libSortTabs')
     && need(s0, 'btnClearFilter')   // 0.9.2：清除筛选固定在最顶的状态行
     && need(s4, 'batchBar') && need(s4, 'batchMarks')
-    && seg.includes('id="statsrow"') === false && /class="statsrow"/.test(seg)
-    && /id="btnBatchMode"/.test(seg)) || '控件没落在对应的段里';
+    && need(s4, 'btnBatchMode')     // 0.9.3：多选开关移到操作行开头（不再在 statsrow）
+    && seg.includes('id="statsrow"') === false && /class="statsrow"/.test(seg)) || '控件没落在对应的段里';
 });
 t('顶部控件外观统一：.tabs 按钮 / 分类 chip / 小按钮同高同圆角（用户 2026-11-11）', () => {
   const css = fs.readFileSync('src/renderer/style.css', 'utf8');

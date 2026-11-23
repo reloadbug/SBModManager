@@ -125,6 +125,8 @@
           <div class="sect" id="opSect" style="display:none">
             <span class="slabel">操作</span>
             <div class="sbody"><div class="sline">
+              <!-- 「多选/完成」开关固定在操作行开头（0.9.3 用户要求：跟筛选按钮一样靠左对齐）。 -->
+              <button class="btn sm" id="btnBatchMode" title="勾选多个 Mod，批量下载 / 安装 / 启用 / 卸载">多选</button>
               <div class="tabs batch" id="batchBar" title="多选模式：勾选多个 Mod，按它们当前的状态批量下载 / 安装 / 启用 / 卸载">
                 <button id="btnSelectAll" style="display:none">全选</button>
                 <button id="btnBatchDownload" class="bdl" style="display:none" title="把选中的在线 Mod 全部加入下载队列">批量下载</button>
@@ -136,16 +138,15 @@
               <div class="tabs batch marks" id="batchMarks" style="display:none" title="多选模式：给选中的 Mod 批量打标记">
                 <button id="btnBatchLike">👍 喜欢</button>
                 <button id="btnBatchDislike">👎 不喜欢</button>
-                <button id="btnBatchBug">⚠ 有 bug</button>
-                <button id="btnBatchVerify">✓ 已验证</button>
-                <button id="btnBatchUnverify">未验证</button>
+                <button id="btnBatchBug" class="tone-bad">⚠ 有 bug</button>
+                <button id="btnBatchVerify" class="tone-ver">✓ 已验证</button>
+                <button id="btnBatchUnverify" class="tone-dim">未验证</button>
               </div>
               <button class="btn sm" id="btnLoadMore" style="display:none">加载更多</button>
             </div></div>
           </div>
           <div class="statsrow">
-<div class="stats" id="browseStats"></div>
-            <button class="btn sm" id="btnBatchMode" title="勾选多个 Mod，批量下载 / 安装 / 启用 / 卸载">多选</button>
+            <div class="stats" id="browseStats"></div>
           </div>
 
         </div>
