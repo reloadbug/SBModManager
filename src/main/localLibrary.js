@@ -117,11 +117,19 @@ function scan({ dir, root, entries = [], tasks = [], limit = 300 } = {}) {
     if (entryLivesIn(e, root)) live.add(String(modId));
   }
   // 队列里已经显示过的 modId（避免同一件事在页面上出现两遍）
+  //
+  // 2026-11-23 修「已下载显示 0」：合进 Mod 库后，「已下载未安装」是由库里的包自己
+  // 显示的，不再由下载页显示。下面这些状态不该挡住库里的包：
+  //   · failed / cancelled —— 用户还要看到它，重新下
+  //   · downloaded         —— 包已经在库里、只是没装进游戏，正是「已下载」档要显示的
+  // 只有真正还在传输 / 处理中的（queued / downloading / installing / …）才挡住，
+  // 免得同一个 mod 在库和队列里各露一次脸。
+  const NOT_SHOWN_IN_QUEUE = new Set(['failed', 'cancelled', 'downloaded']);
   const queued = new Set();
   for (const t of tasks) {
     const modId = Number(t && t.meta && t.meta.modId) || 0;
     if (!modId) continue;
-    if (t.status === 'failed' || t.status === 'cancelled') continue; // 这两类用户还要看，不算「已露脸」
+    if (NOT_SHOWN_IN_QUEUE.has(t.status)) continue;
     queued.add(String(modId));
   }
 

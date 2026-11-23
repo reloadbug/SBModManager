@@ -250,11 +250,19 @@ t('装了 .dekcns.json 的也算 CNS', () => {
   state.installedGroups = [{ key: 'mod:1', modId: 1, name: '无名', enabled: true, kind: 'pak', items: [{ rel: 'SB\\Content\\Paks\\~Mods\\x.dekcns.json' }] }];
   return ctx.libTypeOf(ctx.buildLibRecords()[0]) === 'cns';
 });
-t('前置组件单独一类', () => {
+t('前置组件不进 Mod 库列表（由前置组件设置页管理）', () => {
   resetState();
-  // 名字里别带 cns —— 那条规则排在前面，会把前置组件也判成换装包
-  state.installedGroups = [{ key: 'mod:1', modId: 1, name: 'Dekita Framework', enabled: true, kind: 'prereq', items: [] }];
-  return ctx.libTypeOf(ctx.buildLibRecords()[0]) === 'prereq';
+  // 2026-11-23 用户：UE4SS / CNS 本体 / ATOOL 这些 kind=prereq 的框架不显示在 Mod 库。
+  state.installedGroups = [{ key: 'mod:1', modId: 1, name: 'Dekita Framework', enabled: true, kind: 'prereq', items: [{ kind: 'prereq', rel: 'LogicMods/DekCNS.uasset' }] }];
+  const recs = ctx.buildLibRecords();
+  if (recs.length !== 0) return '前置组件还在列表里：' + recs.length + ' 条';
+  // 从原始清单补的 prereq id 也要挡住已下载档
+  state.installed = [{ id: 'x', kind: 'prereq', meta: { source: { modId: 222 } } }];
+  state.library = { items: [{ modId: 222, name: 'UE4SS' }, { modId: 333, name: 'normal outfit' }] };
+  const recs2 = ctx.buildLibRecords();
+  if (recs2.some(r => r.modId === 222)) return '已下载档的前置包没挡住';
+  if (!recs2.some(r => r.modId === 333)) return '普通包被误伤';
+  return true;
 });
 t('「全部类型」下拉已经删掉（和分类行重复），分类靠 #browseFilters 的 chip', () => {
   const html = fs.readFileSync('src/renderer/index.html', 'utf8');
@@ -493,17 +501,18 @@ t('分类词表转译：英文 value 先翻成中文再比', () =>
 t('分类筛选只在「在线」档位或用户主动选过时生效（catSet）', () =>
   app.includes("const catRaw = String((st === 'online' || state.lib.catSet) ? (state.browse.category || '') : '');") &&
   app.includes('state.lib.catSet = true;') && app.includes('state.lib.catSet = false;'));
-t('分类一条都匹配不上时当作没选（不至于把列表筛空）', () =>
-  app.includes('const catActive = !!catRaw && (recs || []).some(catOk);') &&
-  app.includes('if (catActive && !catOk(rec)) return false;'));
+t('分类一条都匹配不上时当作没选；CNS 是虚拟分类即使空也激活（如实显示空态）', () =>
+  app.includes("const catActive = catRaw === '__cns__' ? true : (!!catRaw && (recs || []).some(catOk));") &&
+  app.includes('if (catActive && !catOk(rec)) return false;') &&
+  app.includes("if (catRaw === '__cns__') return libTypeOf(rec) === 'cns';"));
 t('成人内容三档生效', () =>
   app.includes("if (am === 'hide' && rec.adult) return false;") &&
   app.includes("if (am === 'only' && !rec.adult) return false;"));
 t('内置脚本不再被过滤掉（开关撤了，内置脚本一直在列表里）', () =>
   !app.includes('if (!state.showBuiltin && rec.builtin) return false;'));
-t('合并态也有分类筛选条（renderLibFilters）', () =>
+t('合并态也有分类筛选条（renderLibFilters），且带固定 CNS chip', () =>
   app.includes('function renderLibFilters(recs)') && app.includes('renderLibFilters(recs);') &&
-  app.includes('本地记录的分类要等 Nexus 信息补全后才出现'));
+  app.includes('data-cat="__cns__"') && app.includes("libTypeOf(r) === 'cns'"));
 t('本地记录的元信息靠 info.local 一次性补齐（不联网）', () =>
   app.includes('function libPrefetchInfo(recs)') && app.includes('window.api.info.local(') &&
   app.includes('const want = [];') && app.includes('state.libInfoAsked'));
@@ -933,6 +942,14 @@ t('0.9.2：未下载档从原始已安装清单补 id（不依赖 installedGroup
   if (!seg.includes('state.installed || []')) return '没从原始已安装清单补 id';
   if (!seg.includes('m.link && m.link.modId')) return '没覆盖 link.modId 来源';
   if (!seg.includes('m.tag && m.tag.modId')) return '没覆盖 tag.modId 来源';
+  return true;
+});
+t('0.9.4：CNS 虚拟分类——三档 chip + 本地判定 + Nexus 不传该值', () => {
+  if (!app.includes("value: '__cns__', zh: 'CNS'")) return '在线档没加 CNS chip';
+  if (!app.includes('data-cat="__cns__"')) return '合并档没加 CNS chip';
+  if (!app.includes("const catForNexus = b.category === '__cns__' ? '' : b.category;")) return 'Nexus 没屏蔽 __cns__';
+  if (!app.includes("if (b.category === '__cns__') return true;")) return 'isLocalFiltering 没认 CNS';
+  if (!app.includes("b.category === '__cns__' ? 'CNS'")) return 'filterSummary 没显示 CNS 名';
   return true;
 });
 

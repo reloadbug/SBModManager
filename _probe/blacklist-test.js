@@ -211,7 +211,7 @@ console.log('\n[6] 渲染层 / 主进程接线（源码级断言）');
   t('updateBrowseChrome 用 isLocalFiltering', () => /const more = !b\.done && \(isLocalFiltering\(b\)/.test(code) || '缺失');
   t('browseRest 用 isLocalFiltering', () => /const seen = isLocalFiltering\(b\)/.test(code) || '缺失');
   t('applyLocalFilter 同时处理黑名单与只看未安装', () =>
-    /async function applyLocalFilter[\s\S]{0,900}onlyUninstalled[\s\S]{0,900}blockMode === 'hide'/.test(code) || '缺失');
+    /async function applyLocalFilter[\s\S]{0,900}onlyUninstalled[\s\S]{0,1600}blockMode === 'hide'/.test(code) || '缺失');
   t('loadBrowse 的过滤走 applyLocalFilter', () => /const kept = await applyLocalFilter\(page\.items\)/.test(code) || '缺失');
 
   // ---- 「只看黑名单」走本地记录 ----

@@ -118,12 +118,12 @@ const res = lib.scan({
   dir: libDir,
   root: gameA,
   entries: [entryA],
-  tasks: [{ id: 't1', status: 'downloaded', meta: { modId: 3008 } }]
+  tasks: [{ id: 't1', status: 'downloading', meta: { modId: 3008 } }]
 });
 eq(res.exists, true, '目录存在');
 eq(res.total, 5, '只数压缩包（notes.txt 不算；2038 的两份都算）');
 eq(res.skipped.installed, 1, '已装的包被跳过');
-eq(res.skipped.inQueue, 1, '已在队列的包被跳过（页面上已经露过脸）');
+eq(res.skipped.inQueue, 1, '真正在下载中的包被跳过（页面上已经露过脸）');
 eq(res.skipped.unparsed, 0, 'notes.txt 在 total 之外，不污染 unparsed');
 eq(res.installable, 2, '剩下 2 个可装（2038 / 4104）');
 eq(res.items.length, 2, 'items 也是 2');
@@ -140,6 +140,16 @@ const res2 = lib.scan({
 });
 eq(res2.installable, 3, 'failed 的任务不挡住包（用户还要看到它）');
 eq(res2.skipped.inQueue, 0, 'failed 不计入 inQueue');
+
+// downloaded 状态（包已在库、没装进游戏）不该挡住库里的包 —— 这正是「已下载」档的数据来源
+// 2026-11-23 修「已下载显示 0」：182 个 archived 任务被 reconcile 改成 downloaded，
+// 旧逻辑把它们算进 queued → installable=0 → 已下载档空白。
+const res2b = lib.scan({
+  dir: libDir, root: gameA, entries: [entryA],
+  tasks: [{ id: 't1', status: 'downloaded', meta: { modId: 3008 } }]
+});
+eq(res2b.installable, 3, 'downloaded 的任务不挡住包（它就是已下载未安装，要在库里显示）');
+eq(res2b.skipped.inQueue, 0, 'downloaded 不计入 inQueue');
 
 // 换了游戏目录：已装的那些会自动冒出来当「可装」
 const res3 = lib.scan({ dir: libDir, root: gameB, entries: [entryA], tasks: [] });

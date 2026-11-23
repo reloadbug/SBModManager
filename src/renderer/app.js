@@ -2906,8 +2906,11 @@ function renderBrowseFilters() {
   const cnt = (n) => (typeof n === 'number' ? `<span class="n">${n.toLocaleString()}</span>` : '');
 
   // 分类：单选（含「全部」）。计数来自整个游戏，方便看出分布。
+  // 2026-11-23 用户：固定加一颗「CNS」（线上没有这个官方分类，走本地名字判定）。
+  const cnsCount = (b.items || []).filter(m => String(m && (m.name || '') + ' ' + (m.summary || '')).toLowerCase().indexOf('cns') >= 0).length;
   const catChips = [{ value: '', zh: '全部', count: f.total }]
     .concat(f.categories)
+    .concat([{ value: '__cns__', zh: 'CNS', count: cnsCount || null }])
     .map(c => {
       const on = (b.category || '') === c.value;
       const zero = c.value && c.count === 0 ? ' zero' : '';
@@ -2947,6 +2950,8 @@ function isLocalFiltering(b = state.browse) {
   // 不这么标的话续翻条件会以为「条数够了」而提前停下，页面只剩半页。
   const libSt = (typeof state !== 'undefined' && state && state.lib && state.lib.status) || 'all';
   if (libSt === 'online') return true;
+  // 选了 CNS 分类（本地档也要）时属于「前端筛选」，续翻要一直翻到 b.done 才停。
+  if (b.category === '__cns__') return true;
   return !!b.onlyUninstalled || (b.blockMode === 'hide' && b.blocked.size > 0);
 }
 
@@ -3275,8 +3280,27 @@ function buildLibRecords() {
   const byMod = new Map();
   const taskOf = (modId) => (state.downloads || []).find(t => Number(t.modId) === Number(modId)) || null;
 
+  // 2026-11-23 用户：前置组件（UE4SS / CNS 本体 / ATOOL 等框架）不显示在 Mod 库列表，
+  // 它们由「前置组件」设置页统一管理。判定只认 scanner 标的 kind==='prereq'——
+  // 绝不能用 libTypeOf：它会把名字里带 cns 的「CNS 本体」误判成普通 CNS 换装服装。
+  // 三档都要挡：已安装的 group 直接跳过；在线 / 已下载用收集到的 modId 挡。
+  const isPrereqGroup = (g) => !!(g && (g.kind === 'prereq'
+    || (g.items || []).some(m => m && m.kind === 'prereq')));
+  const prereqIds = new Set();
+  for (const g of (state.installedGroups || [])) {
+    if (isPrereqGroup(g) && g.modId) prereqIds.add(Number(g.modId));
+  }
+  // installedGroups 可能还没渲染，再从原始清单补一遍（modId 四级来源与 groupInstalled 一致）
+  for (const m of (state.installed || [])) {
+    if (!m || m.kind !== 'prereq') continue;
+    const src = (m.meta && m.meta.source) || {};
+    const id = Number(src.modId || (m.meta && m.meta.modId) || (m.link && m.link.modId) || (m.tag && m.tag.modId) || 0);
+    if (id) prereqIds.add(id);
+  }
+
   // ① 已安装（磁盘上装着的；分组键 mod:<modId> / one:<磁盘 id>）
   for (const g of (state.installedGroups || [])) {
+    if (isPrereqGroup(g)) continue;   // 前置组件不进 Mod 库列表
     const modId = Number(g.modId) || 0;
     const info = modId ? libInfoOf(modId) : null;
     const rec = {
@@ -3314,7 +3338,7 @@ function buildLibRecords() {
   // ② 已下载的安装包（管理器里下好、但当前游戏目录里没装的）
   for (const it of ((state.library && state.library.items) || [])) {
     const modId = Number(it.modId) || 0;
-    if (!modId || byMod.has(modId)) continue;
+    if (!modId || byMod.has(modId) || prereqIds.has(modId)) continue;
     const meta = (typeof libMetaFor === 'function' ? libMetaFor(modId) : null) || it.info || {};
     const rec = {
       key: 'lib:' + modId,
@@ -3345,7 +3369,7 @@ function buildLibRecords() {
   // ③ 在线（Nexus 已加载到的那些）
   for (const n of (state.browse.items || [])) {
     const modId = Number(n.modId) || 0;
-    if (!modId) continue;
+    if (!modId || prereqIds.has(modId)) continue;
     const prev = byMod.get(modId);
     if (prev) { prev.online = n; continue; }   // 本地已有：只补在线信息，不改状态
     const rec = {
@@ -3428,10 +3452,15 @@ function libFilterRecords(recs, opts) {
     return catRaw;
   })();
   const catOk = (rec) => {
+    // 2026-11-23 用户：分类里加一颗固定「CNS」，选中后筛出所有 CNS 换装。
+    // Nexus 没有 CNS 这个官方分类，所以走本地类型判定（名字含 cns / 包内 dekcns），
+    // 与 libTypeOf 的口径一致，本地档和在线档都用它。
+    if (catRaw === '__cns__') return libTypeOf(rec) === 'cns';
     const v = String(rec.categoryZh || rec.category || '');
     return v === catZh || v === catRaw;
   };
-  const catActive = !!catRaw && (recs || []).some(catOk);
+  // 选了 CNS 就一律激活（哪怕当前页一条都没有，也要如实显示空态，而不是退回「全部」）。
+  const catActive = catRaw === '__cns__' ? true : (!!catRaw && (recs || []).some(catOk));
 
   return (recs || []).filter(rec => {
     const s = libStateOf(rec);
@@ -3730,9 +3759,13 @@ function renderLibFilters(recs) {
     if (!zh) continue;
     catMap.set(zh, (catMap.get(zh) || 0) + 1);
   }
+  // 2026-11-23 用户：所有档都加一颗固定「CNS」chip（线上没有这个官方分类，按名字/dekcns 本地判定）。
+  // 与 renderBrowseFilters（未下载档）保持一致的 value：'__cns__'。
+  const cnsCount = (recs || []).filter(r => libTypeOf(r) === 'cns').length;
+  const cnsChip = '<button class="fc' + (cur === '__cns__' ? ' on' : '') + '" data-cat="__cns__">CNS<span class="n">' + cnsCount.toLocaleString() + '</span></button>';
   if (!catMap.size) {
     // 2026-11-23：「分类」已放到左列 .slabel，这里不再重复一遍（用户要分区更简洁）。
-    box.innerHTML = '<div class="frow"><span class="grp"><div class="fchips"><span class="fnote" style="margin:0">本地记录的分类要等 Nexus 信息补全后才出现</span></div></span>'
+    box.innerHTML = '<div class="frow"><span class="grp"><div class="fchips">' + cnsChip + '</div></span>'
       + '<span class="grp"><span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div></span></div>';
     syncClearFilterBtn();
     return;
@@ -3740,7 +3773,8 @@ function renderLibFilters(recs) {
   const cnt = (n) => '<span class="n">' + Number(n).toLocaleString() + '</span>';
   const list = [{ value: '', zh: '全部', count: (recs || []).length }]
     .concat([...catMap.entries()].sort((x, y) => y[1] - x[1])
-      .map(([zh, n]) => ({ value: zh, zh, count: n })));
+      .map(([zh, n]) => ({ value: zh, zh, count: n })))
+    .concat([{ value: '__cns__', zh: 'CNS', count: cnsCount }]);
   const chips = list.map(c => '<button class="fc' + (cur === c.value ? ' on' : '')
     + '" data-cat="' + esc(c.value) + '">' + esc(c.zh) + cnt(c.count) + '</button>').join('');
   // 2026-11-23：左列 .slabel 已经写了「分类」，这里只画 chips，不再内嵌同名标签。
@@ -4047,8 +4081,8 @@ function filterSummary() {
   const b = state.browse;
   const parts = [];
   if (b.category) {
-    const c = (b.facets && b.facets.categories || []).find(x => x.value === b.category);
-    parts.push('分类「' + esc(c ? c.zh : b.category) + '」');
+    // 2026-11-23：「CNS」是本地虚拟分类，Nexus facets 里没有，别显示成 __cns__。
+    parts.push('分类「' + esc(b.category === '__cns__' ? 'CNS' : ((b.facets && b.facets.categories || []).find(x => x.value === b.category) || {}).zh || b.category) + '」');
   }
   if (b.tags.length) {
     const all = (b.facets && b.facets.tags) || [];
@@ -4149,6 +4183,18 @@ async function applyLocalFilter(items) {
   if (libStatus === 'online') {
     const seen = await localSeenIdsOf(kept);
     kept = kept.filter(m => !seen.has(Number(m.modId)));
+  }
+  // 2026-11-23 用户：分类里加「CNS」，选中后筛出所有 CNS 换装。
+  // Nexus 没有 CNS 这个官方分类，所以不在 nexus.list 里传它，而是拉回来后按名字/简介前端筛 ——
+  // 与本地档 libTypeOf 的 cns 判定同口径（名字含 cns 或包内 dekcns；在线没有文件信息，退化为名字/分类/标签）。
+  // 这里刻意自包含（不调 libTypeOf），因为 favorites-test 会把本函数单独抽出来跑。
+  if (b.category === '__cns__') {
+    kept = kept.filter(m => {
+      const text = [m && m.name, m && m.summary, m && m.categoryZh, m && m.category]
+        .concat(Array.isArray(m && m.tags) ? m.tags : [])
+        .filter(Boolean).join(' ').toLowerCase();
+      return text.indexOf('cns') >= 0;
+    });
   }
   if (b.blockMode === 'hide' && b.blocked.size) {
     kept = kept.filter(m => !b.blocked.has(String(m.modId)));
@@ -4596,11 +4642,13 @@ async function loadBrowse(reset) {
   // 分类计数按整个游戏算（不随筛选变），标签计数随分类变 —— 所以只在分类变化时重取。
   // 成人内容范围（三态）也会改变计数，必须一起纳入判定，否则会出现
   // 「筛选器说 3063、列表只有 1772」的自相矛盾。
+  // CNS 是本地判定（Nexus 没有这个官方分类），不能当 category 传给服务端 —— 传了会返回空。
+  const catForNexus = b.category === '__cns__' ? '' : b.category;
   const facetKey = b.category + '|' + b.adultMode;
   const needFacets = !b.facets || b.facets.__key !== facetKey;
   // 计数请求只发一次（复用同一个 promise，循环里每轮都 await 它）
   const facetsP = needFacets
-    ? call(window.api.nexus.facets({ category: b.category, adultMode: b.adultMode }))
+    ? call(window.api.nexus.facets({ category: catForNexus, adultMode: b.adultMode }))
     : Promise.resolve(null);
   // 🔴 `b.offset` 必须按**服务端**推进（`+= page.items.length`），不能用 `b.items.length`：
   //    「只看未安装」会剔掉一部分，用 items 长度当偏移会把同一页反复请求，还会重复追加。
@@ -4610,7 +4658,7 @@ async function loadBrowse(reset) {
       const [page, facets] = await Promise.all([
         call(window.api.nexus.list({
           sort: b.sort, search: b.search, offset: b.offset, count: BROWSE_PAGE,
-          adultMode: b.adultMode, category: b.category, tags: b.tags,
+          adultMode: b.adultMode, category: catForNexus, tags: b.tags,
           direction: (state.lib && state.lib.sortDir === 'asc') ? 'ASC' : 'DESC'
         })),
         facetsP
