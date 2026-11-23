@@ -896,8 +896,6 @@ body.sel .card .cover .sw{display:none}
 .bhead .sline>.tabs,.bhead .sline>.filters{flex:0 0 auto}
 .bhead .sline>.btn{flex:0 0 auto}
 .bhead .tabs button,.bhead .filters .fc{min-width:84px;justify-content:center;text-align:center}
-#sortDirBtn{width:30px;min-width:30px;padding:0;font-size:13px;font-weight:700}
-#sortDirBtn:disabled{opacity:.4;cursor:not-allowed}
 .bhead .filters .fchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;overflow:visible}
 .statsrow{display:flex;align-items:center;gap:10px}
 .statsrow .stats{flex:1 1 auto;min-width:0}
@@ -913,3 +911,18 @@ body.sel .card .cover .sw{display:none}
 .bhead .sect .slabel{color:var(--text)}
 .bhead .tabs button:hover,
 .bhead .filters .fc:hover{color:var(--text)}
+
+/* ===== 2026-11-23 0.9.2：排序每颗自带方向 + 筛选区字体全白 =====
+   用户：①每颗排序按钮都要能正序/倒序（去掉独立方向按钮）
+        ②清除筛选固定在最顶行、字体跟顶部一致（别有白有灰）
+        ③删掉「标签可多选」提示，别把分类行撑宽。 */
+/* 激活的排序 chip 自带箭头：升序 ↑ / 降序 ↓；没激活的不显示。 */
+.bhead .tabs button.asc::after{content:' ↑';font-size:10px;opacity:.9;margin-left:4px}
+.bhead .tabs button.desc::after{content:' ↓';font-size:10px;opacity:.9;margin-left:4px}
+/* chip 里的数字跟 chip 文字同色（原来 .dir 吃 .75 透明、.fc .n 吃灰） */
+.bhead .tabs button .dir{opacity:1}
+.bhead .filters .fc .n{color:var(--text)}
+.bhead .filters .fc.on .n{color:rgba(232,163,61,.72)}
+/* 顶行静态「清除筛选」按钮：白字、不被 chip 的等宽规则撑大 */
+.bhead #btnClearFilter{color:var(--text);min-width:0;padding:4px 11px}
+.bhead #btnClearFilter:hover{color:var(--red)}

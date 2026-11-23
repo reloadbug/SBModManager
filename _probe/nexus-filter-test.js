@@ -14,6 +14,7 @@
  *   node _probe/nexus-filter-test.js
  */
 const { createNexus, buildModsFilter, CATEGORIES, TAGS, ADULT_MODES } = require('../src/main/nexus');
+const fs = require('fs');
 
 let pass = 0, fail = 0, skip = 0;
 
@@ -36,6 +37,16 @@ async function ta(label, fn) {
 
 /* ============ A. 离线：filter 片段构造 ============ */
 console.log('\n=== A. buildModsFilter（离线） ===');
+
+t('listMods direction=ASC 与 DESC 生成不同查询（不是写死 DESC）', () => {
+  const src = fs.readFileSync('src/main/nexus.js', 'utf8');
+  if (!src.includes("direction = 'DESC'")) return '解构没加 direction 默认值';
+  if (!src.includes('direction:${direction === ' + "'ASC' ? 'ASC' : 'DESC'" + '}')) return 'GraphQL 没用 direction 变量';
+  if (!src.includes('list:${sort}:${direction}:')) return '缓存 key 没带 direction';
+  const app = fs.readFileSync('src/renderer/app.js', 'utf8');
+  if (!app.includes("direction: (state.lib && state.lib.sortDir === 'asc') ? 'ASC' : 'DESC'")) return '渲染层没传 direction';
+  return true;
+});
 
 t('默认只带游戏限定', () => {
   const { filters } = buildModsFilter({});

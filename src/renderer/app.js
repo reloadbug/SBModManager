@@ -2923,12 +2923,11 @@ function renderBrowseFilters() {
   // 左列 .slabel 已经写了「分类」，这里再写一遍就会看到两个「分类」；
   // 老竖排 .frow>.fl 和新横排 .grp 结构不同，切档时看起来就像「窜位置」。
   box.innerHTML = '<div class="frow">'
-    + '<span class="grp"><div class="fchips">' + catChips + '</div>'
-    + (hasFilter ? '<button class="fclear" id="btnClearFilter">清除筛选</button>' : '') + '</span>'
+    + '<span class="grp"><div class="fchips">' + catChips + '</div></span>'
     + '<span class="grp"><div class="fchips">' + tagChips + '</div></span>'
-    + '</div>'
-    + (f.degraded ? '<div class="fnote">筛选器计数暂时取不到（网络问题），筛选本身仍可用</div>'
-      : hasFilter ? '<div class="fnote">标签可多选，选多个时取并集</div>' : '');
+    + '</div>';
+  // 2026-11-23 用户：提示文字占一行把分类撑宽，直接去掉；清除按钮固定在最顶行。
+  syncClearFilterBtn();
 }
 
 /**
@@ -3485,30 +3484,33 @@ function libStatusCounts(recs) {
   return c;
 }
 
+/** 顶部固定的「清除筛选」按钮：只在真的有分类/标签筛选时显示（0.9.2） */
+function syncClearFilterBtn() {
+  const btn = $('#btnClearFilter');
+  if (!btn) return;
+  const b = state.browse || {};
+  const has = !!b.category || ((b.tags || []).length > 0);
+  btn.style.display = has ? '' : 'none';
+}
+
 /** 画顶部状态行（chip + 类型下拉 + 标记 chip） */
 function paintLibHead(recs) {
   { const s = $('#libSortTabs'); if (s) s.style.display = ''; }
-  { const d = $('#sortDirBtn'); if (d) d.style.display = ''; }
   { const ad = $('#adultTabs'); if (ad) ad.style.display = 'none'; }
   // 顶部这几组控件（在线排序 / 成人范围 / 打开 Nexus）合并后仍然留着，
   // 选中态在这里统一同步 —— 老浏览页那套只在自己的渲染路径里同步。
   const curSort = state.lib.sort || 'downloads';
   const curDir = state.lib.sortDir === 'asc' ? 'asc' : 'desc';
-  $$('#sortTabs button').forEach(x => x.classList.toggle('on', x.dataset.sort === curSort));
+  // 2026-11-23 用户：每一颗排序按钮都要能正序/倒序 —— 激活的那颗自带 ↑/↓ 箭头，
+  // 再点一次同一颗就翻方向；换一颗则回到那颗的默认方向。不再用单独的方向按钮。
+  $$('#sortTabs button, #libSortTabs button').forEach(x => {
+    const v = x.dataset.sort || x.dataset.libsort;
+    const on = v === curSort;
+    x.classList.toggle('on', on);
+    x.classList.remove('asc', 'desc');
+    if (on) x.classList.add(curDir === 'asc' ? 'asc' : 'desc');
+  });
   $$('#adultTabs button').forEach(x => x.classList.toggle('on', x.dataset.adult === (state.browse.adultMode || 'all')));
-  $$('#libSortTabs button').forEach(x => x.classList.toggle('on', x.dataset.libsort === curSort));
-  // 方向按钮：一颗搞定正反；在线四档由 Nexus 固定方向，置灰并说明原因。
-  {
-    const d = $('#sortDirBtn');
-    if (d) {
-      const onlineOnly = ['downloads', 'endorsements', 'newest', 'updated'].includes(curSort);
-      d.textContent = curDir === 'asc' ? '↑' : '↓';
-      d.disabled = onlineOnly;
-      d.title = onlineOnly
-        ? 'Nexus 的排序只有从多到少 / 从新到旧；本地排序（开启时间 / 安装时间 / 名称）才能翻转方向'
-        : (curDir === 'desc' ? '当前降序，点一下改成升序' : '当前升序，点一下改成降序');
-    }
-  }
   const counts = libStatusCounts(recs || []);
   const st = state.lib.status || 'all';
   const box = $('#libStatus');
@@ -3538,12 +3540,13 @@ function paintLibHead(recs) {
       return `<button data-libmk="${ch.k}" class="${cls.trim()}${tone}" title="${tip}"><span class="dir">${flag} ${fmtNum(cnt)}</span>${ch.label}</button>`;
     }).join('');
   }
+  syncClearFilterBtn();
 }
 
 /** 一条本地记录的卡片（在线记录仍用 browseCard，两套复用同一批 CSS 类） */
 // Mod 库的排序方式（0.5.3）。默认档位不动：状态优先、组内保持原顺序；
 // 「开启时间」是排查崩溃时最常用的 —— 新开的 Mod 最可疑。
-// 排序维度表（2026-11-23：一个维度一颗 chip，方向统一交给 #sortDirBtn）。
+// 排序维度表（2026-11-23：一颗维度一颗 chip，点已激活那颗翻方向，方向写在 chip 上）。
 // title 写清每个维度按什么排，缺省方向写在这里，换维度时据此复位。
 const LIB_SORTS = [
   { value: 'downloads', label: '下载最多', dir: 'desc', online: true, title: '按 Nexus 下载量从多到少' },
@@ -3723,6 +3726,7 @@ function renderLibFilters(recs) {
     // 2026-11-23：「分类」已放到左列 .slabel，这里不再重复一遍（用户要分区更简洁）。
     box.innerHTML = '<div class="frow"><span class="grp"><div class="fchips"><span class="fnote" style="margin:0">本地记录的分类要等 Nexus 信息补全后才出现</span></div></span>'
       + '<span class="grp"><span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div></span></div>';
+    syncClearFilterBtn();
     return;
   }
   const cnt = (n) => '<span class="n">' + Number(n).toLocaleString() + '</span>';
@@ -3733,10 +3737,10 @@ function renderLibFilters(recs) {
     + '" data-cat="' + esc(c.value) + '">' + esc(c.zh) + cnt(c.count) + '</button>').join('');
   // 2026-11-23：左列 .slabel 已经写了「分类」，这里只画 chips，不再内嵌同名标签。
   box.innerHTML = '<div class="frow">'
-    + '<span class="grp"><div class="fchips">' + chips + '</div>'
-    + (cur ? '<button class="fclear" id="btnClearFilter">清除筛选</button>' : '') + '</span>'
+    + '<span class="grp"><div class="fchips">' + chips + '</div></span>'
     + '<span class="grp"><span class="fl sep">成人</span><div class="fchips">' + libAdultChips(recs) + '</div></span>'
     + '</div>';
+  syncClearFilterBtn();
 }
 
 // 2026-11-11：顶部改成「筛选 / 排序 / 操作」三块（写在 index.html 里，不再搬节点），
@@ -3982,7 +3986,6 @@ function renderBrowse() {
   // 「开启时间 / 安装时间」是本地记录的排序；在线档位用的是 Nexus 的排序标签，
   // 两排同时出现会让人不知道该用哪个 —— 在线时把本地这排藏起来。
   { const s = $('#libSortTabs'); if (s) s.style.display = 'none'; }
-  { const d = $('#sortDirBtn'); if (d) d.style.display = 'none'; }
   { const ad = $('#adultTabs'); if (ad) ad.style.display = ''; }
   // 2026-11-22 用户报「进到某一档就回不去了」：状态 / 标记那两排 chip 原来只在合并档渲染，
   // 一进「未下载」（走 Nexus 分页的在线档）整排 chip 就空了 —— 界面看着像坏了，也没法切回去。
@@ -4095,6 +4098,13 @@ async function localSeenIdsOf(items) {
   //    那这 244 个就绝不能同时出现在「未下载」里（主进程那次查询失败/过期时兜底）。
   for (const g of (state.installedGroups || [])) {
     const id = Number(g && g.modId);
+    if (id) out.add(id);
+  }
+  // ②b 2026-11-23：installedGroups 只有渲染过已安装页才生成，直接以「未下载」档启动时可能是空的。
+  //    这里再从原始已安装清单按同样的四级来源取一次，保证「没下载也没安装」在任何启动顺序下都成立。
+  for (const m of (state.installed || [])) {
+    const src = (m && m.meta && m.meta.source) || {};
+    const id = Number(src.modId || (m && m.meta && m.meta.modId) || (m && m.link && m.link.modId) || (m && m.tag && m.tag.modId));
     if (id) out.add(id);
   }
   for (const it of ((state.library && state.library.items) || [])) {
@@ -4592,7 +4602,8 @@ async function loadBrowse(reset) {
       const [page, facets] = await Promise.all([
         call(window.api.nexus.list({
           sort: b.sort, search: b.search, offset: b.offset, count: BROWSE_PAGE,
-          adultMode: b.adultMode, category: b.category, tags: b.tags
+          adultMode: b.adultMode, category: b.category, tags: b.tags,
+          direction: (state.lib && state.lib.sortDir === 'asc') ? 'ASC' : 'DESC'
         })),
         facetsP
       ]);
@@ -8298,15 +8309,6 @@ function bindEvents() {
     renderBrowse();
   });
 
-  // 唯一的方向按钮：只翻方向，不换维度（在线四档置灰，见 paintLibHead）
-  const dirBtn = $('#sortDirBtn');
-  if (dirBtn) dirBtn.addEventListener('click', () => {
-    if (dirBtn.disabled) return;
-    state.lib.sortDir = state.lib.sortDir === 'asc' ? 'desc' : 'asc';
-    saveFilters();
-    renderBrowse();
-  });
-
   // 只看未安装（本地判定，Nexus 没这个筛选条件）—— 开/关都要重新拉
   const elNewOnly = $('#newOnlyTabs');
   if (elNewOnly) elNewOnly.addEventListener('click', async (e) => {
@@ -8408,20 +8410,23 @@ function bindEvents() {
     });
   }, { passive: true });
 
+  // 「清除筛选」固定在最顶行状态行（0.9.2）—— 静态按钮绑一次即可。
+  const clearBtn = $('#btnClearFilter');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    const b = state.browse;
+    b.category = '';
+    b.tags = [];
+    state.lib.catSet = false;
+    saveFilters();
+    syncClearFilterBtn();
+    if ((state.lib.status || 'all') !== 'online') renderBrowse();
+    else loadBrowse(true);
+  });
+
   // 分类（单选）/ 标签（多选）筛选 —— 事件委托，chips 是动态重绘的
   $('#browseFilters').addEventListener('click', e => {
     const b = state.browse;
-    const clear = e.target.closest('#btnClearFilter');
     const merged = (state.lib.status || 'all') !== 'online';
-    if (clear) {
-      b.category = '';
-      b.tags = [];
-      state.lib.catSet = false;
-      saveFilters();
-      if (merged) { renderBrowse(); return; }
-      loadBrowse(true);
-      return;
-    }
     const cat = e.target.closest('button[data-cat]');
     if (cat) {
       b.category = cat.dataset.cat || '';
@@ -8444,11 +8449,13 @@ function bindEvents() {
   $('#sortTabs').addEventListener('click', e => {
     const b = e.target.closest('button[data-sort]');
     if (!b) return;
-    $$('#sortTabs button').forEach(x => x.classList.toggle('on', x === b));
-    state.browse.sort = b.dataset.sort;
-    // 在线 / 本地两个维度组互斥：这里选中这个在线维度，方向固定降序。
-    state.lib.sort = b.dataset.sort;
-    state.lib.sortDir = 'desc';
+    const sv = b.dataset.sort;
+    // 2026-11-23 用户：点已选中的维度=翻方向，点别的=换维度并回到默认降序。
+    state.lib.sortDir = (state.lib.sort === sv)
+      ? (state.lib.sortDir === 'asc' ? 'desc' : 'asc')
+      : 'desc';
+    state.lib.sort = sv;
+    state.browse.sort = sv;
     // 合并档位：按本地记录里同一批字段排（applyLibSort 认这四个键）
     saveFilters();
     if ((state.lib.status || 'all') !== 'online') { renderBrowse(); return; }

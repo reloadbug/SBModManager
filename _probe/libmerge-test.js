@@ -478,8 +478,8 @@ t('顶部不再有「显示内置脚本」开关（0.7.2 按用户要求撤掉�
 t('本地排序三颗维度 chip + 一颗方向按钮（0.9.0：正反合成一颗）', () =>
   html.includes('id="libSortTabs"') && html.includes('data-libsort="on"')
   && html.includes('data-libsort="inst"') && html.includes('data-libsort="name"')
-  && html.includes('id="sortDirBtn"') && !html.includes('id="libSort"')
-  && app.includes("'button[data-libsort]'") && app.includes("$('#sortDirBtn')")
+  && html.includes('id="btnClearFilter"') && !html.includes('id="libSort"')
+  && app.includes("'button[data-libsort]'") && app.includes('classList.add(curDir')
   && app.includes("state.lib.sortDir = state.lib.sortDir === 'asc' ? 'desc' : 'asc';"));
 t('状态档补了「未登记」「已关联」', () =>
   app.includes("{ v: 'unreg', label: '未登记' }") && app.includes("{ v: 'linked', label: '已关联' }") &&
@@ -662,7 +662,8 @@ t('index.html：控件归属正确（状态 / 标记 / 分类成人 / 排序 / �
   const s3 = parts[4] || '', s4 = parts[5] || '';
   return (need(s0, 'libStatus') && need(s1, 'libMarks')
     && need(s2, 'browseFilters') && need(s2, 'adultTabs')
-    && need(s3, 'sortTabs') && need(s3, 'libSortTabs') && need(s3, 'sortDirBtn')
+    && need(s3, 'sortTabs') && need(s3, 'libSortTabs')
+    && need(s0, 'btnClearFilter')   // 0.9.2：清除筛选固定在最顶的状态行
     && need(s4, 'batchBar') && need(s4, 'batchMarks')
     && seg.includes('id="statsrow"') === false && /class="statsrow"/.test(seg)
     && /id="btnBatchMode"/.test(seg)) || '控件没落在对应的段里';
@@ -848,7 +849,7 @@ t('筛选区标签统一（0.9.0：分类在左列 .slabel，成人用 .fl sep �
   if (i < 0) return '缺 0.9.0 改版样式段';
   const seg = css.slice(i);
   if (!seg.includes('grid-template-columns:40px 1fr')) return '没用 40px 标签列网格';
-  if (!seg.includes('#sortDirBtn{')) return '方向按钮没统一样式';
+  if (!seg.includes('button.asc::after')) return '排序方向箭头没统一样式';
   const ai = app.indexOf('function renderLibFilters');
   const as = app.slice(ai, ai + 2200);
   if (as.includes('<span class="fl">分类</span>')) return 'renderLibFilters 还在内嵌重复的「分类」标签';
@@ -892,6 +893,46 @@ t('筛选区字体改白色，与顶部一致（0.9.1）', () => {
   if (i < 0) return '缺字体改白样式段';
   const seg = css.slice(i);
   if (!seg.includes('.bhead .tabs button') || !seg.includes('color:var(--text)')) return '没把 chip 钉成 --text';
+  return true;
+});
+
+t('0.9.2：删掉「标签可多选」等提示，不再把分类行撑宽', () => {
+  const seg = app.slice(app.indexOf('function renderBrowseFilters'), app.indexOf('function renderBrowseFilters') + 2400);
+  if (seg.includes('fnote')) return 'renderBrowseFilters 还在渲染 .fnote 提示';
+  if (!app.includes('syncClearFilterBtn()')) return '没有统一的清除按钮同步入口';
+  return true;
+});
+t('0.9.2：清除筛选按钮静态写死在状态行（最顶一行）', () => {
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  const i = html.indexOf('id="browseHead"');
+  const j = html.indexOf('id="libStatus"');
+  const k = html.indexOf('id="libMarks"');
+  const seg = html.slice(j, k);
+  if (!seg.includes('id="btnClearFilter"')) return '清除按钮没在状态行';
+  if (!app.includes("clearBtn.addEventListener('click'")) return '静态按钮没绑独立委托';
+  if (app.slice(app.indexOf("$('#browseFilters').addEventListener"), app.indexOf("$('#browseFilters').addEventListener") + 900).includes("closest('#btnClearFilter')")) return '旧动态清除委托没删干净';
+  return true;
+});
+t('0.9.2：每颗排序 chip 自带 ↑/↓，去掉独立方向按钮', () => {
+  if (app.includes("$('#sortDirBtn')") || app.includes('id="sortDirBtn"')) return '还在引用独立方向按钮';
+  if (!app.includes("classList.add(curDir === 'asc' ? 'asc' : 'desc')")) return '排序 chip 没写方向 class';
+  const html = fs.readFileSync('src/renderer/index.html', 'utf8');
+  if (html.includes('id="sortDirBtn"')) return 'index.html 还留着方向按钮';
+  if (!/classList\.add\(curDir === 'asc' \? 'asc' : 'desc'\)/.test(app)) return '方向同步没落到 app';
+  return true;
+});
+t('0.9.2：在线排序也能正反（direction 传到 Nexus）', () => {
+  if (!app.includes("direction: (state.lib && state.lib.sortDir === 'asc') ? 'ASC' : 'DESC'")) return '渲染层没传 direction';
+  const nx = fs.readFileSync('src/main/nexus.js', 'utf8');
+  if (!nx.includes("direction = 'DESC'")) return 'nexus.listMods 没接收 direction';
+  return true;
+});
+t('0.9.2：未下载档从原始已安装清单补 id（不依赖 installedGroups 已渲染）', () => {
+  const i = app.indexOf('function localSeenIdsOf');
+  const seg = app.slice(i, i + 1800);
+  if (!seg.includes('state.installed || []')) return '没从原始已安装清单补 id';
+  if (!seg.includes('m.link && m.link.modId')) return '没覆盖 link.modId 来源';
+  if (!seg.includes('m.tag && m.tag.modId')) return '没覆盖 tag.modId 来源';
   return true;
 });
 

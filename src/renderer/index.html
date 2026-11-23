@@ -84,7 +84,7 @@
                状态=磁盘说了算、标记=自己打的、分类=信息范围、排序/操作=动作。 -->
           <div class="sect">
             <span class="slabel">状态</span>
-            <div class="sbody"><div class="sline"><div class="tabs libst" id="libStatus"></div></div></div>
+            <div class="sbody"><div class="sline"><div class="tabs libst" id="libStatus"></div><button class="btn sm fclear" id="btnClearFilter" style="display:none" title="清掉当前分类/标签筛选">清除筛选</button></div></div>
           </div>
           <div class="sect">
             <span class="slabel">标记</span>
@@ -119,7 +119,6 @@
                 <button data-libsort="inst">安装时间</button>
                 <button data-libsort="name">名称</button>
               </div>
-              <button class="btn sm" id="sortDirBtn" title="翻转排序方向；在线四档由 Nexus 固定为从多到少 / 从新到旧">↓</button>
             </div></div>
           </div>
           <!-- 操作行：只在多选态出现（非多选不占高度，2026-11-23 用户要求） -->

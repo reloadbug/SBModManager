@@ -212,19 +212,19 @@ function createNexus({ getApiKey, timeout = 20000 } = {}) {
   }
 
   /** 列表 / 搜索 */
-  async function listMods({ sort = 'downloads', search = '', offset = 0, count = 24, adultMode = 'all', category = '', tags = [] } = {}) {
+  async function listMods({ sort = 'downloads', search = '', offset = 0, count = 24, adultMode = 'all', category = '', tags = [], direction = 'DESC' } = {}) {
     const { filters, cat, tagList, adultMode: mode } = buildModsFilter({ search, category, tags, adultMode });
 
     const sortField = SORTS[sort] || SORTS.downloads;
     const q = `{
       mods(
         filter:{${filters.join(', ')}},
-        sort:[{${sortField}:{direction:DESC}}],
+        sort:[{${sortField}:{direction:${direction === 'ASC' ? 'ASC' : 'DESC'}}}],
         offset:${offset}, count:${count}
       ) { totalCount nodesCount nodes { ${MOD_FIELDS} } }
     }`;
 
-    const key = `list:${sort}:${search}:${offset}:${count}:${mode}:${cat}:${tagList.join('|')}`;
+    const key = `list:${sort}:${direction}:${search}:${offset}:${count}:${mode}:${cat}:${tagList.join('|')}`;
     const data = await request(q, { cacheKey: key });
     const page = data.mods || {};
     return {

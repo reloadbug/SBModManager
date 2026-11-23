@@ -125,7 +125,7 @@ section('C. 前端：带出时间 / 排序 / 入口');
   ok('本地排序 chip + 一颗方向按钮，走点击委托（不再有下拉）',
     appSrc.includes("$('#libSortTabs').addEventListener('click'")
     && appSrc.includes("'button[data-libsort]'")
-    && /const dirBtn = \$\('#sortDirBtn'\);[\s\S]{0,80}dirBtn\.addEventListener\('click'/.test(appSrc)
+    && /classList\.add\(curDir === 'asc' \? 'asc' : 'desc'\)/.test(appSrc)
     && appSrc.includes("state.lib.sortDir = state.lib.sortDir === 'asc' ? 'desc' : 'asc';")
     && !appSrc.includes("$('#libSort')"));
   ok('在线档位把本地排序藏起来（那边用 Nexus 的排序标签）',
@@ -143,7 +143,7 @@ section('C. 前端：带出时间 / 排序 / 入口');
     htmlSrc.includes('<button data-libsort="on">开启时间</button>')
     && htmlSrc.includes('<button data-libsort="inst">安装时间</button>')
     && htmlSrc.includes('<button data-libsort="name">名称</button>')
-    && htmlSrc.includes('id="sortDirBtn"')
+    && htmlSrc.includes('id="btnClearFilter"')
     && !htmlSrc.includes('data-libsort="on-desc"'));
 }
 
