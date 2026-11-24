@@ -1325,5 +1325,6 @@
     '无需安装': 'Gerekmez',
     '子 Mod': 'Alt mod',
     '其它': 'Diğer',
+    '卸载中': 'Kaldırılıyor',
   });
 })();

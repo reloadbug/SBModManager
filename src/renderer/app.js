@@ -1966,27 +1966,40 @@ function fillDrawerPkg(modId, taskId) {
  * 为什么并进原记录而不是新建卡：同一个 Mod 的几套文件是**同一件东西的变体**，
  * 分家之后开关会互相打架（用户 2026-11-24 明确「安装时不按文件显示按 mod 来显示」）。
  */
-async function subModInstall(dir) {
+async function subModInstall(dir, btn) {
   const base = (state.drawer && state.drawer.infoBase) || {};
   const modId = Number(base.factId) || 0;
   if (!modId) { toast('这个 Mod 没有 Nexus 编号，认不出安装包', 'err'); return; }
-  const r = await call(window.api.mods.installSub({ modId, dir }), { silent: true });
-  state.modPkg = {};                       // 账本变了，重新读一遍包内清单
-  await fillDrawerPkg(modId, null);
-  refreshAfterModsChanged();
-  toast(`已安装：${dir}（${fmtNum(r.written)} 个文件）`);
+  // 装一套要解压几十上百 MB，几秒起步 —— 先把这个按钮按住，别让人以为没反应
+  if (btn) { btn.disabled = true; btn.dataset.was = btn.textContent; btn.textContent = '安装中'; }
+  try {
+    const r = await call(window.api.mods.installSub({ modId, dir }), { silent: true });
+    state.modPkg = {};                       // 账本变了，重新读一遍包内清单
+    await fillDrawerPkg(modId, null);
+    refreshAfterModsChanged();
+    toast(`已安装：${dir}（${fmtNum(r.written)} 个文件）`);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.was || '安装'; }
+    toast(e.message, 'err');
+  }
 }
 
 /** 单独卸某一套子 Mod：只移走这一套的文件，其它子 Mod 一个都不动 */
-async function subModUninstall(dir) {
+async function subModUninstall(dir, btn) {
   const base = (state.drawer && state.drawer.infoBase) || {};
   const modId = Number(base.factId) || 0;
   if (!modId) { toast('这个 Mod 没有 Nexus 编号，认不出安装包', 'err'); return; }
-  const r = await call(window.api.mods.uninstallSub({ modId, dir }), { silent: true });
-  state.modPkg = {};
-  await fillDrawerPkg(modId, null);
-  refreshAfterModsChanged();
-  toast(`已卸载：${dir}（移走 ${fmtNum(r.moved)} 个文件）`);
+  if (btn) { btn.disabled = true; btn.dataset.was = btn.textContent; btn.textContent = '卸载中'; }
+  try {
+    const r = await call(window.api.mods.uninstallSub({ modId, dir }), { silent: true });
+    state.modPkg = {};
+    await fillDrawerPkg(modId, null);
+    refreshAfterModsChanged();
+    toast(`已卸载：${dir}（移走 ${fmtNum(r.moved)} 个文件）`);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.was || '卸载'; }
+    toast(e.message, 'err');
+  }
 }
 
 /** 抽屉打开后去补查这个 Mod 的「发布时间 / 压缩包位置 / 安装时间」，一次一 Mod，查过就记住 */
@@ -9604,9 +9617,9 @@ function bindEvents() {
     if (dlRegisterBtn) { await dlRegisterExisting(dlRegisterBtn.dataset.dlRegister); return; }
     // 子 Mod：详情页里每一套自己的「安装 / 卸载」
     const subInsBtn = t.closest('[data-sub-install]');
-    if (subInsBtn) { await subModInstall(subInsBtn.dataset.subInstall); return; }
+    if (subInsBtn) { await subModInstall(subInsBtn.dataset.subInstall, subInsBtn); return; }
     const subUnBtn = t.closest('[data-sub-uninstall]');
-    if (subUnBtn) { await subModUninstall(subUnBtn.dataset.subUninstall); return; }
+    if (subUnBtn) { await subModUninstall(subUnBtn.dataset.subUninstall, subUnBtn); return; }
     const dlCancelBtn = t.closest('[data-dl-cancel]');
     if (dlCancelBtn) { await dlCancel(dlCancelBtn.dataset.dlCancel); return; }
     const dlPauseBtn = t.closest('[data-dl-pause]');

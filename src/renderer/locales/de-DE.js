@@ -1325,5 +1325,6 @@
     '无需安装': 'Nicht nötig',
     '子 Mod': 'Sub-Mod',
     '其它': 'Sonstiges',
+    '卸载中': 'Entfernen',
   });
 })();

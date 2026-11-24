@@ -156,7 +156,7 @@ console.log('\n【G】analyze 交出包内完整清单（账本与表格都靠�
 console.log('\n【H】i18n 词条');
 {
   const keys = JSON.parse(readSrc('_probe/i18n-keys.json'));
-  ok('H1 键表 1322 条', keys.length === 1322, String(keys.length));
+  ok('H1 键表 1323 条', keys.length === 1323, String(keys.length));
   for (const k of ['包内文件', '无需安装', '子 Mod', '其它']) {
     ok('H2 有词条「' + k + '」', keys.includes(k));
   }

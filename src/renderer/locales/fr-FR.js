@@ -1325,5 +1325,6 @@
     '无需安装': 'Inutile',
     '子 Mod': 'Sous-mod',
     '其它': 'Autre',
+    '卸载中': 'Retrait',
   });
 })();

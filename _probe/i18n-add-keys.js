@@ -1619,6 +1619,8 @@ const TABLE = [
   ['无需安装', ['無需安裝', 'Not needed', 'インストール不要', '설치 불필요', 'Не требуется', 'Nicht nötig', 'Inutile', 'No necesario', 'Desnecessário', 'Non necessario', 'Zbędne', 'Gerekmez', 'ไม่ต้องติดตั้ง']],
   ['子 Mod', ['子 Mod', 'Sub-mod', 'サブMod', '하위 모드', 'Субмод', 'Sub-Mod', 'Sous-mod', 'Submod', 'Submod', 'Sottomod', 'Podmod', 'Alt mod', 'ม็อดย่อย']],
   ['其它', ['其它', 'Other', 'その他', '기타', 'Прочее', 'Sonstiges', 'Autre', 'Otros', 'Outros', 'Altro', 'Inne', 'Diğer', 'อื่นๆ']],
+  // ── ㊱ 2026-11-24：子 Mod 装卸时的按钮过程态（「安装中」早就在册，只缺这一个）──
+  ['卸载中', ['卸載中', 'Removing', '削除中', '삭제 중', 'Удаление', 'Entfernen', 'Retrait', 'Quitando', 'Removendo', 'Rimozione', 'Usuwanie', 'Kaldırılıyor', 'กำลังนำออก']],
 ];
 
 /**
