@@ -338,7 +338,7 @@ async function runInstall({
   // 📒 安装账本：包里有几个文件、真正装了哪几个、哪些没装（文档 / 没选的那套变体）。
   // 用户 2026-11-24：「不是用名称进行关联，而是安装时就记录好，哪些文件安装了哪些没装」。
   // 落进注册表记录后，详情页不再需要靠名字去盘上猜。
-  const ledger = installer.packageLedger(plan);
+  const ledger = installer.packageLedger(plan, r.manifest);
 
   registry.upsert({
     id,

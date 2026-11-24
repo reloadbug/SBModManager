@@ -82,7 +82,7 @@ console.log('\n【B】安装账本：包里有几个、装了哪几个、哪些�
 console.log('\n【C】安装时就把账本写进注册表记录（不靠事后按名字关联）');
 {
   const src = readSrc('src/main/installFlow.js');
-  ok('C1 installFlow 调了 packageLedger', src.includes('installer.packageLedger(plan)'));
+  ok('C1 installFlow 调了 packageLedger（带实际 manifest）', src.includes('installer.packageLedger(plan, r.manifest)'));
   ok('C2 注册表记录里写了 pkg.entryCount / pkg.notInstalled',
     src.includes('entryCount: ledger.entryCount') && src.includes('notInstalled: ledger.notInstalled'));
   ok('C3 pkg 里记了安装包路径与时间', src.includes('archivePath: plan.archivePath') && src.includes('at: new Date().toISOString()'));

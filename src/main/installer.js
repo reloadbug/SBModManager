@@ -8,6 +8,9 @@ const game = require('./game');
 const paths = require('./paths');
 const modTag = require('./modTag');
 
+// 进程内安装序号：与时间戳 + 随机串一起拼临时目录名，保证并发安装不撞车。
+let extractSeq = 0;
+
 /**
  * Mod 安装器：识别压缩包结构 → 算出落点 → 解压复制 → 返回清单。
  *
@@ -1207,7 +1210,14 @@ async function install(root, plan, opts = {}) {
   }
 
   const stamp = Date.now();
-  const tmp = path.join(paths.TMP, 'extract-' + stamp);
+  // 🔴 临时目录必须全局唯一，不能只用毫秒时间戳。
+  // 2026-11-25 实测：批量下载完成后多个 mod 同时安装，两次 `Date.now()` 落在同一毫秒
+  // → 共用同一个 `extract-<stamp>`；先完成的那个 `finally { rmrf(tmp) }` 把对方的解压
+  // 文件全删了 → 对方所有 src 不存在 → 全部 skipped → manifest 空 → 注册表记成「已装、
+  // 开启于当前时间」，但磁盘一个文件都没有（用户报「安装后没解压」）。
+  // 加进程内自增计数 + 随机串，彻底杜绝撞车。
+  // 随机串（含进程内自增）保证并发安装绝不共用同一个临时目录。
+  const tmp = path.join(paths.TMP, 'extract-' + stamp + '-' + (++extractSeq) + '-' + Math.random().toString(36).slice(2, 8));
   // 兜底清扫：上一次若因句柄未释放而没删干净，这次顺手带走
   try { sweepStaleTmp(); } catch { /* 忽略 */ }
   try { sweepTrash(); } catch { /* 忽略 */ }
@@ -1221,19 +1231,20 @@ async function install(root, plan, opts = {}) {
   const backed = [];
   let written = 0;
   let skipped = 0;
+  let srcMissing = 0;   // 解压目录里找不到源文件（并发撞 tmp / 解压失败的信号）
   let backupFailed = 0;
+  const total = plan.mapping.length;
 
   try {
     onProgress && onProgress({ stage: 'extract', percent: 0 });
     await archive.extract(plan.archivePath, tmp);
     onProgress && onProgress({ stage: 'extract', percent: 100 });
 
-    const total = plan.mapping.length;
     for (let i = 0; i < total; i++) {
       const m = plan.mapping[i];
       const src = path.join(tmp, m.from.split('/').join(path.sep));
 
-      if (!fs.existsSync(src)) { skipped++; continue; }
+      if (!fs.existsSync(src)) { skipped++; srcMissing++; continue; }
 
       if (onConflict === 'skip' && fs.existsSync(m.to)) { skipped++; continue; }
 
@@ -1269,6 +1280,17 @@ async function install(root, plan, opts = {}) {
     }
   } finally {
     rmrf(tmp);
+  }
+
+  // 🔴 零写入保护：源文件全丢（srcMissing>0 且一个都没写进去）→ 失败，不能当成功返回。
+  // 2026-11-25 用户报「库里压缩包安装后没解压、却记成已启用」：根因是并发安装撞了
+  // 同一个临时目录（现已修），但即便如此也必须有这道刹车 —— 源文件全找不到时，
+  // 绝不返回成功，让上层不要写注册表、不要记 enable 事件，任务该 failed 就 failed。
+  // ⚠️ 只挡「源丢失」，不挡 `onConflict:'skip'` 那种「目标已存在、故意全跳过」的
+  //    合法场景（那种 srcMissing===0，written 可以是 0）。
+  if (total > 0 && written === 0 && srcMissing > 0) {
+    throw new Error('安装失败：压缩包解压出的 ' + srcMissing + ' 个文件全部找不到，一个都没写进游戏目录'
+      + '（可能安装过程被打断，或临时目录被并发安装清理）。请重新安装一次。');
   }
 
   // 一个文件都没备份、且这个目录是我们新建的 → 不留空目录。
@@ -1450,13 +1472,22 @@ function verifyExisting(plan) {
  *
  * 用户 2026-11-24：「安装时就记录好，哪些文件安装了哪些没装」——所以这份账本在
  * `installFlow` 里**落进注册表记录**（`pkg` 字段），不依赖以后再扫一遍磁盘。
+ *
+ * 2026-11-25 修正：`installedManifest` 传**实际写进磁盘**的清单（install 返回的
+ * manifest）。并发安装撞临时目录导致一个都没写进去时，旧版只用 plan.mapping 记账，
+ * 会记成「7/7 全装了」却与空的 manifest 自相矛盾。现在有实际清单就按实际记。
  */
-function packageLedger(plan) {
+function packageLedger(plan, installedManifest = null) {
   const entries = (plan && plan.entries) || [];
-  const mapping = (plan && plan.mapping) || [];
+  // 有实际写入清单就用它（真实落盘），否则退回 plan.mapping（兼容旧调用）
+  const useActual = Array.isArray(installedManifest);
+  const installed = useActual
+    ? installedManifest.map(f => ({ rel: String((f && f.rel) || ''), to: String((f && f.path) || '') }))
+    : ((plan && plan.mapping) || []).map(m => ({ rel: String(m.rel || m.to || ''), to: '' }));
   const installedByKey = new Map();
-  for (const m of mapping) {
-    const rel = String(m.rel || m.to || '');
+  for (const m of installed) {
+    const rel = m.rel || m.to;
+    if (!rel) continue;
     installedByKey.set(fileKey(path.basename(rel)), rel);
   }
   const notInstalled = [];
@@ -1487,7 +1518,7 @@ function packageLedger(plan) {
   }
   return {
     entryCount: entries.length,
-    installedCount: mapping.length,
+    installedCount: installed.length,
     notInstalled,
     notInstalledCount: notInstalled.length,
     subs: Array.from(subs.values()),
