@@ -1318,5 +1318,6 @@
     '未下载': 'Non scaricato',
     'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）': 'Su Nexus ma non scaricato (clicca per sfogliare online)',
     '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」': 'Scegli la cartella del gioco nella finestra di sistema; salva e verifica subito',
+    '补登记': 'Registra',
   });
 })();

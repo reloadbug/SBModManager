@@ -1318,5 +1318,6 @@
     '未下载': 'Nicht geladen',
     'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）': 'Auf Nexus, aber noch nicht geladen (klicken zum Online-Stöbern)',
     '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」': 'Spielordner im Systemdialog wählen; wird sofort gespeichert und geprüft',
+    '补登记': 'Nachtragen',
   });
 })();

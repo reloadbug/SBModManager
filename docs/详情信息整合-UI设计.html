@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Mod 详情信息整合 · UI 设计图 v2（单一界面）</title>
+<style>
+  :root{
+    --bg:#14161A; --panel:#1B1E24; --panel2:#22262E; --panel3:#2A2F38;
+    --border:#2C313A; --border2:#3A414D;
+    --text:#E6E9EF; --dim:#8C94A3; --dim2:#666E7C;
+    --accent:#E8A33D; --accent-d:#C8852A; --red:#D9534F; --ok:#3FB950; --blue:#4A9EFF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Microsoft YaHei UI","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:12px;padding:0 0 30px}
+  .pagehead{padding:16px 24px 12px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .pagehead h1{font-size:17px;color:var(--accent);margin-bottom:6px}
+  .pagehead p{color:var(--dim);font-size:11.5px;line-height:1.7;max-width:1180px}
+  .pagehead b{color:var(--text)}
+  .switcher{display:flex;align-items:center;gap:8px;padding:12px 24px 0}
+  .switcher .hint{color:var(--dim2);font-size:10.5px;margin-right:4px}
+  .sw-btn{font-size:11px;padding:5px 12px;border-radius:7px;border:1px solid var(--border2);background:var(--panel2);color:var(--dim);cursor:pointer}
+  .sw-btn.on{background:var(--accent);border-color:var(--accent-d);color:#1A1206;font-weight:600}
+  .wrap{padding:12px 24px;display:flex;justify-content:center}
+  .drawer{width:470px;max-width:100%;background:var(--panel);border:1px solid var(--border2);border-radius:12px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .dh{padding:14px 15px 12px;border-bottom:1px solid var(--border);position:relative}
+  .dh h2{font-size:14.5px;font-weight:600;line-height:1.35;padding-right:20px}
+  .dh .x{position:absolute;right:13px;top:13px;color:var(--dim2);font-size:15px}
+  .dh .sub{color:var(--dim);font-size:11px;margin-top:5px}
+  .dbody{padding:12px 15px;max-height:none}
+  .glabel{font-size:10.5px;color:var(--ok);margin-bottom:6px}
+  .glabel.off{color:var(--dim2)}
+  .gallery{display:flex;gap:6px;margin-bottom:11px;flex-wrap:wrap}
+  .gallery .g{width:52px;height:44px;border-radius:6px;background:linear-gradient(135deg,#3a2f2a,#1f2822);border:1px solid var(--border2)}
+  .acts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .btn{font-size:10.5px;padding:4px 9px;border-radius:7px;border:1px solid var(--border2);background:var(--panel2);color:var(--text)}
+  .btn.p{background:var(--accent);border-color:var(--accent-d);color:#1A1206;font-weight:600}
+  .btn.bad{color:#ff6b60;border-color:rgba(229,52,43,.45)}
+  .btn.ver{color:#8fd3ff;border-color:rgba(76,160,255,.4)}
+  .btn.na{color:#4c535f;font-style:italic;opacity:.7}
+  .btn.on-mark{background:rgba(229,52,43,.18)}
+  .lbl{font-size:10.5px;color:var(--dim);letter-spacing:.5px;margin:13px 0 7px;border-top:1px dashed var(--border);padding-top:9px}
+  .lbl.first{border-top:none;padding-top:0}
+  .lbl.core{color:var(--accent)}
+  .lbl.core::after{content:'  ← 唯一字段集，三状态只是值不同';color:var(--dim2);font-size:9.5px;letter-spacing:0;text-transform:none}
+  .info{border-left:2px solid rgba(232,163,61,.55);padding-left:9px}
+  .kv{display:grid;grid-template-columns:74px 1fr;gap:6px;font-size:11.5px;line-height:1.85;min-height:21px}
+  .kv .k{color:var(--dim)}
+  .kv .v{color:var(--text);word-break:break-all}
+  .kv.na .k,.kv.na .v{color:#4c535f;font-style:italic}
+  .v.ok{color:var(--ok)} .v.blue{color:var(--blue)} .v.warn{color:var(--accent)} .v.bad{color:#ff6b60}
+  .mini{font-size:9.5px;color:var(--dim2);font-weight:400}
+  .pin{font-size:9.5px;color:var(--blue);border:1px solid rgba(74,158,255,.4);border-radius:4px;padding:0 4px;margin-left:4px}
+  .tl{font-size:11px;line-height:1.85;color:var(--dim)}
+  .tl b{color:var(--text);font-weight:400}
+  .tl .t{color:var(--accent)}
+  .fli{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;padding:7px 9px;margin-bottom:6px;background:var(--panel2)}
+  .fli.grey{opacity:.45}
+  .fli .fn{font-size:11px;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fli .fs{font-size:9.5px;color:var(--dim2)}
+  .fli .fb{font-size:9.5px;padding:2px 7px;border:1px solid var(--border2);border-radius:5px;color:var(--dim)}
+  .desc{font-size:11px;line-height:1.7;color:var(--dim)}
+  .desc p{margin-bottom:6px}
+  .srcbox{font-size:10px;color:var(--blue);word-break:break-all;border:1px solid var(--border);border-radius:7px;padding:7px 9px;background:var(--panel2)}
+  .dfoot{display:flex;gap:6px;flex-wrap:wrap;padding:10px 15px;border-top:1px solid var(--border);background:var(--panel2)}
+  .dfoot .btn{font-size:10px}
+  .note{background:rgba(232,163,61,.07);border:1px solid rgba(232,163,61,.3);border-radius:8px;padding:9px 12px;margin:0 24px 6px;font-size:11px;color:var(--dim);line-height:1.7;max-width:1180px}
+  .note b{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="pagehead">
+  <h1>Mod 详情信息整合 · UI 设计图 v2（单一界面）</h1>
+  <p>最终软件里<b>只有一个详情抽屉</b>，不按状态分三套界面。顶部三个按钮只是设计评审用的预览开关，用来切换「同一套布局里的三份不同数据」，实际软件里不存在。所有字段固定顺序、固定行数；当前状态用不上的字段不是消失，而是灰色斜体占位（按你的要求「都保留、空着或灰色」）。</p>
+</div>
+
+<div class="note">
+  <b>统一字段集（20 项，固定顺序）</b>：①Mod ID ②状态 ③类型（含「服装 / CNS 服装」细分与判定依据）④版本 ⑤作者 ⑥分类 ⑦成人 ⑧下载量 ⑨点赞数 ⑩发布时间 ⑪更新时间 ⑫修改时间 ⑬开启时间 ⑭禁用时间 ⑮安装时间 ⑯登记状态 ⑰安装位置 ⑱压缩包位置 ⑲文件数 ⑳占用。<br>
+  <b>CNS 服装判定</b>不再只看名称：名字含 cns、<b>详细描述里提到</b>、<b>解压后文件名含 dekcns / cns</b> 三者任一命中即算 CNS 服装；前置框架（UE4SS / CNS 本体 / ATOOL）仍单列为「前置组件」，不混进服装。<br>
+  <b>缓存</b>：描述、机器翻译后的中文译文、版本/作者/下载量等，都写进本地 mod-info 档案，翻译成功一次后永久保留，不再重翻。
+</div>
+
+<div class="switcher">
+  <span class="hint">设计评审预览切换（实际软件无此条）：</span>
+  <button class="sw-btn on" id="sw-installed" onclick="show('installed')">已安装</button>
+  <button class="sw-btn" id="sw-downloaded" onclick="show('downloaded')">已下载未安装</button>
+  <button class="sw-btn" id="sw-online" onclick="show('online')">在线 / 已关联</button>
+</div>
+
+<div class="wrap">
+<div class="drawer">
+  <div class="dh"><h2 id="dTitle">—</h2><div class="x">✕</div><div class="sub" id="dSub">—</div></div>
+  <div class="dbody">
+    <div class="glabel" id="galLabel">图集</div>
+    <div class="gallery" id="gallery"></div>
+    <div class="acts" id="acts1"></div>
+    <div class="acts" id="acts2"></div>
+
+    <div class="lbl core first">信息</div>
+    <div class="info" id="info"></div>
+
+    <div class="lbl">状态变更记录</div>
+    <div class="tl" id="history"></div>
+
+    <div class="lbl">已安装的文件</div>
+    <div id="files"></div>
+
+    <div class="lbl">Nexus 上的文件</div>
+    <div id="nexusFiles"></div>
+
+    <div class="lbl">原压缩包</div>
+    <div id="archive"></div>
+
+    <div class="lbl">说明</div>
+    <div class="desc" id="desc"></div>
+
+    <div class="lbl">来源</div>
+    <div class="srcbox" id="source"></div>
+  </div>
+  <div class="dfoot" id="foot"></div>
+</div>
+</div>
+
+<script>
+var FIELDS = [
+  ['id','Mod ID'], ['status','状态'], ['type','类型'], ['version','版本'],
+  ['author','作者'], ['category','分类'], ['adult','成人'], ['downloads','下载量'],
+  ['endorsements','点赞数'], ['posted','发布时间'], ['updated','更新时间'], ['mtime','修改时间'],
+  ['enabledAt','开启时间'], ['disabledAt','禁用时间'], ['installedAt','安装时间'], ['registry','登记状态'],
+  ['installPath','安装位置'], ['archivePath','压缩包位置'], ['fileCount','文件数'], ['size','占用']
+];
+
+var DATA = {
+  installed:{
+    title:'Takanashi Channel Ocean string…', sub:'服装 · 已启用',
+    gal:'图集 · 5 张（已缓存到本地）', gallery:5,
+    v:{
+      id:'#4019 <span class="mini">· 文件 12345</span>', status:'<span class="v ok">已启用</span>',
+      type:'Pak 模组 · <b>CNS 服装</b> <span class="mini">（依据：解压文件含 dekcns.json）</span>',
+      version:'v1.0', author:'DekitaRPG', category:'服装', adult:'否', downloads:'2,775', endorsements:'1,204',
+      posted:'2024-06-01', updated:'2025-12-14', mtime:'2026-11-24 18:20',
+      enabledAt:'11-24 18:20 <span class="mini">（补记）</span>', disabledAt:'', installedAt:'11-24 18:20',
+      registry:'已登记（含来源信息）',
+      installPath:'C:\\games\\Star Blade\\…\\~Mods<span class="pin">📁 打开</span>',
+      archivePath:'4019_Takanashi…deluxe.7z<span class="pin">📦 定位</span>',
+      fileCount:'3', size:'1.8 MB'
+    },
+    history:'<b><span class="t">11-24 18:20</span> · 开启</b><br><b><span class="t">11-24 18:20</span> · 安装</b><br><b><span class="t">11-24 18:18</span> · 下载</b>',
+    files:'<div class="fli"><div><div class="fn">TK_Ocean_string1404.dekcns.json</div><div class="fs">cns · v1.0 · 9.1 KB</div></div><span class="fb">已启用</span></div>',
+    nexusFiles:'', archive:'<div class="fli"><div class="fn">4019_Takanashi…deluxe.7z</div><span class="fb">📦 定位</span></div>',
+    desc:'<p>中文 / English 切换 · <b>译文已缓存到本地，不再重翻</b></p>',
+    source:'https://www.nexusmods.com/stellarblade/mods/4019',
+    acts1:'<span class="btn">👍</span><span class="btn">👎</span><span class="btn bad">⚠ 标为有 bug</span><span class="btn ver">✓ 标为已验证</span>',
+    acts2:'<span class="btn">全部禁用</span><span class="btn">在浏览器打开</span>',
+    foot:'<span class="btn">📁 打开所在文件夹</span><span class="btn">🌐 打开 Mod 网页</span><span class="btn na">📦 无安装包</span><span class="btn bad">卸载</span>'
+  },
+  downloaded:{
+    title:'MialygoSa Skin - EVE', sub:'v1.1 · MialygoSa · 服装',
+    gal:'封面（未安装，无本地图集）', gallery:1,
+    v:{
+      id:'#3807', status:'<span class="v blue">已下载，未安装</span>',
+      type:'压缩包 · <b>CNS 服装</b> <span class="mini">（依据：详细描述含 CNS compatible）</span>',
+      version:'v1.2', author:'MialygoSa', category:'服装', adult:'否', downloads:'2,775', endorsements:'',
+      posted:'', updated:'2025-11-02', mtime:'2026-11-24 12:03',
+      enabledAt:'', disabledAt:'', installedAt:'', registry:'下载包（未安装）',
+      installPath:'', archivePath:'3807_MialygoSa_Skin-EVE_1.2.zip<span class="pin">📦 定位</span>',
+      fileCount:'', size:'27.8 MB（压缩包）'
+    },
+    history:'<b><span class="t">11-24 12:03</span> · 下载</b>',
+    files:'', nexusFiles:'<div class="fli"><div><div class="fn">MialygoSa CNS Compatible 1.2</div><div class="fs">主文件 · v1.2 · 27.8 KB</div></div><span class="fb">本地已有</span></div><div class="fli"><div><div class="fn">MialygoSa Body and Outfit</div><div class="fs">主文件 · v1.2 · 27.8 KB</div></div><span class="fb">⬇ 下载</span></div>',
+    archive:'<div class="fli"><div class="fn">3807_MialygoSa_Skin-EVE_1.2.zip</div><span class="fb">📦 定位</span></div>',
+    desc:'<p>Transform EVE into MialygoSa with white hair… <span class="mini">（原文已缓存）</span></p>',
+    source:'https://www.nexusmods.com/stellarblade/mods/3807',
+    acts1:'<span class="btn">👍</span><span class="btn">👎</span><span class="btn bad">⚠ 标为有 bug</span><span class="btn ver">✓ 标为已验证</span>',
+    acts2:'<span class="btn p">安装到游戏</span>',
+    foot:'<span class="btn na">📁 尚未安装</span><span class="btn">🌐 打开 Mod 网页</span><span class="btn">📦 定位安装包</span><span class="btn bad">🗑 删掉安装包</span>'
+  },
+  online:{
+    title:'EVE Vampire Armor (CNS compatible)', sub:'服装 · 已启用 · 已关联 Nexus',
+    gal:'图集 · 5 张（已缓存到本地）', gallery:5,
+    v:{
+      id:'#2704', status:'<span class="v ok">已启用</span>',
+      type:'Pak 模组 · <b>CNS 服装</b> <span class="mini">（依据：文件名含 cns）</span>',
+      version:'v2.1 <span class="mini">（档案补上）</span>', author:'AuthorName <span class="mini">（档案补上）</span>',
+      category:'服装', adult:'否', downloads:'18,420', endorsements:'3,106',
+      posted:'2024-03-11', updated:'2025-12-14', mtime:'2025-12-14 17:31',
+      enabledAt:'11-24 18:35 <span class="mini">（补记）</span>', disabledAt:'', installedAt:'11-24 18:35',
+      registry:'未登记 · 已关联 Nexus 来源',
+      installPath:'C:\\games\\Star Blade\\…\\~Mods<span class="pin">📁 打开</span>',
+      archivePath:'', fileCount:'3', size:'273.9 MB'
+    },
+    history:'<b><span class="t">11-24 18:35</span> · 开启（补记）</b><br><b><span class="t">—</span> · 手动放入，无下载/安装记录</b>',
+    files:'<div class="fli"><div><div class="fn">EVE_Vampire_Armor.pak</div><div class="fs">Pak 模组 · 273.9 MB</div></div><span class="fb">已启用</span></div>',
+    nexusFiles:'', archive:'',
+    desc:'<p>中文 / English · <b>译文缓存到本地</b></p>',
+    source:'https://www.nexusmods.com/stellarblade/mods/2704',
+    acts1:'<span class="btn">👍</span><span class="btn">👎</span><span class="btn bad on-mark">⚠ 已标有 bug</span><span class="btn ver">✓ 已验证</span>',
+    acts2:'<span class="btn">全部禁用</span><span class="btn">在浏览器打开</span>',
+    foot:'<span class="btn">📁 打开所在文件夹</span><span class="btn">🌐 打开 Mod 网页</span><span class="btn na">📦 无压缩包记录</span><span class="btn bad">卸载</span>'
+  }
+};
+
+function show(k){
+  var d = DATA[k], i;
+  for(i=0;i<3;i++){
+    var b=document.getElementById('sw-'+['installed','downloaded','online'][i]);
+    b.className = 'sw-btn' + ((['installed','downloaded','online'][i]===k)?' on':'');
+  }
+  document.getElementById('dTitle').textContent=d.title;
+  document.getElementById('dSub').textContent=d.sub;
+  document.getElementById('galLabel').textContent=d.gal;
+  document.getElementById('galLabel').className = (k==='downloaded')?'glabel off':'glabel';
+  var g=''; for(i=0;i<d.gallery;i++) g+='<div class="g"></div>';
+  document.getElementById('gallery').innerHTML=g;
+  document.getElementById('acts1').innerHTML=d.acts1;
+  document.getElementById('acts2').innerHTML=d.acts2;
+  var h='';
+  for(i=0;i<FIELDS.length;i++){
+    var key=FIELDS[i][0], label=FIELDS[i][1], val=d.v[key]||'';
+    h += '<div class="kv'+(val?'':' na')+'"><span class="k">'+label+'</span><span class="v">'+(val||'— 该状态不适用 / 档案无记录')+'</span></div>';
+  }
+  document.getElementById('info').innerHTML=h;
+  document.getElementById('history').innerHTML=d.history;
+  document.getElementById('files').innerHTML=d.files||'<div class="fli grey"><div class="fn">（当前状态无已装文件）</div></div>';
+  document.getElementById('nexusFiles').innerHTML=d.nexusFiles||'<div class="fli grey"><div class="fn">（当前状态无 Nexus 文件列表）</div></div>';
+  document.getElementById('archive').innerHTML=d.archive||'<div class="fli grey"><div class="fn">（无压缩包记录）</div></div>';
+  document.getElementById('desc').innerHTML=d.desc;
+  document.getElementById('source').innerHTML=d.source;
+  document.getElementById('foot').innerHTML=d.foot;
+}
+show('installed');
+</script>
+</body>
+</html>

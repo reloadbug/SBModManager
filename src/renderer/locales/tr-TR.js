@@ -1318,5 +1318,6 @@
     '未下载': 'İndirilmedi',
     'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）': 'Nexus\'ta var ama indirilmedi (çevrimiçi göz atmak için tıkla)',
     '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」': 'Oyun klasörünü sistem penceresinden seç; hemen kaydedilir ve doğrulanır',
+    '补登记': 'Kaydet',
   });
 })();

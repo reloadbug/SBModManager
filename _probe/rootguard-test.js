@@ -20,7 +20,7 @@
  *   D. ipc.js 的 inspectGame() 只回报事实（current: '' + reason），不静默采用候选
  *   E. 新通道 game:chooseRoot（只选不生效）/ game:rootCandidates + preload 暴露
  *   F. 设置页三个节点接线 + 样式
- *   G. i18n：5 条中文原文在 keys.json 里，总条数 1315
+ *   G. i18n：5 条中文原文在 keys.json 里，总条数 1316
  */
 
 const fs = require('fs');
@@ -286,7 +286,7 @@ console.log('\n【F】设置页「游戏目录」行：选目录 / 候选下拉 
 }
 
 /* ================= G. i18n ================= */
-console.log('\n【G】i18n：5 条新文案在册，总条数 1315');
+console.log('\n【G】i18n：5 条新文案在册，总条数 1316');
 {
   const keys = JSON.parse(fs.readFileSync(path.join(__dirname, 'i18n-keys.json'), 'utf8'));
   const WANT = [
@@ -297,7 +297,7 @@ console.log('\n【G】i18n：5 条新文案在册，总条数 1315');
     '这个目录里没有 Mod 记录，候选列表里另一个目录有 %s 条'
   ];
   for (const k of WANT) ok('keys.json 里有：' + k.slice(0, 24), keys.includes(k));
-  eq('键表总条数', keys.length, 1315);
+  eq('键表总条数', keys.length, 1316);
   ok('键表里没有重复项', new Set(keys).size === keys.length,
     keys.length - new Set(keys).size + ' 条重复');
 

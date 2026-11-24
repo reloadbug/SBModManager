@@ -1717,6 +1717,134 @@ function uninstall(id, { purge = false } = {}) {
     backupDir: purge ? null : dest
   };
 }
+/* ---------------- 补登记：记录丢了，但文件还在盘上 ---------------- */
+
+/**
+ * 「注册表说没装过，可文件明明在游戏目录里」—— 把记录按安装包补回来。
+ *
+ * 什么时候会这样（都是真事）：
+ *   · 换过游戏目录，核对时按旧路径找不到文件，把整条记录当「文件全丢」删了
+ *     （mod 4184「Blossom Butterfly Sexy JK Girl」就是这么从注册表里消失的）；
+ *   · 用户自己把 mod 拷进 ~Mods，管理器从来没写过记录。
+ *
+ * ⚠️ 这里**一个文件都不写、也不解压**：只核对每个目标文件是不是已经在位且大小一致，
+ *    然后把注册表条目照正常安装的形状补上。文件不全就让用户走正常安装，不硬补。
+ */
+async function registerExisting({ taskId = null, archivePath = null, meta = null } = {}) {
+  const root = currentRoot();
+  if (!root) throw new Error('尚未配置有效的游戏目录');
+  const L = game.layout(root);
+
+  let task = null;
+  if (taskId) {
+    try { task = engine.get(taskId); } catch { task = null; }
+    if (!task) throw new Error('找不到这条下载记录（可能已被清理），没法补登记');
+  }
+  const ap = archivePath || (task && task.archivePath) || null;
+  if (!ap) throw new Error('这个 Mod 的安装包已经不在管理器里了，没法补登记');
+  if (!fs.existsSync(ap)) throw new Error('安装包文件已不存在：' + ap);
+
+  const m = { ...(task && task.meta ? task.meta : {}), ...(meta || {}) };
+  if (task) m.taskId = task.id;
+
+  const ownedPaths = installFlow.ownedPathsFor(registry, m);
+  let plan = await installer.analyze(root, ap, m, { ownedPaths });
+  // 多变体包：跟正常安装同一口径 —— 互不冲突的就全装，别卡在「先选哪几套」
+  if (plan && !plan.ok && plan.needsTargetPick && Array.isArray(plan.options) && plan.options.length
+      && plan.hasConflicts === false) {
+    const dirs = (Array.isArray(plan.defaultPick) && plan.defaultPick.length)
+      ? plan.defaultPick : plan.options.map(o => o.dir).filter(Boolean);
+    if (dirs.length) plan = await installer.analyze(root, ap, m, { ownedPaths, pickDirs: dirs });
+  }
+  if (!plan || !plan.ok) {
+    throw new Error((plan && (plan.diagnosis || plan.reason)) || '这个安装包的结构认不出来，没法补登记');
+  }
+
+  const v = installer.verifyExisting(plan);
+  if (!v.present.length) {
+    throw new Error('游戏目录里找不到这个安装包里的任何文件 —— 文件确实不在了，请直接「安装」重装');
+  }
+  if (!v.ok) {
+    const bad = v.missing.concat(v.mismatched).map(x => path.basename(x.path));
+    const names = bad.slice(0, 3).join('、');
+    throw new Error('还有 ' + bad.length + ' 个文件不在位或大小不对（' + names
+      + (bad.length > 3 ? ' 等' : '') + '）—— 请直接「安装」重装，别补登记');
+  }
+
+  const manifest = v.present.map(f => ({ path: f.path, rel: f.rel, size: f.size }));
+  const enabled = !v.present.some(f => f.disabled);
+  const id = installFlow.registryIdFor(L, plan, manifest, m);
+  const born = v.present.map(f => f.bornAt).filter(Boolean).sort();
+  const nowIso = new Date().toISOString();
+  // 安装时间优先用文件自己的创建时间（补登记时这是唯一可信的原始时间）
+  const installedAt = born.length ? born[0] : nowIso;
+
+  registry.upsert({
+    id,
+    name: m.name || path.basename(ap, path.extname(ap)),
+    kind: plan.kind,
+    enabled,
+    ...(enabled ? { enabledAt: nowIso } : { disabledAt: nowIso }),
+    source: {
+      url: m.sourceUrl || m.url || null,
+      modId: m.modId || null,
+      fileId: m.fileId || null,
+      author: m.author || null,
+      version: m.version || null,
+      pictureUrl: m.pictureUrl || null
+    },
+    installedAt,
+    target: plan.target,
+    archivePath: ap,
+    manifest,
+    // 补登记没有「覆盖前备份」这回事 —— 文件本来就在，谁也没被覆盖
+    backupDir: null,
+    overwritten: [],
+    fileCount: manifest.length,
+    size: manifest.reduce((s, f) => s + (f.size || 0), 0),
+    taskId: m.taskId || null,
+    requiresCns: !!plan.requiresCns,
+    requiresAtool: !!plan.requiresAtool,
+    prereqKey: plan.prereqKey || null
+  });
+
+  invalidateLocalIndex();
+  syncLedger();
+  const rec = {
+    id,
+    name: m.name || path.basename(ap, path.extname(ap)),
+    kind: plan.kind,
+    meta: { modId: m.modId || null, source: { modId: m.modId || null } }
+  };
+  recordMod('install', rec, { detail: '按安装包补登记', at: installedAt });
+  if (enabled) recordMod('enable', rec, { detail: '补登记时就是启用态', at: nowIso });
+  logger.event('mods:registered', {
+    id, modId: m.modId || null, files: manifest.length, enabled,
+    taskId: m.taskId || null, installedAt
+  });
+
+  // 顺手让下载队列也跟上：这条任务从「已下载」变回「已安装」
+  //
+  // ⚠️ 只靠 syncFromInstalled 不够：它只翻**终态**任务（installed/failed/cancelled/…），
+  //    而补登记面对的正是 `downloaded`（安装包在、文件在、记录丢了）。
+  try {
+    if (task) engine.markRegistered(task.id, { registryId: id, target: plan.target, at: installedAt });
+  } catch { /* 队列对不上不影响补登记本身 */ }
+  try { engine.syncFromInstalled(scanner.scan(root, registry, linkReaderSafe()), { reconcile: true }); }
+  catch { /* 队列对不上不影响补登记本身 */ }
+
+  return {
+    id,
+    name: rec.name,
+    kind: plan.kind,
+    kindLabel: plan.kindLabel,
+    files: manifest.length,
+    size: manifest.reduce((s, f) => s + (f.size || 0), 0),
+    enabled,
+    installedAt,
+    target: plan.target
+  };
+}
 /* ---------------- Nexus ---------------- */
 
 function parseNexusUrl(url) {
@@ -2179,6 +2307,8 @@ function register() {
   handle('mods:setEnabled', (id, enabled) => setEnabled(id, enabled));
   handle('mods:setEnabledMany', (ids, enabled) => setEnabledMany(ids, enabled));
   handle('mods:uninstall', (id, opts) => uninstall(id, opts));
+  // 记录丢了但文件还在盘上：按安装包把注册表条目补回来（不解压、不写文件）
+  handle('mods:registerExisting', (opts) => registerExisting(opts || {}));
   /**
    * 管理器自带安装包的盘点：`data/library` 里那些包，哪些现在能装进当前游戏目录。
    *

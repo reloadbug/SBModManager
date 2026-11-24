@@ -346,7 +346,32 @@ function createDownloadEngine(opts = {}) {
 
   function list() { return queue.list(); }
   function get(id) { return queue.get(id); }
-  function activeCount() { return queue.list().filter(t => ACTIVE.has(t.status)).length; }
+
+  /**
+   * 补登记之后，把任务从「已下载」翻成「已安装」。
+   *
+   * 为什么不复用 `syncFromInstalled`：它只在**终态**任务上做「命中 modId 就翻已安装」的
+   * 收尾动作，而 `downloaded` 不在终态里（TERMINAL 是 installed/failed/cancelled/
+   * interrupted/paused）—— 恰恰是补登记要处理的那个处境：安装包在、文件在、记录丢了。
+   * 这里显式写清楚：文件一个没动，只是记录刚补回来。
+   */
+  function markRegistered(id, info = {}) {
+    const t = get(id);
+    if (!t) return null;
+    return patch(id, {
+      status: 'installed',
+      error: null,
+      install: {
+        ...(t.install || {}),
+        registryId: info.registryId || null,
+        target: info.target || (t.install && t.install.target) || '',
+        verified: true,
+        missing: false,
+        missingReason: null,
+        registeredAt: info.at || new Date().toISOString()
+      }
+    });
+  }  function activeCount() { return queue.list().filter(t => ACTIVE.has(t.status)).length; }
   function stats() {
     const tasks = queue.list();
     return {
@@ -1383,7 +1408,7 @@ function createDownloadEngine(opts = {}) {
     // 2026-10-14 新增：暂停 / 全部停止 / 一键按默认选择安装 / 彻底删除
     pause, pauseAll, confirmInstallDefault, purge,
     markAuthFailed, patchMeta,
-    ensureImages, syncFromInstalled,
+    ensureImages, syncFromInstalled, markRegistered,
     refreshUnknownPlans,
     reviveBrokenInstalls,
     /** 手动跑一次老归档搬家（设置页/测试用） */

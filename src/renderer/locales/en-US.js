@@ -1318,5 +1318,6 @@
     '未下载': 'Not downloaded',
     'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）': 'On Nexus but not downloaded yet (click to browse online)',
     '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」': 'Open a folder picker for the game root; it saves and checks right away, no extra click needed',
+    '补登记': 'Register',
   });
 })();

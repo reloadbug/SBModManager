@@ -17,6 +17,58 @@ const UE4SS_BUILTIN = new Set([
 
 const PAK_EXT = /\.(pak|ucas|utoc)$/i;
 
+/**
+ * CNS 服装数据文件（`.dekcns.json` / `.dekani.json` / 关掉后的 `.dekcns.disabled.json`）。
+ *
+ * 它不是独立 mod，是某个 pak 的「外观定义」—— 两者属于同一套东西，
+ * 只是名字常常不完全一样（见 `normStem` / `diceCoeff` 里的说明）。
+ */
+const CNS_DATA = /\.(dekcns|dekani)(\.json)?$/i;
+
+/** 归一化名字主干：去掉 Nexus 标识 `[nx1234]`、扩展名、所有非字母数字，统一小写 */
+function normStem(name) {
+  return String(name)
+    .replace(/\s*\[nx\d+\]/ig, '')
+    .replace(CNS_DATA, '')
+    .replace(PAK_EXT, '')
+    .replace(/\.json$/i, '')
+    .replace(/[^a-z0-9]+/ig, '')
+    .toLowerCase();
+}
+
+/**
+ * 字符双字组 Dice 系数：0 = 毫无关系，1 = 完全一样。
+ *
+ * 为什么不用「相等 / 前缀」这种硬规则（2026-11-24，mod 4184 实测）：
+ * 同一套东西两边名字经常只差几个字符 ——
+ *   pak  `Kamenlaideng_Sexy Jk_P`     ↔ 数据 `Kamenlaideng_SexyJK`      （差 `_P` 与一处下划线）
+ *   pak  `AiK_NaiK_MaskAbstract_10004`↔ 数据 `AiK_NaiK_MaskAbstractSE_10004`（数据多了 `SE`）
+ * 硬规则一条也匹配不上，相似度却能到 0.97 / 0.99。
+ */
+function diceCoeff(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const grams = (s) => {
+    const m = new Map();
+    for (let i = 0; i < s.length - 1; i++) {
+      const g = s.slice(i, i + 2);
+      m.set(g, (m.get(g) || 0) + 1);
+    }
+    return m;
+  };
+  const A = grams(a), B = grams(b);
+  let inter = 0;
+  for (const [g, n] of A) {
+    const k = B.get(g);
+    if (k) inter += Math.min(n, k);
+  }
+  const total = (a.length - 1) + (b.length - 1);
+  return total > 0 ? (2 * inter) / total : 0;
+}
+
+/** 挂伴随文件的相似度门槛：实测 ≥0.80 都是同一套，≤0.79 全是另一个 mod（如 Bayonetta 0.47） */
+const CNS_MATCH_MIN = 0.8;
+
 /** 解析 ue4ss/Mods/mods.txt，得到 { 名称: 是否启用 } */
 function parseModsTxt(file) {
   const map = {};
@@ -31,7 +83,14 @@ function parseModsTxt(file) {
   return map;
 }
 
-/** 扫描 ~Mods：按基名分组（一个 mod 可能由 .pak + .ucas + .utoc 多个文件组成） */
+/**
+ * 扫描 ~Mods：按基名分组（一个 mod 可能由 .pak + .ucas + .utoc 多个文件组成）。
+ *
+ * 另外把 CNS 服装数据文件（`.dekcns.json` / `.dekani.json`）挂到同名 pak 组上 ——
+ * 以前这里一句 `if (!PAK_EXT.test(base)) continue` 把它们全丢了，于是：
+ *   · 界面上完全看不见（`Kamenlaideng_SexyJK.dekcns.json` 就是这样隐形的）；
+ *   · 关掉 pak 不会关掉它的外观定义，卸载也不会带走它（半开半关 + 残留）。
+ */
 function scanPaks(L, registry) {
   let entries = [];
   try {
@@ -40,46 +99,92 @@ function scanPaks(L, registry) {
     return [];
   }
 
+  const statOf = (name) => {
+    try { return fs.statSync(path.join(L.modsDir, name)); } catch { return null; }
+  };
+
   const groups = new Map();
+  const cnsFiles = [];
   for (const e of entries) {
     const name = e.name;
     const disabled = toggleName.isDisabledName(name);
     const base = toggleName.stripDisabled(name);
-    if (!PAK_EXT.test(base)) continue;
+
+    if (!PAK_EXT.test(base)) {
+      if (CNS_DATA.test(base)) cnsFiles.push({ name, base, disabled });
+      continue;
+    }
     const key = base.replace(PAK_EXT, '');
 
     if (!groups.has(key)) {
       groups.set(key, { key, name: key, kind: 'pak', enabled: true, files: [], size: 0, mtime: null });
     }
     const g = groups.get(key);
-    let st = null;
-    try { st = fs.statSync(path.join(L.modsDir, name)); } catch { /* 忽略 */ }
+    const st = statOf(name);
     g.files.push({ name, disabled, size: st ? st.size : 0, mtime: st ? st.mtime.toISOString() : null });
     g.size += st ? st.size : 0;
     if (!g.mtime || (st && st.mtime.toISOString() > g.mtime)) g.mtime = st ? st.mtime.toISOString() : g.mtime;
     if (disabled) g.enabled = false;
   }
 
-  return [...groups.values()].map(g => {
-    const target = path.join(L.modsDir, g.files[0].name);
-    const reg = registry.byTarget(target) || registry.get('disk:paks:' + g.key);
-    return {
-      id: reg ? reg.id : 'disk:paks:' + g.key,
-      name: reg && reg.name ? reg.name : g.name,
-      kind: 'pak',
-      enabled: g.enabled,
-      files: g.files,
-      fileCount: g.files.length,
-      size: g.size,
-      mtime: g.mtime,
-      location: L.modsDir,
-      registered: !!reg,
-      // 文件名里带的 Nexus 标识（`名字 [nx123].pak`）—— 管理器装的东西自己带着身份，
-      // 注册表丢了也能认出来。见 src/main/modTag.js。
-      tag: modTag.parse(g.files[0].name),
-      meta: reg || null
-    };
-  });
+  // 每组对应哪条注册表记录（先算好，挂伴随文件时要看它登记没登记）
+  for (const g of groups.values()) {
+    g.target = path.join(L.modsDir, g.files[0].name);
+    g.reg = registry.byTarget(g.target) || registry.get('disk:paks:' + g.key);
+  }
+
+  // ---- 把 CNS 服装数据文件挂到同名的 pak 组上 ----
+  //
+  // 已登记的组也挂：磁盘上「一套 Mod 的文件」是连在一起用的，界面既然合并成一张卡，
+  // 关它 / 删它时数据文件就该跟着走。注册表 manifest 里本来就有这个文件的（比如
+  // 补登记回来的 4184），按 manifest 卸载同样会带走它，不会留残。
+  const all = [...groups.values()];
+  for (const c of cnsFiles) {
+    const stem = normStem(c.base);
+    let best = null;
+    let bestScore = 0;
+    for (const g of all) {
+      const d = diceCoeff(stem, normStem(g.key));
+      if (d > bestScore) { bestScore = d; best = g; }
+    }
+    if (!best || bestScore < CNS_MATCH_MIN) continue;   // 名字差太远 = 另一个 mod 的数据，别硬凑
+
+    const st = statOf(c.name);
+    best.files.push({
+      name: c.name,
+      disabled: c.disabled,
+      size: st ? st.size : 0,
+      mtime: st ? st.mtime.toISOString() : null,
+      companion: true,
+      cnsData: true
+    });
+    best.size += st ? st.size : 0;
+    if (st && (!best.mtime || st.mtime.toISOString() > best.mtime)) best.mtime = st.mtime.toISOString();
+    // 伴随件被单独关掉时不翻转 pak 组的开关态（那由 pak 自己决定），只留个标记
+    if (c.disabled) best.partialDisabled = true;
+    if (!best.cnsData) best.cnsData = [];
+    best.cnsData.push(c.name);
+  }
+
+  return [...groups.values()].map(g => ({
+    id: g.reg ? g.reg.id : 'disk:paks:' + g.key,
+    name: g.reg && g.reg.name ? g.reg.name : g.name,
+    kind: 'pak',
+    enabled: g.enabled,
+    files: g.files,
+    fileCount: g.files.length,
+    size: g.size,
+    mtime: g.mtime,
+    location: L.modsDir,
+    registered: !!g.reg,
+    // 文件名里带的 Nexus 标识（`名字 [nx123].pak`）—— 管理器装的东西自己带着身份，
+    // 注册表丢了也能认出来。见 src/main/modTag.js。
+    tag: modTag.parse(g.files[0].name),
+    meta: g.reg || null,
+    // 挂在 pak 组上的 CNS 服装数据文件（开关 / 卸载会跟着一起走）
+    cnsData: g.cnsData || [],
+    partialDisabled: !!g.partialDisabled
+  }));
 }
 
 /** 扫描 ue4ss/Mods 下的脚本 mod 目录 */
@@ -266,7 +371,30 @@ function scan(root, registry, links = null) {
   }
 
   // 3) ~Mods 里的 pak mod
-  out.push(...scanPaks(L, registry));
+  //
+  //    同一条注册表记录可能横跨多个 pak 基名 —— mod 4184「Blossom Butterfly Sexy JK Girl」
+  //    就是「Breast and Hip_Physics」+「Kamenlaideng_Blossom Butterfly JK」两组文件，
+  //    scanPaks 按基名会各出一条，id 却是同一条记录 → 界面上同一个 mod 出现两张卡。
+  //    这里按 id 合回一张（文件取并集），「一套 Mod 一张卡」。
+  const pakItems = [];
+  const pakById = new Map();
+  for (const m of scanPaks(L, registry)) {
+    const prev = pakById.get(m.id);
+    if (!prev) { pakById.set(m.id, m); pakItems.push(m); continue; }
+    const names = new Set(prev.files.map(f => f.name));
+    for (const f of m.files) {
+      if (names.has(f.name)) continue;
+      names.add(f.name);
+      prev.files.push(f);
+      prev.size += f.size || 0;
+    }
+    prev.fileCount = prev.files.length;
+    prev.enabled = prev.enabled && m.enabled;
+    if (m.mtime && (!prev.mtime || m.mtime > prev.mtime)) prev.mtime = m.mtime;
+    if (m.cnsData) prev.cnsData = (prev.cnsData || []).concat(m.cnsData);
+    if (m.partialDisabled) prev.partialDisabled = true;
+  }
+  out.push(...pakItems);
 
   // 4) UE4SS 脚本 mod
   //    跳过已被别的 mod（如 CNS）认领的目录，避免同一个 mod 出现两条
@@ -366,4 +494,8 @@ function scan(root, registry, links = null) {
 }
 
 // scanPaks / scanScriptMods 只给测试用：想单测「条目带不带 tag」时不该非得有整个游戏目录
-module.exports = { scan, parseModsTxt, claimedScriptDirs, UE4SS_BUILTIN, archiveInfo, scanPaks, scanScriptMods };
+module.exports = {
+  scan, parseModsTxt, claimedScriptDirs, UE4SS_BUILTIN, archiveInfo, scanPaks, scanScriptMods,
+  // 暴露给探针 / 测试：CNS 伴随文件的匹配规则
+  CNS_DATA, normStem, diceCoeff, CNS_MATCH_MIN
+};

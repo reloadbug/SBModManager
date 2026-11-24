@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const toggleName = require('./toggleName');
 
 const archive = require('./archive');
 const game = require('./game');
@@ -1371,9 +1372,68 @@ function pruneEmptyDirs(dirs, stopAt = []) {
   return removed;
 }
 
+/**
+ * 校验「这个安装包里要的东西是不是都已经在游戏目录里了」—— 只读，一个文件都不写。
+ *
+ * 用途：注册表记录丢了（换过游戏目录、核对时被当成「文件全丢」删掉），可文件其实
+ * 还好好躺在盘上（mod 4184 就是这样）。这时候不该重新解压 + 覆盖 168 MB，只要把
+ * 记录补回来 —— 见 ipc.registerExisting()。
+ *
+ * 判定标准是**大小一致**：原样拷贝过来的文件大小必然相同；大小不同说明盘上那份已经
+ * 被别的东西换过了，照着补登记只会指错文件，这种情况宁可让用户重装。
+ * 关掉的 mod 文件名带 `.disabled`，所以两种写法各试一次，并回传 `disabled` 标记。
+ */
+function verifyExisting(plan) {
+  const list = (plan && Array.isArray(plan.mapping)) ? plan.mapping : [];
+  const present = [];
+  const missing = [];
+  const mismatched = [];
+
+  for (const m of list) {
+    let hit = null;
+    let disabled = false;
+    let st = null;
+
+    try { st = fs.statSync(m.to); } catch { st = null; }
+    if (st && st.isFile()) {
+      hit = m.to;
+    } else {
+      // 关掉的 mod：`X.pak` → `X.pak.disabled`
+      const alt = path.join(path.dirname(m.to), toggleName.counterpartName(path.basename(m.to)));
+      try {
+        const st2 = fs.statSync(alt);
+        if (st2.isFile()) { hit = alt; disabled = true; st = st2; }
+      } catch { /* 两种写法都没有 = 真的不在 */ }
+    }
+
+    if (!hit || !st) { missing.push({ path: m.to, rel: m.rel, size: m.size }); continue; }
+    if (m.size && st.size !== m.size) {
+      mismatched.push({ path: hit, rel: m.rel, size: m.size, currentSize: st.size });
+      continue;
+    }
+    present.push({
+      path: hit,
+      rel: m.rel,
+      size: st.size,
+      disabled,
+      // 补登记时「什么时候装的」只能靠文件自己的创建时间
+      bornAt: (st.birthtime && !isNaN(st.birthtime.getTime())) ? st.birthtime.toISOString() : null
+    });
+  }
+
+  return {
+    ok: list.length > 0 && present.length === list.length,
+    present,
+    missing,
+    mismatched,
+    total: list.length
+  };
+}
+
 module.exports = {
   analyze,
   install,
+  verifyExisting,
   removeByManifest,
   restoreOverwritten,
   dropBackup,

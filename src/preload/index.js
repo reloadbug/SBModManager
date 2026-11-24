@@ -84,7 +84,13 @@ contextBridge.exposeInMainWorld('api', {
     /** 某个 Nexus modId 已装着的文件清单（覆盖对比用） */
     filesForModId: (modId) => invoke('mods:filesForModId', modId),
     /** 手动跑一次「账本 ↔ 磁盘」一致性核对（启动时已自动跑过） */
-    reconcile: () => invoke('mods:reconcile')
+    reconcile: () => invoke('mods:reconcile'),
+    /**
+     * 补登记：记录丢了（换过游戏目录 / 核对时误删）但文件还在盘上时，
+     * 按安装包把注册表记录补回来 —— 不解压、不覆盖任何文件。
+     * opts: { taskId } 或 { archivePath, meta }
+     */
+    registerExisting: (opts) => invoke('mods:registerExisting', opts)
   },
 
   /**

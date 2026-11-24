@@ -5426,6 +5426,12 @@ function dlActionsHtml(t) {
     }
   } else if (t.status === 'downloaded') {
     a.push(`<button class="btn p sm" data-dl-start="${esc(t.id)}">安装</button>`);
+    // 「补登记」：队列说游戏里找不到文件了，可其实还在盘上（换过游戏目录、
+    // 或核对时把整条记录当「文件全丢」删掉了 —— mod 4184 就是这样）。
+    // 这种时候重装要白白覆盖一百多 MB，补登记只把记录补回来。
+    if (t.install && t.install.missing) {
+      a.push(`<button class="btn sm" data-dl-register="${esc(t.id)}" title="文件其实还在游戏目录里：按安装包把记录补回来，不解压、不覆盖任何文件">补登记</button>`);
+    }
     a.push(`<button class="btn sm" data-dl-reveal="${esc(t.id)}">打开文件夹</button>`);
     a.push(purgeBtn);
   } else if (t.status === 'installed') {
@@ -5821,6 +5827,24 @@ async function dlResumeAll() {
 async function dlStart(id) {
   try { await call(window.api.download.start(id), { silent: true }); await refreshDownloads(); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+/**
+ * 补登记：任务显示「游戏里找不到这些文件了」，可文件其实还在盘上
+ * （换过游戏目录，或启动核对时把整条记录当「文件全丢」删掉了）。
+ * 这时候点「安装」要白白重新解压覆盖一百多 MB，补登记只把记录补回来。
+ */
+async function dlRegisterExisting(id) {
+  try {
+    const r = await call(window.api.mods.registerExisting({ taskId: id }));
+    await refreshDownloads();
+    await refreshAfterModsChanged();
+    toast(`已补登记：${r.name || ''} ${fmtNum(r.files)} 个文件`);
+    return r;
+  } catch (e) {
+    toast(e.message, 'err');
+    return null;
+  }
 }
 
 /**
@@ -9244,6 +9268,8 @@ function bindEvents() {
     if (dlAuth) { await dlAuthorize(dlAuth.dataset.dlAuth); return; }
     const dlStartBtn = t.closest('[data-dl-start]');
     if (dlStartBtn) { await dlStart(dlStartBtn.dataset.dlStart); return; }
+    const dlRegisterBtn = t.closest('[data-dl-register]');
+    if (dlRegisterBtn) { await dlRegisterExisting(dlRegisterBtn.dataset.dlRegister); return; }
     const dlCancelBtn = t.closest('[data-dl-cancel]');
     if (dlCancelBtn) { await dlCancel(dlCancelBtn.dataset.dlCancel); return; }
     const dlPauseBtn = t.closest('[data-dl-pause]');
