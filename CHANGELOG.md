@@ -1,4 +1,19 @@
 # 更新日志
+## [0.9.15] - 2026-11-25
+
+### 新增
+
+- **崩溃诊断认得「排他全屏」这个坑**（用户 2026-11-25：「能否把这个检测加到崩溃诊断里面，以后只要检测到 FullscreenMode=0 和崩溃目录里有 D3D12CommandList 记录，就在界面提示改成无边框全屏」）。
+  - 实机排查出来的：剑星在**排他全屏**（`GameUserSettings.ini` 里 `FullscreenMode=0`）下 Alt+Tab 出去，窗口会被最小化 —— 回来后游戏停在「暂停 按 ESC 继续」，再切一次则可能因为 D3D12 交换链按新窗口状态重建失败（`D3D12CommandList.cpp` 里 `CommandList->Close() failed ... E_INVALIDARG`）**直接消失**：没有崩溃窗口、没有转储、事件日志一片空白，很容易被当成「某个 Mod 把游戏搞崩了」。改成 `FullscreenMode=1`（无边框全屏）后暂停条和静默退出一起没了。
+  - `crashLog.locate()` 新增 `configDir` / `gameUserSettings`（`Saved\Config\WindowsNoEditor\GameUserSettings.ini`）；新增纯函数 `parseGameUserSettings()` 取**最后一次**出现的 `FullscreenMode` / `ResolutionSizeX` / `ResolutionSizeY`（同一个键引擎段落和游戏段落各写一份，后者才生效）；`analyze()` 读进 `env.gameSettings`。
+  - `buildReport()`：排他全屏 + 崩溃里有 `D3D12CommandList` / `CommandList->Close` / `DXGI_ERROR_DEVICE` / `ResizeBuffers` / `SwapChain` → **error 级发现**；排他全屏但有崩溃未命中这些特征 → **warn 级发现**；没崩过则一律不提。命中 D3D12 且没有强 Mod 嫌疑（最高分 < 22）时结论直接改为「疑似显示模式（排他全屏）」。
+  - 排除步骤里「改成无边框全屏」永远排在第一位 —— 改一个 ini 值就能验证，不该排在卸 Mod 后面。
+
+### 测试
+
+- `_probe/crashlog-test.js` 新增 D10–D14 共 13 条（排他全屏+D3D12 → error/步骤第一/结论；已无边框全屏不报；没崩过不提；普通崩溃只给 warn；`parseGameUserSettings` 取最后一段）。
+- 全量探针全绿（crashlog 93/0）。
+
 ## [0.9.14] - 2026-11-25
 
 ### 新增

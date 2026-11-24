@@ -40,6 +40,14 @@ const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 
 /**
+ * 「交换链重建失败」这类错误的特征串。
+ * 排他全屏下切窗口、回来时按新窗口状态重建 D3D12 交换链最容易踩到，
+ * 崩溃原文长这样（见实机 04:55 那份）：
+ * `LowLevelFatalError ... CommandList->Close() failed at .../D3D12CommandList.cpp:158 with error E_INVALIDARG`
+ */
+const D3D12_RESIZE_RE = /D3D12CommandList|CommandList->Close|DXGI_ERROR_DEVICE|ResizeBuffers|SwapChain/i;
+
+/**
  * 「不算外挂」的模块名。
  * 崩溃栈里除游戏本体以外出现的东西才是值得怀疑的 —— UE4SS.dll / 输入法 / 显卡驱动之类。
  */
@@ -139,11 +147,15 @@ function locate(root) {
 
   const win64 = root ? path.join(root, 'SB', 'Binaries', 'Win64') : '';
   const ue4ssDir = win64 ? path.join(win64, 'ue4ss') : '';
+  // 显示设置（`FullscreenMode` 之类）就在 Saved 下；Shipping 版没有 Game 目录，只有这一份
+  const configDir = saved ? path.join(saved, 'Config', 'WindowsNoEditor') : '';
 
   return {
     saved,
     crashes: saved ? path.join(saved, 'Crashes') : '',
     logs: saved ? path.join(saved, 'Logs') : '',
+    configDir,
+    gameUserSettings: configDir ? path.join(configDir, 'GameUserSettings.ini') : '',
     win64,
     ue4ssDir,
     ue4ssLog: ue4ssDir ? path.join(ue4ssDir, 'UE4SS.log') : '',
@@ -379,6 +391,38 @@ function inventory(dir, { depth = 0 } = {}) {
   };
 
   walk(dir, 0);
+  return out;
+}
+
+/* ---------------- 显示设置（纯函数） ---------------- */
+
+/**
+ * 解析 `GameUserSettings.ini` 里和「切窗口」有关的显示项。
+ *
+ * 只取**最后一次**出现的值：同一个键既可能在 `[/Script/Engine.GameUserSettings]` 里，
+ * 又在游戏自己的 `[/Script/SB.SBGameUserSettings]` 里，**后面那份才是真正生效的**。
+ *
+ * `FullscreenMode`：0 = 排他全屏，1 = 无边框（窗口化全屏），2 = 窗口化。
+ *
+ * @param {string} text ini 原文
+ * @returns {{fullscreenMode:number|null, resolutionX:number|null, resolutionY:number|null}|null}
+ */
+function parseGameUserSettings(text) {
+  const s = String(text || '');
+  if (!s) return null;
+  const last = (key) => {
+    const re = new RegExp('^[ \\t]*' + key + '[ \\t]*=[ \\t]*(-?\\d+)', 'gim');
+    let val = null;
+    let m;
+    while ((m = re.exec(s))) val = Number(m[1]);
+    return Number.isFinite(val) ? val : null;
+  };
+  const out = {
+    fullscreenMode: last('FullscreenMode'),
+    resolutionX: last('ResolutionSizeX'),
+    resolutionY: last('ResolutionSizeY')
+  };
+  if (out.fullscreenMode === null && out.resolutionX === null && out.resolutionY === null) return null;
   return out;
 }
 
@@ -690,7 +734,31 @@ function buildReport(input = {}) {
       '如果 Mod 数量大、单个 pak 上百 MB，把这个值降到 50 左右往往能缓解。');
   }
 
-  // ⑦ 排序 + 结论
+  // ⑦ 显示模式：排他全屏 → 切窗口会最小化 → 暂停条 / 交换链重建失败（实机踩过的坑）
+  // 现象：Alt+Tab 出去几秒，回来看不到任何崩溃窗口、没有转储、日志断在半行，进程直接消失；
+  // 根因是排他全屏（`FullscreenMode=0`）下窗口被最小化，回来时 D3D12 交换链按新窗口状态重建失败。
+  // 改成 `FullscreenMode=1`（无边框全屏）后暂停条和静默退出一起消失 —— 所以这条要排在「卸 Mod」前面。
+  const gs = env.gameSettings || null;
+  const exclusive = !!(gs && gs.fullscreenMode === 0);
+  const d3dResize = withPhase.filter(c => D3D12_RESIZE_RE.test(String(c.errorMessage || ''))).length;
+  const displayHit = { exclusive, d3d: d3dResize > 0, count: d3dResize };
+  const gsPath = env.gameSettingsPath || '';
+  if (exclusive && stats.total && d3dResize) {
+    add('error', '排他全屏 + 切窗口 → 游戏直接退出',
+      '有 ' + d3dResize + ' 次崩溃是 D3D12 交换链重建失败（`D3D12CommandList.cpp` 里 `CommandList->Close() failed`）。' +
+      '`GameUserSettings.ini` 里 `FullscreenMode=0` 是**排他全屏**：这种模式下切出去，游戏窗口会被最小化，' +
+      '切回来时要按新窗口状态重建交换链，失败就让进程直接消失 —— 既没有崩溃窗口也没有转储，' +
+      '很容易被当成「某个 Mod 把游戏搞崩了」。先把 `FullscreenMode` 改成 `1`（无边框全屏），画面一样是全屏。',
+      { path: gsPath });
+  } else if (exclusive && stats.total) {
+    add('warn', '显示模式是排他全屏：切窗口容易出问题',
+      '`GameUserSettings.ini` 里 `FullscreenMode=0` 是排他全屏。这种模式下 Alt+Tab 会最小化窗口，' +
+      '回来时游戏常停在「暂停 按 ESC 继续」，偶尔还会因为 D3D12 交换链重建失败而无声退出。' +
+      '如果崩溃都发生在切窗口之后，先把 `FullscreenMode` 改成 `1`（无边框全屏）再试。',
+      { path: gsPath });
+  }
+
+  // ⑧ 排序 + 结论
   // 没有崩溃记录时不指认任何 Mod：这时唯一能说的是「没现场」，让人去看别的
   const suspects = stats.total ? [...sus.values()]
     .filter(s => s.score > 0)
@@ -718,6 +786,15 @@ function buildReport(input = {}) {
       headline: '比较可疑：' + top.name,
       detail: top.reasons[0] || ''
     };
+  } else if (displayHit.exclusive && displayHit.d3d) {
+    // 没有强 Mod 嫌疑时，先怀疑显示模式：改一个 ini 值就能验证，比逐个卸 Mod 划算
+    verdict = {
+      level: 'mid',
+      headline: '疑似显示模式（排他全屏）',
+      detail: '最近 ' + displayHit.count + ' 次崩溃是 D3D12 交换链重建失败（`CommandList->Close() failed`），' +
+        '而 `GameUserSettings.ini` 里 `FullscreenMode=0` 是排他全屏 —— 这类崩溃基本都发生在 Alt+Tab 切回来的时候。' +
+        '先改成无边框全屏（`FullscreenMode=1`）再看编不编崩。'
+    };
   } else if (top) {
     verdict = {
       level: 'low',
@@ -741,7 +818,7 @@ function buildReport(input = {}) {
     };
   }
 
-  // ⑧ 排除步骤：给一条能照着做的路，而不是「自己一个个试」
+  // ⑨ 排除步骤：给一条能照着做的路，而不是「自己一个个试」
   const steps = [];
   const bpTop = (ue4ss.bpMods || []).map(n => bpModOf(n)).filter(Boolean);
   const bpHard = bpLast && bpTop.find(m => modBaseNames(m).includes(bpLast.toLowerCase()));
@@ -775,6 +852,12 @@ function buildReport(input = {}) {
     '而是游戏本体或 UE4SS 版本 —— 那时去 Steam 校验文件完整性，或换一个 UE4SS 版本。');
   // 没有崩溃记录就没什么可排除的，别拿步骤去唬人
   if (!stats.total) steps.length = 0;
+  // 显示模式排在所有「卸 Mod」之前：改一个 ini 值就能验证，不碰任何 Mod
+  if (stats.total && displayHit.exclusive) {
+    steps.unshift('先把显示模式改成「无边框全屏」再玩一次：`%LOCALAPPDATA%\\SB\\Saved\\Config\\WindowsNoEditor\\GameUserSettings.ini` 里 ' +
+      '`FullscreenMode=0` 和 `PreferredFullscreenMode=0` 都改成 `1`（画面还是全屏，只是不再独占显卡输出）。' +
+      '这一步不动任何 Mod，能不能好一目了然。');
+  }
 
   return {
     generatedAt: new Date(now).toISOString(),
@@ -913,6 +996,10 @@ function analyze(opts = {}) {
   const settings = readUe4ssSettings(L.ue4ssSettings);
   files.assetLoadingMemCap = settings.assetLoadingMemCap;
 
+  /* 显示设置：判「排他全屏 → 切窗口 → 交换链重建失败」用 */
+  let gameSettings = null;
+  try { gameSettings = parseGameUserSettings(fs.readFileSync(L.gameUserSettings, 'utf8')); } catch { /* 没有就算了 */ }
+
   // 游戏日志（Shipping 版一般一个都没有，有的话列出来让人能点开看）
   if (L.logs) {
     const st = statOf(L.logs);
@@ -951,6 +1038,8 @@ function analyze(opts = {}) {
     gameVersion: (gameVersion && gameVersion.version) || '',
     ue4ssFullMemoryDump: settings.fullMemoryDump,
     ue4ssGuiConsole: settings.guiConsole,
+    gameSettingsPath: L.gameUserSettings,
+    gameSettings,
     modsCount: mods.length
   };
 
@@ -1008,7 +1097,7 @@ module.exports = {
   // 位置 / 读盘
   locate, analyze, readSource, inventory, listCrashDirs, parseModsTxt, readUe4ssSettings,
   // 纯函数（测试用）
-  parseCrashXml, parseUe4ssLog, crashPhase, buildReport, frameInfo,
+  parseCrashXml, parseUe4ssLog, crashPhase, buildReport, frameInfo, parseGameUserSettings,
   // 常量
   MAX_CRASHES, MAX_CRASH_DIRS, TAIL_BYTES, SYSTEM_MODULES
 };

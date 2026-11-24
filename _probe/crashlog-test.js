@@ -293,6 +293,74 @@ function testReports() {
   ok('D9.3 最近一次时间存在', !!r2.stats.lastAt, String(r2.stats.lastAt));
   ok('D9.4 异常分类', !!r2.stats.exceptions.EXCEPTION_ACCESS_VIOLATION, JSON.stringify(r2.stats.exceptions));
   ok('D9.5 线程分类', r2.stats.threads.GameThread === 1, JSON.stringify(r2.stats.threads));
+  /* D10 —— 排他全屏：Alt+Tab 切回来时 D3D12 交换链重建失败 → 报 error + 把「改无边框全屏」排第一
+     实机原话（04:55:54 那份崩溃）：CommandList->Close() failed at .../D3D12CommandList.cpp:158
+     改了 FullscreenMode=1（无边框全屏）之后，暂停条和「切出去几秒后进程直接消失」一起没了。 */
+  const d3dCrash = () => {
+    const c = crashAt(1, 300, 'GameThread');
+    c.crashType = 'Assert';
+    c.isAssert = true;
+    c.exception = 'ASSERT';
+    c.errorMessage = 'LowLevelFatalError [File:Unknown] [Line: 703] CommandList->Close() failed at ' +
+      'D:/BuildDepot/Program_QA/PC/Client/Engine/Source/Runtime/D3D12RHI/Private/D3D12CommandList.cpp:158 with error E_INVALIDARG';
+    return c;
+  };
+  const quietLog = { version: 'v3.0.1 Beta #0', bpMods: [], startedCpp: [], startedLua: [], errors: [], eventLoopStarted: true, lastLine: 'Event loop start' };
+  const exclusiveEnv = {
+    gameSettings: { fullscreenMode: 0, resolutionX: 2560, resolutionY: 1440 },
+    gameSettingsPath: 'C:\\x\\GameUserSettings.ini'
+  };
+  const r10 = crashLog.buildReport({
+    now, ue4ss: quietLog, crashes: [d3dCrash()], mods: [],
+    files: { mods: inv([]), logic: inv([]) }, env: exclusiveEnv
+  });
+  ok('D10.1 排他全屏 + D3D12 → error 发现',
+    r10.analysis.findings.some(f => f.level === 'error' && /排他全屏/.test(f.title)),
+    JSON.stringify(r10.analysis.findings.map(f => f.level + ':' + f.title)));
+  ok('D10.2 第一步就是改显示模式', /无边框全屏/.test(r10.analysis.steps[0] || ''), r10.analysis.steps[0]);
+  ok('D10.3 结论指向显示模式',
+    r10.analysis.verdict.level === 'mid' && /显示模式/.test(r10.analysis.verdict.headline),
+    r10.analysis.verdict.level + ' / ' + r10.analysis.verdict.headline);
+
+  /* D11 —— 已经是无边框全屏时不怪显示模式 */
+  const r11 = crashLog.buildReport({
+    now, ue4ss: quietLog, crashes: [d3dCrash()], mods: [],
+    files: { mods: inv([]), logic: inv([]) },
+    env: { gameSettings: { fullscreenMode: 1, resolutionX: 2560, resolutionY: 1440 } }
+  });
+  ok('D11.1 无边框全屏不报显示模式',
+    !r11.analysis.findings.some(f => /排他全屏/.test(f.title)),
+    JSON.stringify(r11.analysis.findings.map(f => f.title)));
+  ok('D11.2 结论也不指向显示模式', !/显示模式/.test(r11.analysis.verdict.headline), r11.analysis.verdict.headline);
+
+  /* D12 —— 排他全屏但压根没崩过：别提显示模式，步骤也不许有 */
+  const r12 = crashLog.buildReport({
+    now, ue4ss: quietLog, crashes: [], mods: [],
+    files: { mods: inv([]), logic: inv([]) }, env: exclusiveEnv
+  });
+  ok('D12.1 没崩过不提显示模式',
+    !r12.analysis.findings.some(f => /排他全屏/.test(f.title)),
+    JSON.stringify(r12.analysis.findings.map(f => f.title)));
+  ok('D12.2 没崩过没有排除步骤', r12.analysis.steps.length === 0, JSON.stringify(r12.analysis.steps));
+
+  /* D13 —— 排他全屏 + 普通崩溃（不是 D3D12）：只给 warn，但步骤仍把显示模式排第一 */
+  const r13 = crashLog.buildReport({
+    now, ue4ss: quietLog, crashes: [crashAt(1, 300, 'GameThread')], mods: [],
+    files: { mods: inv([]), logic: inv([]) }, env: exclusiveEnv
+  });
+  ok('D13.1 普通崩溃只给 warn',
+    r13.analysis.findings.some(f => f.level === 'warn' && /排他全屏/.test(f.title)),
+    JSON.stringify(r13.analysis.findings.map(f => f.level + ':' + f.title)));
+  ok('D13.2 步骤仍先改显示模式', /无边框全屏/.test(r13.analysis.steps[0] || ''), r13.analysis.steps[0]);
+
+  /* D14 —— parseGameUserSettings：同一个键出现两次时取**最后**一次（游戏自己的段落在后面） */
+  const gs = crashLog.parseGameUserSettings(
+    '[/Script/Engine.GameUserSettings]\nFullscreenMode=2\nResolutionSizeX=1920\n\n' +
+    '[/Script/SB.SBGameUserSettings]\nFullscreenMode=0\nPreferredFullscreenMode=0\n' +
+    'ResolutionSizeX=2560\nResolutionSizeY=1440\nFrameRateLimit=60.000000\n');
+  ok('D14.1 取最后一段的 FullscreenMode', gs && gs.fullscreenMode === 0, JSON.stringify(gs));
+  ok('D14.2 取最后一段的分辨率', gs && gs.resolutionX === 2560 && gs.resolutionY === 1440, JSON.stringify(gs));
+  ok('D14.3 空文本给 null', crashLog.parseGameUserSettings('') === null);
 }
 
 function testReadSourceGuard() {
