@@ -1,4 +1,4 @@
-﻿/* 0.5.3「按开启时间排序」探针
+/* 0.5.3「按开启时间排序」探针
  *
  * 用户 2026-11-10 的要求：装了个 Mod 之后游戏开始崩，得能一眼看出
  * 「最近开的是哪几个」。所以要两件事：
@@ -103,21 +103,28 @@ section('C. 前端：带出时间 / 排序 / 入口');
 {
   ok('groupEnabledAt 取组内最晚的启用时刻',
     appSrc.includes('function groupEnabledAt(items)')
-    && appSrc.includes("const at = String((m.meta && m.meta.enabledAt) || '');"));
+    && appSrc.includes('const fromHistory = String((rec && rec.enabledAt) || \'\');')
+    && appSrc.includes('if (at && at > t) t = at;'));
   ok('groupInstalled 把 enabledAt 挂到分组上',
     appSrc.includes('enabledAt: groupEnabledAt(items),'));
-  ok('分组也带出「是否推算」标记',
-    appSrc.includes('enabledAtGuess: items.some(m => m.meta && m.meta.enabledAtGuess === true)'));
+  ok('分组也带出「是否推算」标记（含档案来源）',
+    appSrc.includes('rec && rec.enabledAtGuess === true'));
   ok('buildLibRecords 透传 enabledAt / installedAt',
     appSrc.includes("enabledAt: g.enabledAt || '',")
     && appSrc.includes('enabledAtGuess: !!g.enabledAtGuess,')
     && appSrc.includes("installedAt: g.mtime || '',"));
 
-  ok('有 LIB_SORTS 且含开启时间 / 安装时间 / 名称三个本地维度',
+  ok('有 LIB_SORTS 且含开启/禁用/安装/名称四个本地维度',
     appSrc.includes('const LIB_SORTS = [')
     && appSrc.includes("value: 'on',")
+    && appSrc.includes("value: 'off',")
     && appSrc.includes("value: 'inst',")
     && appSrc.includes("value: 'name'"));
+  ok('禁用时间能正反排序（applyLibSort 读 off + sortDir）',
+    appSrc.includes("by === 'off' ? (r.disabledAt || '')")
+    && appSrc.includes("const dir = state.lib.sortDir === 'asc' ? 1 : -1;"));
+  ok('禁用时间在排序白名单里',
+    /const SORT_BY_KEYS\s*=\s*\[[^\]]*'off'/.test(appSrc));
   ok('renderLibMerged 走 applyLibSort',
     appSrc.includes('const shown = applyLibSort(libFilterRecords(recs));'));
   ok('state.lib 带 sort + sortDir 字段',
@@ -139,11 +146,11 @@ section('C. 前端：带出时间 / 排序 / 入口');
     appSrc.includes('按安装时间推算'));
 
   ok('index.html 有 #libSortTabs 本地排序 chip 组', htmlSrc.includes('id="libSortTabs"') && htmlSrc.includes('data-libsort="on"'));
-  ok('本地排序三颗维度 chip（不带 ↓↑）+ 一颗方向按钮',
+  ok('本地排序四颗维度 chip（不带 ↓↑），方向靠点击翻转',
     htmlSrc.includes('<button data-libsort="on">开启时间</button>')
+    && htmlSrc.includes('<button data-libsort="off">禁用时间</button>')
     && htmlSrc.includes('<button data-libsort="inst">安装时间</button>')
     && htmlSrc.includes('<button data-libsort="name">名称</button>')
-    && htmlSrc.includes('id="btnClearFilter"')
     && !htmlSrc.includes('data-libsort="on-desc"'));
 }
 

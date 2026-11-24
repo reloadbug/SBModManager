@@ -62,6 +62,10 @@ const state = {
   // 「已验证」标记（用户实测过能用的 Nexus modId 集合）。和「有 bug」是同一类**个人实测结论**：
   // 那个说「装进去会出事」，这个说「我确认真能跑」。两者互不排斥，只跟「未验证」这颗筛选互斥。
   verifiedIds: new Set(),
+  // Mod 生命周期档案（扫描条目稳定 id → {enabledAt, disabledAt, ...}）。
+  // 未登记 mod 没有 meta.enabledAt，启用/禁用时刻全靠这份档案 —— 它是排查崩溃的命根子。
+  modHistory: {},        // id → 当前状态记录
+  modHistoryByModId: {}, // Nexus modId → 当前状态记录（回退 / 详情 / 时间段筛选按它认人）
   modalTask: null,   // 「选择要安装哪些内容」对话框对应的下载任务 id
   pick: new Set(),   // 该对话框里已勾选的候选目录（归档内相对路径）
   pickGroups: null,  // dir → 同组目录数组（同一件东西的不同版本，组内单选）
@@ -665,7 +669,18 @@ function compareInstalled(a, b, mode, dir) {
 function groupEnabledAt(items) {
   let t = '';
   for (const m of items || []) {
-    const at = String((m.meta && m.meta.enabledAt) || '');
+    // 优先读生命周期档案（未登记 mod 没有 meta.enabledAt，全靠这里）。
+    // 扫描条目的稳定 id 是关键：`disk:paks:<key>`，开关改名也不变，所以记录不失联。
+    const rec = (state.modHistory && state.modHistory[m.id])
+      || (() => {
+        const src = (m.meta && m.meta.source) || {};
+        const mid = Number(src.modId || (m.meta && m.meta.modId) || (m.link && m.link.modId) || (m.tag && m.tag.modId) || 0);
+        return mid ? state.modHistoryByModId[String(mid)] : null;
+      })();
+    const fromHistory = String((rec && rec.enabledAt) || '');
+    const fromMeta = String((m.meta && m.meta.enabledAt) || '');
+    // 两个都有时取较晚的那个（最近一次真正生效的时刻）
+    const at = fromHistory > fromMeta ? fromHistory : fromMeta;
     if (at && at > t) t = at;
   }
   return t;
@@ -731,7 +746,20 @@ function groupInstalled(list) {
       mtime: groupMtime(items),
       // 最近一次「启用」的时刻：排查「装了哪个之后开始崩」先按它排（0.5.3）
       enabledAt: groupEnabledAt(items),
-      enabledAtGuess: items.some(m => m.meta && m.meta.enabledAtGuess === true),
+      // 最近一次「禁用」的时刻（生命周期档案；崩溃回退时对照用）
+      disabledAt: (() => {
+        let t = '';
+        for (const m of items) {
+          const rec = state.modHistory && state.modHistory[m.id];
+          const at = String((rec && rec.disabledAt) || (m.meta && m.meta.disabledAt) || '');
+          if (at && at > t) t = at;
+        }
+        return t;
+      })(),
+      enabledAtGuess: items.some(m => {
+        const rec = state.modHistory && state.modHistory[m.id];
+        return (m.meta && m.meta.enabledAtGuess === true) || (rec && rec.enabledAtGuess === true);
+      }),
       archive: (items.find(m => m.archive) || {}).archive || null,
       location: items[0].location,
       meta
@@ -1880,6 +1908,9 @@ function openModDrawer(rec) {
     <div class="lbl">信息</div>
     <div id="drawerInfo">${rows.join('')}</div>
 
+    ${srcModId ? `<div class="lbl">状态变更记录</div>
+    <div id="drawerHistory" class="txt" style="color:var(--dim2)">正在读取记录…</div>` : ''}
+
     ${filesHtml}
 
     <div class="lbl">说明</div>
@@ -1940,6 +1971,31 @@ function openModDrawer(rec) {
       applyDrawerLocalState(modId);
       loadFiles(modId);
     }
+  }
+  // 状态变更记录（下载 / 安装 / 开启 / 禁用 / 卸载）—— 有 modId 就能按四级来源查到
+  if (srcModId) fillDrawerHistory(srcModId);
+}
+
+/** 抽屉「状态变更记录」：从 mod-history 档案里取这个 Mod 的流水，渲染成时间线 */
+async function fillDrawerHistory(modId) {
+  const box = $('#drawerHistory');
+  if (!box) return;
+  try {
+    const evs = await call(window.api.history.forMod(modId, 20), { silent: true });
+    if (!box.isConnected) return;                       // 抽屉已切走
+    if (!evs || !evs.length) {
+      box.textContent = '还没有记录（这个 Mod 的状态变化会从现在开始记录）。';
+      return;
+    }
+    const LABEL = { download: '下载', install: '安装', enable: '开启', disable: '禁用', uninstall: '卸载', backfill: '补记' };
+    box.innerHTML = evs.map(e => {
+      const t = fmtWhen(e.at);
+      const extra = e.detail ? `<span style="color:var(--dim2)"> · ${esc(e.detail)}</span>` : '';
+      return `<div style="padding:2px 0"><span style="color:var(--text)">${esc(t)}</span> · ${
+        esc(LABEL[e.action] || e.action)}${extra}</div>`;
+    }).join('');
+  } catch {
+    if (box.isConnected) box.textContent = '记录读取失败。';
   }
 }
 
@@ -3324,6 +3380,7 @@ function buildLibRecords() {
       partial: !!g.partial,
       enabledAt: g.enabledAt || '',
       enabledAtGuess: !!g.enabledAtGuess,
+      disabledAt: g.disabledAt || '',
       installedAt: g.mtime || '',
       groupKind: g.kind,
       builtin: !!g.builtin,
@@ -3591,6 +3648,7 @@ const LIB_SORTS = [
   { value: 'newest', label: '最新发布', dir: 'desc', online: true, title: '按发布时间从新到旧' },
   { value: 'updated', label: '最近更新', dir: 'desc', online: true, title: '按更新时间从新到旧' },
   { value: 'on', label: '开启时间', dir: 'desc', title: '最近开启的排最前 —— 崩了先看它' },
+  { value: 'off', label: '禁用时间', dir: 'desc', title: '最近禁用的排最前 —— 配合开启时间看状态变化' },
   { value: 'inst', label: '安装时间', dir: 'desc', title: '最近装上的排最前' },
   { value: 'name', label: '名称', dir: 'asc', title: '按名称 A → Z' }
 ];
@@ -3618,7 +3676,9 @@ function applyLibSort(recs) {
     // 时间类：最新发布 / 最近更新 / 开启时间 / 安装时间
     const val = (r) => (by === 'updated' || by === 'newest')
       ? (r.updatedAt || '')
-      : (by === 'on' ? (r.enabledAt || '') : (r.installedAt || r.enabledAt || ''));
+      : (by === 'on' ? (r.enabledAt || '')
+      : (by === 'off' ? (r.disabledAt || '')
+      : (r.installedAt || r.enabledAt)));
     const ta = val(a), tb = val(b);
     if (!ta && !tb) return 0;
     if (!ta) return 1;          // 没时间的沉底（不参与比较）
@@ -4314,6 +4374,45 @@ async function loadVerified() {
   } catch { /* 静默当作没有标记 */ }
 }
 
+/**
+ * 加载 Mod 生命周期档案，并对未登记 mod 做一次「开启时间回填」。
+ * 用户 2026-11-24：之前数据不完整就算了，之后都补全；开启时间为空的填当前时间。
+ *
+ * 回填要传给主进程一份「当前装着、启用着、且档案里没有真实开启时间」的清单。
+ * 判定「已有真实时间」放在主进程做（档案为准），这里只负责把扫描结果交上去。
+ */
+async function loadModHistory() {
+  try {
+    const list = await call(window.api.history.mods(), { silent: true });
+    const byId = {}, byModId = {};
+    for (const rec of (list || [])) {
+      byId[rec.id] = rec;
+      if (rec.modId) byModId[String(rec.modId)] = rec;
+    }
+    state.modHistory = byId;
+    state.modHistoryByModId = byModId;
+  } catch { state.modHistory = {}; state.modHistoryByModId = {}; }
+}
+
+/**
+ * 回填（在 renderInstalled 生成 installedGroups **之后**调用）：
+ * 只对已安装 + 启用 + 档案里没有真实开启时间的组，填当前时间。
+ * 判定「已有真实时间」在主进程做（档案为准），这里只交扫描结果上去。
+ */
+async function backfillModHistory() {
+  try {
+    const candidates = [];
+    for (const g of (state.installedGroups || [])) {
+      if (!g.enabled || g.kind === 'prereq') continue;
+      const srcId = g.items && g.items[0] && g.items[0].id;
+      candidates.push({ id: srcId, modId: g.modId || 0, name: g.name || '', enabled: true });
+    }
+    const n = candidates.length ? await call(window.api.history.backfill(candidates), { silent: true }) : 0;
+    if (n > 0) await loadModHistory();   // 回写了，重读一次让排序/详情立刻拿到新时间
+    return n;
+  } catch { /* 回填失败不影响主流程 */ return 0; }
+}
+
 /** 同步顶部「只看喜欢」按钮的选中态 */
 function updateLikeTabs() {
   const on = !!state.browse.onlyLiked;
@@ -4365,7 +4464,7 @@ function browseFilterSnapshot(b) {
 /** Mod 库状态档的合法取值（与 LIB_STATUS_CHIPS 一一对应） */
 const LEVELS = ['all', 'online', 'downloaded', 'installed', 'enabled', 'disabled', 'partial', 'unreg', 'linked'];
 /** 排序维度 / 方向的合法取值（2026-11-23：一个维度 + 一颗方向按钮） */
-const SORT_BY_KEYS = ['downloads', 'endorsements', 'newest', 'updated', 'on', 'inst', 'name'];
+const SORT_BY_KEYS = ['downloads', 'endorsements', 'newest', 'updated', 'on', 'off', 'inst', 'name'];
 const SORT_DIR_KEYS = ['desc', 'asc'];
 function migrateOldSort(v) {
   const map = { 'on-desc': ['on', 'desc'], 'on-asc': ['on', 'asc'],
@@ -4461,7 +4560,7 @@ function applyLastFilters() {
     }
     // 新版读 sort + sortDir；老快照（'on-desc' 之类）走迁移。
     // 白名单写在这里而不是查常量：探针把这段抠进沙箱单跑，跨段引用会 ReferenceError。
-    const BY = ['downloads', 'endorsements', 'newest', 'updated', 'on', 'inst', 'name'];
+    const BY = ['downloads', 'endorsements', 'newest', 'updated', 'on', 'off', 'inst', 'name'];
     if (BY.includes(ll.sort)) {
       l.sort = ll.sort;
       l.sortDir = (ll.sortDir === 'asc' || ll.sortDir === 'desc') ? ll.sortDir : 'desc';
@@ -7354,6 +7453,38 @@ function renderSettings() {
         </div>
       </div>
     </div>
+
+    <div class="frm">
+      <h3>状态变化与回退<span style="font-weight:400;font-size:12px;color:var(--dim2)">（崩档排查）</span></h3>
+      <div class="f">
+        <label>起始时间</label>
+        <input type="datetime-local" id="rollSince" style="flex:none;width:210px">
+        <label style="margin-left:8px">结束时间</label>
+        <input type="datetime-local" id="rollUntil" style="flex:none;width:210px">
+        <button class="btn sm p" id="btnRollQuery">查询这段时间开启的 Mod</button>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">
+          开启某个 Mod 后游戏崩了、之前是好的？选一段时间（比如「上次能玩」到「现在」），
+          列出这段时间里<b>新开启 / 补记</b>的 Mod，勾选后批量禁用即可回退。
+          <b>只禁用这段时间打开的，不会重装已卸载的，也不动本来就没开过的。</b>
+        </div>
+      </div>
+      <div class="f">
+        <label>结果</label>
+        <div id="rollResult" style="flex:1;min-width:0;font-size:12px;color:var(--dim2)">选好时间范围后点「查询」。</div>
+      </div>
+      <div class="f" id="rollActRow" hidden>
+        <label></label>
+        <button class="btn sm p" id="btnRollDisableSel">禁用勾选的</button>
+        <button class="btn sm d" id="btnRollDisableAll">全部禁用</button>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">每次下载 / 安装 / 开启 / 禁用 / 卸载都会记进档案（跟随游戏目录，删 Mod 也不删记录），详情抽屉里也能看到单个 Mod 的状态变更。</div>
+      </div>
+    </div>
   `;
 
   renderAuthLine();
@@ -7684,6 +7815,12 @@ async function openLogViewer() {
     <div class="lbl">末尾 ${t.lines.length} 行${
       t.truncated ? `（共 ${t.total} 行，只显示末尾）` : ''}${
       errCount ? ` · 含 ${errCount} 条 ERROR/FATAL/EVENT` : ''}</div>
+    <div class="f" style="margin:8px 0">
+      <label>关键字</label>
+      <input type="text" id="logSearch" placeholder="输入关键字定位（如 install:done / ERROR / Mod 名）" style="flex:1;min-width:180px">
+      <button class="btn sm" id="logSearchClear">清除</button>
+      <span id="logSearchCount" style="font-size:11px;color:var(--dim2)"></span>
+    </div>
     <pre id="logPre" style="max-height:430px;overflow:auto;white-space:pre-wrap;word-break:break-all;font:11px/1.55 Consolas,'Courier New',monospace;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;margin:0;color:var(--dim)">${
       esc(t.lines.join('\n')) || '(空)'}</pre>
   `;
@@ -7692,8 +7829,129 @@ async function openLogViewer() {
   const pre = $('#logPre');
   if (pre) pre.scrollTop = pre.scrollHeight;
 
+  // 关键字定位：只显示包含关键字的行（大小写不敏感），并标命中数。
+  const ALL_LINES = t.lines || [];
+  const doSearch = () => {
+    const box = $('#logSearch'); const cnt = $('#logSearchCount');
+    const q = (box && box.value || '').trim().toLowerCase();
+    if (!pre) return;
+    if (!q) {
+      pre.textContent = ALL_LINES.join('\n') || '(空)';
+      if (cnt) cnt.textContent = '';
+    } else {
+      const hit = ALL_LINES.filter(l => l.toLowerCase().indexOf(q) >= 0);
+      pre.innerHTML = hit.length ? hit.map(l => esc(l).replace(
+        new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'),
+        m => `<mark style="background:rgba(232,163,61,.35);color:var(--text)">${m}</mark>`
+      )).join('\n') : '(没有匹配的行)';
+      if (cnt) cnt.textContent = `命中 ${hit.length} 行`;
+    }
+    pre.scrollTop = 0;
+  };
+  const sBox = $('#logSearch');
+  if (sBox) sBox.addEventListener('input', doSearch);
+  const sClear = $('#logSearchClear');
+  if (sClear) sClear.addEventListener('click', () => { if (sBox) sBox.value = ''; doSearch(); });
+
   $('#logOpenFile') && $('#logOpenFile').addEventListener('click', () => window.api.log.open(file));
   $('#logOpenDir') && $('#logOpenDir').addEventListener('click', () => window.api.log.openDir());
+}
+
+/* ---------------- 崩溃回退：查某段时间开启的 Mod，批量禁用 ----------------
+ * 用户 m15067：开启某些 Mod 后游戏崩了、之前是好的 → 选一段时间，
+ * 列出这段时间新开启的 Mod，勾选后批量禁用。只禁新开的，不重装已卸载的。
+ */
+let rollItems = [];               // 本轮查询结果 [{id,modId,name,at}]
+
+/** datetime-local 的值（本地时间，无时区）转 ISO；空串返回空 */
+function rollLocalToIso(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+async function runRollbackQuery() {
+  const box = $('#rollResult');
+  const actRow = $('#rollActRow');
+  const sinceEl = $('#rollSince'), untilEl = $('#rollUntil');
+  if (!box) return;
+  const since = rollLocalToIso(sinceEl && sinceEl.value);
+  const untilRaw = rollLocalToIso(untilEl && untilEl.value);
+  // 「结束时间」用户可能填到某个整点，按当天/当时刻 inclusive：补到 23:59:59 那种边界就放宽一点
+  const until = untilRaw ? untilRaw.replace(/T23:59:59\.\d{3}Z$/, 'T23:59:59.999Z') : '';
+  if (!since && !until) { box.textContent = '请先选起始或结束时间。'; if (actRow) actRow.hidden = true; return; }
+  box.textContent = '查询中…';
+  if (actRow) actRow.hidden = true;
+  try {
+    rollItems = await call(window.api.history.enabledBetween(since, until), { silent: true }) || [];
+  } catch (e) {
+    box.textContent = '查询失败：' + ((e && e.message) || e);
+    return;
+  }
+  if (!rollItems.length) {
+    box.innerHTML = '这段时间里<b>没有</b>新开启 / 补记的 Mod。';
+    return;
+  }
+  box.innerHTML = `<div style="margin-bottom:6px">这段时间开启/补记了 <b style="color:var(--text)">${rollItems.length}</b> 个 Mod（只列仍在游戏里的）：</div>` +
+    rollItems.map((it, i) => `<label style="display:flex;align-items:center;gap:7px;padding:3px 0;color:var(--text);cursor:pointer">` +
+      `<input type="checkbox" class="roll-chk" data-i="${i}" checked>` +
+      `<span>${esc(it.name || ('Mod #' + (it.modId || '')))}</span>` +
+      `<span style="color:var(--dim2);font-size:11px">${esc(fmtWhen(it.at))}${it.modId ? ' · #' + it.modId : ''}</span></label>`).join('');
+  if (actRow) actRow.hidden = false;
+}
+
+/** 把「档案 id」换成当前磁盘上的扫描条目 id —— 档案按稳定 id 记，开关要用现在的 id。 */
+function resolveLiveIds(it) {
+  const ids = new Set();
+  if (it.id) ids.add(String(it.id));
+  const mid = Number(it.modId) || 0;
+  for (const g of (state.installedGroups || [])) {
+    const gMid = Number(g.modId) || 0;
+    if (mid && gMid === mid) {
+      for (const m of (g.items || [])) ids.add(String(m.id));
+    }
+  }
+  // 也扫原始 installed 清单（groupInstalled 之外的）
+  for (const m of (state.installed || [])) {
+    if (!mid) break;
+    const candidates = [m.modId, m.meta && m.meta.modId, m.meta && m.meta.source && m.meta.source.modId,
+      m.link && m.link.modId, m.tag && m.tag.modId].map(Number);
+    if (candidates.indexOf(mid) >= 0 && m.id) ids.add(String(m.id));
+  }
+  return [...ids];
+}
+
+async function runRollbackDisable(all) {
+  const box = $('#rollResult');
+  if (!rollItems.length) { toast('先查询一段时间'); return; }
+  // 选中的（或全部）档案项 → 换成当前磁盘上还在的扫描条目 id；已卸载的换不到，自然跳过
+  let chosen;
+  if (all) {
+    chosen = rollItems.slice();
+  } else {
+    chosen = [];
+    document.querySelectorAll('.roll-chk').forEach((c) => {
+      if (c.checked) { const it = rollItems[Number(c.dataset.i)]; if (it) chosen.push(it); }
+    });
+  }
+  const ids = [];
+  const seen = new Set();
+  for (const it of chosen) {
+    for (const id of resolveLiveIds(it)) {
+      if (!seen.has(id)) { seen.add(id); ids.push(id); }
+    }
+  }
+  if (!ids.length) { toast('这些 Mod 现在都不在游戏里了，无需禁用', 'ok'); return; }
+  toast('正在禁用 ' + ids.length + ' 个文件…');
+  try {
+    const r = await call(window.api.mods.setEnabledMany(ids, false), { silent: true });
+    const ok = (r && r.ok) || 0, failed = (r && r.failed) || 0;
+    toast('已禁用 ' + ok + ' 个' + (failed ? '，' + failed + ' 个没成功' : ''), failed ? 'err' : 'ok');
+    await refreshAfterModsChanged();
+    if (box) box.insertAdjacentHTML('beforeend', `<div style="margin-top:6px;color:var(--ok)">已回退：禁用了 ${ok} 个。</div>`);
+  } catch (e) {
+    toast('禁用失败：' + ((e && e.message) || e), 'err');
+  }
 }
 
 async function refreshAuthStatus() {
@@ -9323,6 +9581,12 @@ function bindEvents() {
       await restoreDataDir();
     } else if (e.target.id === 'btnViewLog') {
       await openLogViewer();
+    } else if (e.target.id === 'btnRollQuery') {
+      await runRollbackQuery();
+    } else if (e.target.id === 'btnRollDisableSel') {
+      await runRollbackDisable(false);
+    } else if (e.target.id === 'btnRollDisableAll') {
+      await runRollbackDisable(true);
     } else if (e.target.id === 'btnOpenLogDir') {
       window.api.log.openDir();
     } else if (e.target.id === 'btnResetCfg') {
@@ -9855,8 +10119,16 @@ async function refreshAll(showToast) {
     await refreshPrereqs();
     // 「管理器里还有哪些包装得进去」要在画下载页之前取到手（队列空着时那一页就靠它）
     await refreshLibrary();
+    // 生命周期档案要在画卡片之前拿到 —— groupEnabledAt() 从它读未登记 mod 的开启时间
+    await loadModHistory();
     renderSidebar();
     renderInstalled();
+    // 回填：installedGroups 这才有值；对空开启时间的组补当前时间，补完重画一次
+    const refilled = await backfillModHistory();
+    if (refilled) {
+      renderInstalled();
+      if ((state.lib.status || 'all') !== 'online') renderBrowse();
+    }
     renderDownload();
     renderPrereq();
     renderSettings();

@@ -156,7 +156,8 @@ console.log('\n[3] verText() / installedCard()：版本号不拼成 vv2.3、卡�
     // 2026-11-09 起卡片还会读 `state.bugIds`（「有 bug」角标），同样给空集。
     // 2026-11-10 起卡片改用 `installedIsBug(g)` 判定，这里补个「都不算有 bug」的桩。
     installedIsBug: () => false,
-    state: { gsel: { on: false, busy: false, ids: new Set() }, bugIds: new Set() }
+    state: { gsel: { on: false, busy: false, ids: new Set() }, bugIds: new Set(),
+      modHistory: {}, modHistoryByModId: {} }   // 2026-11-24：groupEnabledAt 从生命周期档案读时间
   };
   vm.createContext(c2);
   // ⚠️ 2026-10-14 起 `installedCard()` 吃的是**组对象**（内部读 `g.items.length`

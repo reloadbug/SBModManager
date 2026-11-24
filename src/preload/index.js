@@ -168,6 +168,17 @@ contextBridge.exposeInMainWorld('api', {
     remove: (modId) => invoke('verified:remove', modId)
   },
 
+  // Mod 生命周期事件档案（下载/安装/开启/禁用/卸载流水 + 状态回退）
+  history: {
+    events: (opts) => invoke('history:events', opts),
+    mod: (id) => invoke('history:mod', id),
+    forMod: (id, limit) => invoke('history:forMod', id, limit),
+    mods: () => invoke('history:mods'),
+    enabledBetween: (since, until) => invoke('history:enabledBetween', since, until),
+    backfill: (items) => invoke('history:backfill', items),
+    clear: () => invoke('history:clear')
+  },
+
   nxm: {
     status: () => invoke('nxm:status'),
     register: () => invoke('nxm:register'),

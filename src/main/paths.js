@@ -206,7 +206,7 @@ if (DATA_SOURCE !== 'custom' && GAME_HOME_READY && canUseDir(GAME_HOME)) {
 const STATE_NAMES = [
   'config.json', 'mods.json', 'mod-links.json', 'blacklist.json',
   'favorites.json', 'downloads.json', 'watch-seen.json', 'ledger.json',
-  'bugs.json', 'verified.json'
+  'bugs.json', 'verified.json', 'mod-history.json'
 ];
 
 /**
@@ -359,6 +359,8 @@ module.exports = {
   bugsFile: path.join(DATA, 'bugs.json'),
   /** 「我实测过能用」标记（跟着游戏走的 `verified.json`，见 verified.js） */
   verifiedFile: path.join(DATA, 'verified.json'),
+  /** Mod 生命周期事件档案（跟着游戏走的 `mod-history.json`，见 modHistory.js） */
+  modHistoryFile: path.join(DATA, 'mod-history.json'),
   translateCache: path.join(CACHE, 'translate.json'),
   nexusCache: path.join(CACHE, 'nexus.json'),
   nexusCatalog: path.join(CACHE, 'nexus-catalog.json')

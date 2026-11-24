@@ -31,6 +31,7 @@ const { createBlacklist } = require('./blacklist');
 const { createBugFlags } = require('./bugFlag');
 const { createVerified } = require('./verified');
 const { createFavorites } = require('./favorites');
+const { createModHistory } = require('./modHistory');
 const archive = require('./archive');
 const nexusBrowser = require('./nexusBrowser');
 const nexusAutoAuth = require('./nexusAutoAuth');
@@ -45,7 +46,7 @@ const gameHome = require('./gameHome');
 const { createModInfo, fromCatalog } = require('./modInfo');
 const { readJson, writeJson, setMirror } = require('./store');
 
-let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites, bugFlags, verifiedFlags;
+let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites, bugFlags, verifiedFlags, modHistory;
 
 /** UE4SS 最新 Release 的短时缓存（避免每次进前置组件页都打 GitHub API） */
 let ue4ssReleaseCache = { at: 0, release: null };
@@ -275,6 +276,7 @@ function init() {
   favorites = createFavorites(paths.favoritesFile);
   bugFlags = createBugFlags(paths.bugsFile);
   verifiedFlags = createVerified(paths.verifiedFile);
+  modHistory = createModHistory(paths.modHistoryFile);
   backfillEnabledAt();
 
   engine = createDownloadEngine({
@@ -1422,6 +1424,36 @@ function listMods() {
   return { installed: list, root };
 }
 
+/**
+ * 从扫描条目里取 Nexus modId（与渲染层 groupInstalled 四级来源同口径）。
+ * 时间档案按扫描条目的稳定 id 记键，但 modId 也要存（回退/详情/日志搜索按它认人）。
+ */
+function stableModIdOf(mod) {
+  if (!mod) return 0;
+  const meta = mod.meta || {};
+  return Number(mod.modId || meta.modId || (meta.source && meta.source.modId) ||
+    (mod.link && mod.link.modId) || (mod.tag && mod.tag.modId)) || 0;
+}
+
+/**
+ * 记一条 Mod 生命周期事件到档案（下载/安装/开启/禁用/卸载都走这里）。
+ * 档案写入失败绝不能挡住实际操作 —— 用 try/catch 包住。
+ */
+function recordMod(action, mod, extra = {}) {
+  try {
+    if (!modHistory || !mod || !mod.id) return null;
+    return modHistory.add(action, {
+      id: mod.id,
+      modId: stableModIdOf(mod),
+      name: mod.name || (mod.meta && mod.meta.name) || '',
+      ...extra
+    });
+  } catch (e) {
+    try { logger.warn('[生命周期] 记录失败：' + e.message); } catch { /* 忽略 */ }
+    return null;
+  }
+}
+
 /** 启用 / 禁用 */
 function setEnabled(id, enabled, opts) {
   const root = currentRoot();
@@ -1516,6 +1548,8 @@ function setEnabled(id, enabled, opts) {
   } else {
     commit({ enabled, ...stamp });
   }
+  // 记生命周期事件：不管已登记还是未登记，开关都写进 mod-history.json
+  recordMod(enabled ? 'enable' : 'disable', mod, { detail: stamp[enabled ? 'enabledAt' : 'disabledAt'] });
   return { id, enabled, renamed: renames.length, fixed: fixed.length };
 }
 
@@ -1670,6 +1704,7 @@ function uninstall(id, { purge = false } = {}) {
   try { linker.removeLink(paths.modLinksFile, id); } catch { /* 记录清不掉不影响卸载 */ }
   invalidateLocalIndex();
   syncLedger();
+  recordMod('uninstall', mod, { detail: purge ? '彻底删除' : '移到备份目录' });
   logger.event('mods:uninstall', {
     id, kind: mod.kind, moved: moved.length,
     restored: restored.length, pruned: pruned.length, purge: !!purge
@@ -2507,6 +2542,17 @@ function register() {
     if (!meta || !meta.modId) throw new Error('缺少 Mod ID');
     const r = engine.enqueueNexus(meta);
     logger.event('download:enqueue', { modId: meta.modId, fileId: meta.fileId || null, duplicate: !!r.duplicate });
+    // 生命周期：加入下载队列（下载事件按 modId 记，和后续安装/开关用 modId 关联）
+    try {
+      if (modHistory && meta.modId && !r.duplicate) {
+        modHistory.add('download', {
+          id: 'mod:' + Number(meta.modId),
+          modId: Number(meta.modId),
+          name: meta.name || '',
+          detail: '加入下载队列' + (meta.fileId ? '（文件 ' + meta.fileId + '）' : '')
+        });
+      }
+    } catch { /* 记录失败不影响下载 */ }
     broadcastDownloads(r.task);
     // 开关打开时，入队即自动授权（用户要的就是「不用逐条点」）
     if (r.task && !r.duplicate) maybeAutoAuthorize(r.task.id);
@@ -2863,6 +2909,24 @@ function register() {
       id: r.id, kind: r.kind, written: r.written, skipped: r.skipped,
       backed: r.backedCount, backupFailed: r.backupFailed || 0
     });
+    // 生命周期：安装完成（新建一条以安装 id 为键的记录；modId 来自本次安装的元数据）
+    try {
+      if (modHistory && r && r.id) {
+        modHistory.add('install', {
+          id: r.id,
+          modId: Number(meta.modId) || 0,
+          name: meta.name || '',
+          detail: '安装到游戏目录'
+        });
+        // 装完即启用：安装流程里 installFlow 会写 enabledAt，这里补一条 enable 事件
+        modHistory.add('enable', {
+          id: r.id,
+          modId: Number(meta.modId) || 0,
+          name: meta.name || '',
+          detail: '安装后默认启用'
+        });
+      }
+    } catch { /* 记录失败不影响安装 */ }
     invalidateLocalIndex();
     // 装完立刻把账本同步到游戏目录（搬移/换机器时靠它恢复）
     syncLedger(root);
@@ -3145,6 +3209,20 @@ function register() {
   handle('favorites:ids', () => favorites.ids());
   handle('favorites:add', (modId, meta) => favorites.add(modId, meta || {}));
   handle('favorites:remove', (modId) => favorites.remove(modId));
+
+  /* Mod 生命周期事件档案（下载/安装/开启/禁用/卸载流水 + 每 Mod 关键时刻） */
+  handle('history:events', (opts) => modHistory.events(opts || {}));
+  handle('history:mod', (id) => modHistory.mod(id));
+  handle('history:forMod', (id, limit) => modHistory.forMod(id, limit));
+  handle('history:mods', () => modHistory.mods());
+  handle('history:enabledBetween', (since, until) => modHistory.enabledBetween(since, until));
+  handle('history:backfill', (items) => {
+    const n = modHistory.backfill(items);
+    try { logger.event('mods:backfillHistory', { count: n }); } catch { /* 忽略 */ }
+    return n;
+  });
+  handle('history:clear', () => modHistory.clear());
+
   handle('nexus:detail', (modId) => nexus.getMod(modId));
   /**
    * Mod 基本信息的本地档案：
