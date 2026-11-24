@@ -132,10 +132,14 @@ async function infoLocal(ids) {
   for (const id of want.slice(0, 500)) {
     let rec = store.get(id);
     const entry = cat.get(id);
-    // 老档案只存过名字/作者/封面；分类、点赞数、更新时间是后来加的字段，
+    // 老档案只存过名字/作者/封面；分类、点赞数、更新时间、说明是后来加的字段，
     // 目录里有就顺手补齐并落盘 —— 下次纯本地也带得出来。
-    if (entry && (!rec || !rec.category || !rec.categoryZh || !rec.updatedAt || !rec.endorsements)) {
-      rec = store.put(fromCatalog(entry));
+    if (entry && (!rec || !rec.category || !rec.categoryZh || !rec.updatedAt
+      || !rec.endorsements || !rec.description)) {
+      const merged = fromCatalog(entry);
+      if (rec) merged.description = rec.description || merged.description;
+      if (rec) merged.descriptionZh = rec.descriptionZh || '';
+      rec = store.put(merged);
     }
     if (!rec) continue;
     out[id] = { ...rec, coverLocal: store.coverUrlOf(rec) };
@@ -156,7 +160,7 @@ async function infoFill(ids) {
   const store = modInfoStore();
   for (const id of want) {
     const old = store.get(id);
-    if (old && old.name && old.pictureUrl) {
+    if (old && old.name && old.pictureUrl && old.description) {
       out[id] = { ...old, coverLocal: store.coverUrlOf(old) };
       continue;
     }
@@ -178,6 +182,8 @@ async function infoFill(ids) {
       author: d.author || '',
       version: d.version || '',
       summary: d.summary || '',
+      description: d.description || d.descriptionText || (old && old.description) || '',
+      descriptionHtml: d.descriptionHtml || (old && old.descriptionHtml) || '',
       pictureUrl,
       url: d.url || '',
       adult: !!d.adult,
@@ -1253,6 +1259,7 @@ async function applyLinks(entries) {
         author: info.author || '',
         version: info.version || '',
         summary: info.summary || '',
+        description: info.description || info.descriptionText || '',
         pictureUrl,
         url: info.url || ('https://www.nexusmods.com/stellarblade/mods/' + modId),
         adult: !!info.adult,
@@ -3361,6 +3368,18 @@ function register() {
    */
   handle('info:local', (modIds) => infoLocal(modIds));
   handle('info:fill', (modIds) => infoFill(modIds));
+  /**
+   * 翻译成功后把中文译文写进 mod-info 档案（m15651：翻一次永久保留，不再重翻）。
+   * 只写 descriptionZh / summaryZh 两个字段，合并写，不抹掉别的信息。
+   */
+  handle('info:saveTranslation', ({ modId, descriptionZh, summaryZh } = {}) => {
+    const id = Number(modId) || 0;
+    if (!id) return null;
+    const patch = { modId: id };
+    if (typeof descriptionZh === 'string') patch.descriptionZh = descriptionZh;
+    if (typeof summaryZh === 'string') patch.summaryZh = summaryZh;
+    return modInfoStore().put(patch);
+  });
   handle('nexus:files', (modId) => nexus.getModFiles(modId));
   handle('nexus:parseUrl', (url) => parseNexusUrl(url));
   handle('nexus:clearCache', () => { nexus.clearCache(); return true; });

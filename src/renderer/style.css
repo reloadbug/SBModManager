@@ -167,6 +167,9 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .kv{display:flex;gap:10px;padding:6px 0;border-bottom:1px dashed #262B33;font-size:12px}
 .kv span:first-child{color:var(--dim2);width:80px;flex:none}
 .kv span:last-child{color:var(--text);word-break:break-all}
+/* 统一信息表：当前状态用不上的字段灰色斜体占位（用户 m15666「都保留、空着或灰色」） */
+.kv.na span:first-child,.kv.na span:last-child{color:#4c535f;font-style:italic;opacity:.75}
+.kv span:last-child .pin{color:var(--blue);margin-left:6px;font-size:10px;cursor:help}
 .urlbox{background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:11px;color:var(--blue);font-family:Consolas,monospace;word-break:break-all;display:flex;gap:8px;align-items:center}
 /* 原压缩包文件名：库里的命名很长（`<id>_<名称>_<版本>.zip`），全展开会把抽屉撑高一大截。
    限两行 + 省略号，完整路径放 title 里（鼠标停一下就能看全）。 */

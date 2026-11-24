@@ -64,7 +64,8 @@ t('原文在翻译提示之前（先看内容再决定翻不翻）', () => {
 });
 t('翻译提示原文一字未改', () => sandbox.descBoxHtml(nexusDrawer()).includes(HINT));
 t('仍带「翻译成中文」按钮', () => sandbox.descBoxHtml(nexusDrawer()).includes('data-translate="1"'));
-t('统一抽屉默认 lang 就是 zh（打开即原文 + 提示）', () => /lang: 'zh',\n    translated: null/.test(code));
+// 0.9.6：默认 lang 仍是 zh；translated 初值改为「本地档案里的译文」（翻一次永久保留）
+t('统一抽屉默认 lang 就是 zh（打开即原文 + 提示）', () => /lang: 'zh',[\s\S]{0,200}translated: \(info && info\.descriptionZh\)/.test(code));
 
 console.log('\n=== 原文的语言不挑：中文说明也照样默认显示 ===');
 const zhMod = { modId: 1, name: '某中文说明 mod', descriptionText: '这是一个中文说明的 Mod。\n第二行。' };
@@ -120,7 +121,8 @@ t('语言切换也走 descBoxHtml', () => /\$\('#descBox'\)\.innerHTML = descBox
 // ⚠️ 窗口 1600 而不是 800：`#dBody` 里现在会先铺「图集 → 文件 → 操作按钮」，
 //    从 `state.drawer.mod = m;` 到 `descBoxHtml()` 之间的模板变长了。
 //    这条断言要保的是**先后顺序**（先落 state 再渲染），别被字符数绑死。
-t('统一抽屉在渲染前已把 mod 放进 state.drawer', () => /state\.drawer = \{[\s\S]{0,6000}descBoxHtml\(state\.drawer\)/.test(code));
+// 0.9.6：信息表改成统一 20 字段（unifiedInfoRows + infoCtx），模板变长，窗口放宽到 12000
+t('统一抽屉在渲染前已把 mod 放进 state.drawer', () => /state\.drawer = \{[\s\S]{0,12000}descBoxHtml\(state\.drawer\)/.test(code));
 t('翻译提示只有一处定义（不在代码里散落硬编码）', () => (code.match(/点下方按钮把说明翻译成中文/g) || []).length === 1);
 t('语言页签带 title 说明各自含义', () => /data-lang="zh" title="翻译成中文后显示在这里"/.test(code) && /data-lang="en" title="Nexus 上的原文（无论英文中文）"/.test(code));
 

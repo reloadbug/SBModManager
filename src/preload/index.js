@@ -327,7 +327,8 @@ contextBridge.exposeInMainWorld('api', {
    */
   info: {
     local: (modIds) => invoke('info:local', modIds),
-    fill: (modIds) => invoke('info:fill', modIds)
+    fill: (modIds) => invoke('info:fill', modIds),
+    saveTranslation: (payload) => invoke('info:saveTranslation', payload)
   },
 
   /**

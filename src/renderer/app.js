@@ -1723,6 +1723,60 @@ function kvHtml(label, value, cls) {
 }
 
 /**
+ * 判断一个 Mod 是不是 CNS 换装服装 —— 三处来源任一命中即算（用户 m15666）。
+ * ① 名字含 cns；② 说明文字里提到 CNS；③ 解压后的文件名含 dekcns / cns。
+ * 返回「依据」短句（给详情「类型」字段展示用），没命中返回空串。
+ * 注意：前置框架（CNS 本体 / UE4SS / ATOOL）由 kind==='prereq' 单列，
+ * 不在这里算服装 —— 它们在进 Mod 库列表前就被挡掉了。
+ */
+function cnsEvidence(rec) {
+  const r = rec || {};
+  const nameBlob = String(r.name || r.filename || '').toLowerCase();
+  if (nameBlob.indexOf('cns') >= 0) return '名称含 cns';
+  const descBlob = [r.description, r.descriptionText, r.summary].filter(Boolean).join(' ').toLowerCase();
+  if (descBlob.indexOf('cns') >= 0) return '说明里提到 CNS';
+  const files = (r.items || []).map(m => String(m.rel || m.file || m.name || '')).join(' ').toLowerCase();
+  if (files.indexOf('dekcns') >= 0 || files.indexOf('cns') >= 0) return '解压文件含 dekcns/cns';
+  return '';
+}
+
+/**
+ * 三状态共用的统一信息表 —— 20 个固定字段、固定顺序，有值才显示，没有就灰色斜体「—」。
+ * 已安装 / 已下载 / 在线三套详情都调这一个函数，只是传进来的 ctx 不同。
+ * 字段顺序与 docs/详情信息整合-UI设计.html 一致（用户 2026-11-24 确认）。
+ */
+function unifiedInfoRows(c) {
+  c = c || {};
+  const row = (label, value) => {
+    const empty = value === '' || value === undefined || value === null || value === '0' && label === '文件数';
+    return `<div class="kv${empty ? ' na' : ''}"><span>${esc(label)}</span><span>${value || '—'}</span></div>`;
+  };
+  const nf = v => (v ? Number(v).toLocaleString() : '');
+  const out = [];
+  out.push(row('Mod ID', c.modId ? '#' + c.modId + (c.fileId ? `<span style="color:var(--dim2)"> · 文件 ${esc(String(c.fileId))}</span>` : '') : ''));
+  out.push(row('状态', c.statusText ? `<span style="color:${c.statusColor || 'var(--text)'}">${esc(c.statusText)}</span>` : ''));
+  out.push(row('类型', esc(c.typeText || '')));
+  out.push(row('版本', c.version ? 'v' + String(c.version).replace(/^v/i, '') : ''));
+  out.push(row('作者', esc(c.author || '')));
+  out.push(row('分类', esc(c.category || '')));
+  out.push(row('成人', c.adult === true ? '是' : (c.adult === false ? '否' : '')));
+  out.push(row('下载量', nf(c.downloads)));
+  out.push(row('点赞数', nf(c.endorsements)));
+  out.push(row('发布时间', c.posted ? esc(fmtDate(c.posted)) : ''));
+  out.push(row('更新时间', c.updated ? esc(fmtDate(c.updated)) : ''));
+  out.push(row('修改时间', c.mtime ? esc(fmtDate(c.mtime)) : ''));
+  out.push(row('开启时间', c.enabledAt ? esc(fmtWhen(c.enabledAt)) + (c.enabledAtGuess ? '<span style="color:var(--dim2)">（推算/补记）</span>' : '') : ''));
+  out.push(row('禁用时间', c.disabledAt ? esc(fmtWhen(c.disabledAt)) : ''));
+  out.push(row('安装时间', c.installedAt ? esc(fmtDate(c.installedAt)) : ''));
+  out.push(row('登记状态', esc(c.registry || '')));
+  out.push(row('安装位置', c.installPath ? esc(c.installPath) + (c.installPathBtn || '') : ''));
+  out.push(row('压缩包位置', c.archivePath ? esc(c.archivePath) + (c.archivePathBtn || '') : ''));
+  out.push(row('文件数', (c.fileCount === undefined || c.fileCount === null || c.fileCount === '') ? '' : String(c.fileCount)));
+  out.push(row('占用', c.size ? esc(fmtSize(c.size)) : ''));
+  return out.join('');
+}
+
+/**
  * 统一的 Mod 详情抽屉。
  *
  * 用户 2026-11-11 定案：「已安装 / 已下载 / 浏览」三个界面并成一个 Mod 库之后，
@@ -1779,11 +1833,13 @@ function openModDrawer(rec) {
     mod,
     rec: r,
     lang: 'zh',
-    translated: null,
     translating: false,
     files: [],
     localKey: null,
-    unified: true
+    unified: true,
+    // 2026-11-24：本地档案里若有中文译文，直接拿来显示（翻一次永久保留）
+    translated: (info && info.descriptionZh) || (info && info.summaryZh)
+      || (meta.descriptionZh || meta.summaryZh || '')
   };
 
   // ---------- ① 头部 ----------
@@ -1834,44 +1890,55 @@ function openModDrawer(rec) {
   if (urlOpen) primaryActs.push(`<button class="btn" data-openurl="${esc(urlOpen)}">在浏览器打开</button>`);
   if (kind === 'online' && modId) primaryActs.push(`<button class="btn" data-gallery="${modId}">刷新图集</button>`);
 
-  // ---------- ④ 信息表 ----------
+  // ---------- ④ 信息表（三状态统一 20 字段，见 unifiedInfoRows） ----------
   const stateText = group
     ? (group.partial ? '部分启用' : (group.enabled ? '已启用' : '已禁用'))
     : (kind === 'downloaded' ? '已下载，未安装' : '在线');
   const stateColor = group ? (group.enabled ? 'var(--ok)' : 'var(--dim)') : (kind === 'downloaded' ? 'var(--blue)' : 'var(--accent)');
+
+  // 类型 + CNS 判定依据（名称 / 说明 / 文件名三处来源）
+  const cnsHint = cnsEvidence(group ? {
+    name: r.name || (group && group.name), description: (info && info.description)
+      || (group && group.meta && group.meta.description) || (group && group.meta && group.meta.summary) || r.summary,
+    items: group.items
+  } : { name: r.name || mod.name, description: mod.descriptionText || info.description || mod.summary, items: r.items });
+  let typeText = group ? (KIND_LABEL[group.kind] || group.kind || '') : (kind === 'downloaded' ? '安装包' : '在线 Mod');
+  if (group && group.builtin) typeText += '（内置）';
+  if (cnsHint) typeText += ' · CNS 服装（依据：' + cnsHint + '）';
+
+  const installPath = group ? (group.location || '') : '';
+  const archivePath = group
+    ? ((group.archive && group.archive.path) || '')
+    : (kind === 'downloaded' ? ((lib && lib.archivePath) || r.archivePath || '') : '');
+  const infoCtx = {
+    modId: modId || srcModId,
+    fileId: group && src.fileId,
+    statusText: stateText, statusColor: stateColor,
+    typeText,
+    version: r.version || mod.version,
+    author: r.author || mod.author || (info && info.author),
+    category: r.category || mod.category || (info && (info.categoryZh || info.category)),
+    adult: (info && info.adult),
+    downloads: (info && info.downloads) || mod.downloads,
+    endorsements: (info && info.endorsements) || mod.endorsements,
+    posted: mod.createdAt,
+    updated: r.updatedAt || mod.updatedAt || (info && info.updatedAt),
+    mtime: group && group.mtime,
+    enabledAt: group && group.enabledAt,
+    disabledAt: group && group.disabledAt,
+    enabledAtGuess: group && group.enabledAtGuess,
+    installedAt: group && (group.installedAt || (group.archive && group.archive.at)),
+    registry: group ? (group.registered ? '已登记（含来源信息）' : (group.linked ? '未登记 · 已关联 Nexus' : '未登记（磁盘扫描发现）')) : (kind === 'downloaded' ? '下载包（未安装）' : ''),
+    installPath,
+    installPathBtn: installPath ? '<span style="color:var(--blue);margin-left:6px">📁</span>' : '',
+    archivePath,
+    archivePathBtn: archivePath ? '<span style="color:var(--blue);margin-left:6px">📦</span>' : '',
+    fileCount: group ? group.fileCount : undefined,
+    size: group ? group.size : (lib && lib.size) || r.size
+  };
   const rows = [];
   if (kind === 'online') rows.push(localStateRowHtml());
-  rows.push(kvHtml('Mod ID', modId || srcModId ? '#' + (modId || srcModId) + (
-    (group && src.fileId) ? `<span style="color:var(--dim2)"> · 文件 ${esc(String(src.fileId))}</span>` : ''
-  ) : ''));
-  rows.push(`<div class="kv"><span>状态</span><span style="color:${stateColor}">${stateText}</span></div>`);
-  if (group) rows.push(kvHtml('类型', `${KIND_LABEL[group.kind] || group.kind}${group.builtin ? '（内置）' : ''}`));
-  rows.push(kvHtml('版本', (r.version || mod.version) ? 'v' + String(r.version || mod.version).replace(/^v/i, '') : ''));
-  rows.push(kvHtml('作者', esc(r.author || mod.author || '')));
-  rows.push(kvHtml('分类', esc(r.category || mod.category || '')));
-  if (group) {
-    rows.push(kvHtml('位置', esc(group.location || '')));
-    rows.push(kvHtml('文件数', group.fileCount));
-    rows.push(kvHtml('占用', fmtSize(group.size)));
-    rows.push(kvHtml('修改时间', fmtDate(group.mtime)));
-    if (group.enabledAt) {
-      rows.push(`<div class="kv"><span>开启时间</span><span data-i18n-skip>${esc(fmtWhen(group.enabledAt))}${
-        group.enabledAtGuess ? '（按安装时间推算）' : ''}</span></div>`);
-    }
-    rows.push(kvHtml('登记状态', group.registered
-      ? '已登记（含来源信息）'
-      : (group.linked ? '未登记 · 已关联 Nexus 来源' : '未登记（磁盘扫描发现）')));
-  } else if (kind === 'downloaded') {
-    rows.push(kvHtml('安装包', esc(lib && lib.filename ? lib.filename : (r.filename || ''))));
-    rows.push(kvHtml('大小', fmtSize((lib && lib.size) || r.size)));
-    rows.push(kvHtml('位置', esc(lib && lib.archivePath ? lib.archivePath : (r.archivePath || ''))));
-    if (info.downloads) rows.push(kvHtml('下载量', Number(info.downloads).toLocaleString()));
-  } else {
-    if (mod.downloads) rows.push(kvHtml('下载量', Number(mod.downloads).toLocaleString()));
-    if (mod.endorsements) rows.push(kvHtml('点赞数', Number(mod.endorsements).toLocaleString()));
-    if (mod.createdAt) rows.push(kvHtml('发布时间', fmtDate(mod.createdAt)));
-    if (mod.updatedAt) rows.push(kvHtml('更新时间', fmtDate(mod.updatedAt)));
-  }
+  rows.push(unifiedInfoRows(infoCtx));
 
   // ---------- ⑤ 文件 / 内容 ----------
   let filesHtml = '';
@@ -2013,17 +2080,25 @@ async function fillOnlineDrawer(modId) {
 
     const box = $('#drawerInfo');
     if (box) {
-      box.innerHTML = localStateRowHtml() + [
-        kvHtml('Mod ID', '#' + m.modId),
-        '<div class="kv"><span>状态</span><span style="color:var(--accent)">在线</span></div>',
-        kvHtml('版本', m.version ? 'v' + String(m.version).replace(/^v/i, '') : ''),
-        kvHtml('作者', esc(m.author || '')),
-        kvHtml('分类', esc(m.category || '')),
-        kvHtml('下载量', Number(m.downloads || 0).toLocaleString()),
-        kvHtml('点赞数', Number(m.endorsements || 0).toLocaleString()),
-        kvHtml('发布时间', fmtDate(m.createdAt)),
-        kvHtml('更新时间', fmtDate(m.updatedAt))
-      ].join('');
+      const localRec = state.modHistoryByModId && state.modHistoryByModId[String(m.modId)];
+      const cnsHint = cnsEvidence({ name: m.name, description: m.descriptionText || m.summary, items: d.rec && d.rec.items });
+      let typeText = '在线 Mod';
+      if (cnsHint) typeText += ' · CNS 服装（依据：' + cnsHint + '）';
+      // 在线档：本地有安装/下载档案时带出时间与本机状态，否则只显示在线元数据
+      const ctx = {
+        modId: m.modId,
+        statusText: localRec && localRec.enabled === true ? '已启用' : (localRec && localRec.enabled === false ? '已禁用' : '在线'),
+        statusColor: localRec && localRec.enabled === true ? 'var(--ok)' : 'var(--accent)',
+        typeText,
+        version: m.version, author: m.author, category: m.category, adult: !!m.adult,
+        downloads: m.downloads, endorsements: m.endorsements,
+        posted: m.createdAt, updated: m.updatedAt,
+        enabledAt: localRec && localRec.enabledAt,
+        disabledAt: localRec && localRec.disabledAt,
+        enabledAtGuess: localRec && localRec.enabledAtGuess,
+        installPath: localRec && localRec.installPath || ''
+      };
+      box.innerHTML = localStateRowHtml() + unifiedInfoRows(ctx);
     }
 
     const dbox = $('#descBox');
@@ -3277,9 +3352,12 @@ function libStateOf(rec) {
 
 /** 本地类型（服装 / CNS 换装 / 前置 / 脚本 / 内置 / 其他）—— 没有 Nexus 分类时也能筛 */
 function libTypeOf(rec) {
-  const text = [rec.name, rec.filename, rec.summary].filter(Boolean).join(' ').toLowerCase();
-  const files = (rec.items || []).map(m => String(m.rel || m.file || '')).join(' ').toLowerCase();
-  if (text.indexOf('cns') >= 0 || files.indexOf('dekcns') >= 0) return 'cns';
+  // 2026-11-24 用户：判定 CNS 服装不能只看名字 —— 名称 / 说明 / 解压后文件名
+  // 三处任一含 cns / dekcns 都算（有些 mod 名字没写、说明或文件名里才有）。
+  const text = [rec.name, rec.filename, rec.summary, rec.description, rec.descriptionText]
+    .filter(Boolean).join(' ').toLowerCase();
+  const files = (rec.items || []).map(m => String(m.rel || m.file || m.name || '')).join(' ').toLowerCase();
+  if (text.indexOf('cns') >= 0 || files.indexOf('dekcns') >= 0 || files.indexOf('cns') >= 0) return 'cns';
   if (rec.groupKind === 'prereq') return 'prereq';
   if (rec.groupKind === 'script') return 'script';
   if (rec.builtin) return 'builtin';
@@ -3368,6 +3446,9 @@ function buildLibRecords() {
       version: g.version,
       image: g.image,
       summary: g.zh,
+      // 2026-11-24：说明也带进来 —— libTypeOf 靠它判「名字没写 cns 但说明写了」的 CNS 服装
+      description: (info && (info.description || info.descriptionText))
+        || (g.meta && (g.meta.description || g.meta.summary)) || '',
       category: (info && (info.categoryZh || info.category)) || '',
       adult: !!(info && info.adult),
       downloads: (info && Number(info.downloads)) || 0,
@@ -3406,6 +3487,7 @@ function buildLibRecords() {
       version: meta.version || it.version || '',
       image: meta.coverLocal || meta.image || (typeof coverForMod === 'function' ? coverForMod(modId) : ''),
       summary: meta.summary || '',
+      description: meta.description || meta.descriptionText || '',
       category: (meta.categoryZh || meta.category)
         || ((libInfoOf(modId) || {}).categoryZh) || ((libInfoOf(modId) || {}).category) || '',
       adult: !!(meta.adult || (libInfoOf(modId) || {}).adult),
@@ -5047,6 +5129,16 @@ function renderFiles(showArchived, modId) {
     const body = esc(r.text).replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
     if (box) box.innerHTML = (head ? `<p><b>${esc(head)}</b></p>` : '') + `<p>${body}</p>`;
     toast(r.cached ? '已使用缓存译文' : '翻译完成', 'ok');
+    // 2026-11-24 (m15651)：翻译成功后把译文写进本地 mod-info 档案，
+    // 下次（含重启、离线）直接显示，不再重翻。失败不影响本次显示。
+    const saveModId = Number((d.mod && d.mod.modId) || d.rec && d.rec.modId) || 0;
+    if (saveModId) {
+      call(window.api.info.saveTranslation({
+        modId: saveModId,
+        descriptionZh: r.text,
+        summaryZh: head || undefined
+      }), { silent: true }).catch(() => {});
+    }
   } catch (e) {
     if (box) box.innerHTML = `<div class="callout err">翻译失败：${esc(e.message)}</div>`;
   } finally {

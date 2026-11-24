@@ -140,10 +140,11 @@ section('C. 前端：带出时间 / 排序 / 入口');
 
   ok('卡片上显示开启时间',
     appSrc.includes('开启于 ${esc(fmtWhen(rec.enabledAt))}'));
+  // 0.9.6：信息表改成 unifiedInfoRows 统一输出，开启时间由 row('开启时间', ...) 生成
   ok('抽屉信息里有一行「开启时间」',
-    appSrc.includes('<span>开启时间</span>'));
-  ok('推算出来的时间会说明「按安装时间推算」',
-    appSrc.includes('按安装时间推算'));
+    appSrc.includes("row('开启时间'"));
+  ok('推算出来的时间会标注（推算/补记）',
+    appSrc.includes('推算/补记'));
 
   ok('index.html 有 #libSortTabs 本地排序 chip 组', htmlSrc.includes('id="libSortTabs"') && htmlSrc.includes('data-libsort="on"'));
   ok('本地排序四颗维度 chip（不带 ↓↑），方向靠点击翻转',

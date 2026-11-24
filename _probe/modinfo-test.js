@@ -150,7 +150,8 @@ async function main() {
   const infoLocal = grabFunction(ipc, 'infoLocal');
   ok('C5 infoLocal 存在', !!infoLocal);
   ok('C6 infoLocal 先读档案再读目录', infoLocal.includes('store.get(id)') && infoLocal.includes('cat.get(id)'));
-  ok('C7 infoLocal 把目录条目落成档案', infoLocal.includes('store.put(fromCatalog(entry))'));
+  // 0.9.6：落成档案时先合并，保住已有的 description / descriptionZh
+  ok('C7 infoLocal 把目录条目落成档案', infoLocal.includes('fromCatalog(entry)') && infoLocal.includes('store.put(merged)'));
   ok('C8 infoLocal 返回 file:// 封面', infoLocal.includes('coverLocal: store.coverUrlOf(rec)'));
   ok('C9 infoLocal 会预热封面', infoLocal.includes('warmCovers('));
 

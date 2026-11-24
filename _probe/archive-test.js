@@ -209,7 +209,11 @@ console.log('\n[4] 接线与样式');
     /let st = null;\s*\n\s*try \{ st = fs\.statSync\(p\); \} catch/.test(scannerCode) || '缺失');
 
   t('抽屉「信息」里有 Mod ID 行', () => /<span>Mod ID<\/span>/.test(appCode) || '缺失');
-  t('Mod ID 行同时给出文件 ID', () => /· 文件 \$\{esc\(String\(src\.fileId\)\)\}/.test(appCode) || '缺失');
+  // 0.9.6：信息表改 unifiedInfoRows，文件 ID 由 ctx.fileId 拼进 Mod ID 行
+  t('Mod ID 行同时给出文件 ID', () => (
+    /· 文件 \$\{esc\(String\(c\.fileId\)\)\}/.test(appCode)
+    || /· 文件 \$\{esc\(String\(src\.fileId\)\)\}/.test(appCode)
+  ) || '缺失');
   t('抽屉正文插入了 archiveBlockHtml(group)', () => /\$\{archiveBlockHtml\(group\)\}/.test(appCode) || '缺失');
   t('抽屉底栏有「📦 定位原压缩包」（且只在安装包还在时出现）', () =>
     /if \(group\.archive && group\.archive\.exists\)/.test(appCode) && /data-reveal-path=/.test(appCode) || '缺失');

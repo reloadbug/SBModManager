@@ -45,6 +45,11 @@ function fromCatalog(entry) {
     author: entry.author || '',
     version: entry.version || '',
     summary: entry.summary || '',
+    // 2026-11-24：完整说明也落本地档案 —— 详情抽屉的「说明」和 CNS 判定
+    // （名字没写 cns 但说明里写了）都要用，不能每次都联网取。
+    description: entry.description || entry.descriptionText || '',
+    descriptionHtml: entry.descriptionHtml || '',
+    descriptionZh: entry.descriptionZh || '',
     pictureUrl: pic,
     url: entry.url || '',
     downloads: Number(entry.downloads) || 0,
