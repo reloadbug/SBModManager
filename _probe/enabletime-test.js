@@ -101,9 +101,9 @@ section('B. 后端：安装与开关都记时间');
 /* ---------------- C. 前端接线 ---------------- */
 section('C. 前端：带出时间 / 排序 / 入口');
 {
-  ok('groupEnabledAt 取组内最晚的启用时刻',
+  ok('groupEnabledAt 取组内最晚的启用时刻（disk+nexus 两套 id 都看）',
     appSrc.includes('function groupEnabledAt(items)')
-    && appSrc.includes('const fromHistory = String((rec && rec.enabledAt) || \'\');')
+    && appSrc.includes('state.modHistoryByModId[String(mid)]')
     && appSrc.includes('if (at && at > t) t = at;'));
   ok('groupInstalled 把 enabledAt 挂到分组上',
     appSrc.includes('enabledAt: groupEnabledAt(items),'));

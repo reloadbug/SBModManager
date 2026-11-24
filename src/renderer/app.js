@@ -669,15 +669,14 @@ function compareInstalled(a, b, mode, dir) {
 function groupEnabledAt(items) {
   let t = '';
   for (const m of items || []) {
-    // 优先读生命周期档案（未登记 mod 没有 meta.enabledAt，全靠这里）。
-    // 扫描条目的稳定 id 是关键：`disk:paks:<key>`，开关改名也不变，所以记录不失联。
-    const rec = (state.modHistory && state.modHistory[m.id])
-      || (() => {
-        const src = (m.meta && m.meta.source) || {};
-        const mid = Number(src.modId || (m.meta && m.meta.modId) || (m.link && m.link.modId) || (m.tag && m.tag.modId) || 0);
-        return mid ? state.modHistoryByModId[String(mid)] : null;
-      })();
-    const fromHistory = String((rec && rec.enabledAt) || '');
+    // 同一个 Mod 的事件散落在 disk:paks:...（未登记时的开关/回填）与
+    // nexus:<id>:0（关联后的开关）两套 id 上。两条都要看，取较晚的启用时刻 ——
+    // 只读 m.id 会停在 disk 上的旧回填时间，「启用时间不更新」就是这么来的。
+    const src = (m.meta && m.meta.source) || {};
+    const mid = Number(src.modId || (m.meta && m.meta.modId) || (m.link && m.link.modId) || (m.tag && m.tag.modId) || 0);
+    const byStableId = state.modHistory && state.modHistory[m.id];
+    const byAgg = mid ? (state.modHistoryByModId && state.modHistoryByModId[String(mid)]) : null;
+    const fromHistory = String((byAgg && byAgg.enabledAt) || (byStableId && byStableId.enabledAt) || '');
     const fromMeta = String((m.meta && m.meta.enabledAt) || '');
     // 两个都有时取较晚的那个（最近一次真正生效的时刻）
     const at = fromHistory > fromMeta ? fromHistory : fromMeta;
@@ -695,6 +694,19 @@ function fmtWhen(iso) {
   const md = p(d.getMonth() + 1) + '-' + p(d.getDate());
   const hm = p(d.getHours()) + ':' + p(d.getMinutes());
   return d.getFullYear() === new Date().getFullYear() ? md + ' ' + hm : d.getFullYear() + '-' + md + ' ' + hm;
+}
+
+/**
+ * ISO 时间 → 精确到毫秒的完整时间 `2026-11-25 00:18:13.887`。
+ * 详情信息表 / 状态变更记录用（用户 2026-11-25：「所有的时间记录都要精确到毫秒，
+ * 否则排序时都是一样的秒数」）；卡片主显示仍用精简的 fmtWhen，完整时间进 title。
+ */
+function fmtWhenMs(iso) {
+  const t = Date.parse(String(iso || ''));
+  if (!t) return '';
+  const d = new Date(t);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
 }
 
 function groupInstalled(list) {
@@ -750,8 +762,10 @@ function groupInstalled(list) {
       disabledAt: (() => {
         let t = '';
         for (const m of items) {
+          const mid = Number((m.meta && m.meta.source && m.meta.source.modId) || (m.meta && m.meta.modId) || (m.link && m.link.modId) || (m.tag && m.tag.modId) || 0);
+          const byAgg = mid ? (state.modHistoryByModId && state.modHistoryByModId[String(mid)]) : null;
           const rec = state.modHistory && state.modHistory[m.id];
-          const at = String((rec && rec.disabledAt) || (m.meta && m.meta.disabledAt) || '');
+          const at = String((byAgg && byAgg.disabledAt) || (rec && rec.disabledAt) || (m.meta && m.meta.disabledAt) || '');
           if (at && at > t) t = at;
         }
         return t;
@@ -1791,15 +1805,15 @@ function unifiedInfoRows(c) {
   out.push(row('adult', '成人', c.adult === true ? '是' : (c.adult === false ? '否' : '')));
   out.push(row('downloads', '下载量', nf(c.downloads)));
   out.push(row('endorsements', '点赞数', nf(c.endorsements)));
-  out.push(row('posted', '发布时间', c.posted ? esc(fmtDate(c.posted)) + (c.postedFrom ? dim('（' + c.postedFrom + '）') : '') : ''));
-  out.push(row('updated', '更新时间', c.updated ? esc(fmtDate(c.updated)) : ''));
-  out.push(row('mtime', '修改时间', c.mtime ? esc(fmtDate(c.mtime)) : ''));
-  out.push(row('enabledAt', '开启时间', c.enabledAt ? esc(fmtWhen(c.enabledAt)) + (c.enabledAtGuess ? dim('（推算/补记）') : '') : ''));
+  out.push(row('posted', '发布时间', c.posted ? esc(fmtWhenMs(c.posted)) + (c.postedFrom ? dim('（' + c.postedFrom + '）') : '') : ''));
+  out.push(row('updated', '更新时间', c.updated ? esc(fmtWhenMs(c.updated)) : ''));
+  out.push(row('mtime', '修改时间', c.mtime ? esc(fmtWhenMs(c.mtime)) : ''));
+  out.push(row('enabledAt', '开启时间', c.enabledAt ? esc(fmtWhenMs(c.enabledAt)) + (c.enabledAtGuess ? dim('（推算/补记）') : '') : ''));
   out.push(row('disabledAt', '禁用时间', c.disabledAt
-    ? esc(fmtWhen(c.disabledAt))
+    ? esc(fmtWhenMs(c.disabledAt))
     : (c.disabledNever ? dim('无记录') : '')));
   out.push(row('installedAt', '安装时间', c.installedAt
-    ? esc(fmtDate(c.installedAt)) + (c.installedAtGuess ? dim('（补记：文件创建时间）') : (c.installedFrom ? dim('（' + c.installedFrom + '）') : ''))
+    ? esc(fmtWhenMs(c.installedAt)) + (c.installedAtGuess ? dim('（补记：文件创建时间）') : (c.installedFrom ? dim('（' + c.installedFrom + '）') : ''))
     : ''));
   out.push(row('registry', '登记状态', esc(c.registry || '')));
   out.push(row('installPath', '安装位置', c.installPath ? esc(c.installPath) + (c.installPathBtn || '') : ''));
@@ -2301,7 +2315,10 @@ async function fillDrawerHistory(modId) {
   const box = $('#drawerHistory');
   if (!box) return;
   try {
-    const evs = await call(window.api.history.forMod(modId, 20), { silent: true });
+    // 按 modId 聚合取流水：同一个 Mod 的 disable 记在 disk:paks:...、enable 记在
+    // nexus:<id>:0，forMod(modId) 精确匹配会一条都取不到（用户 2026-11-25
+    // 「详情里没有状态变更记录」的根因）。forModId 按事件上的 modId 聚合。
+    const evs = await call(window.api.history.forModId(modId, 20), { silent: true });
     if (!box.isConnected) return;                       // 抽屉已切走
     if (!evs || !evs.length) {
       box.textContent = '还没有记录（这个 Mod 的状态变化会从现在开始记录）。';
@@ -2309,7 +2326,7 @@ async function fillDrawerHistory(modId) {
     }
     const LABEL = { download: '下载', install: '安装', enable: '开启', disable: '禁用', uninstall: '卸载', backfill: '补记' };
     box.innerHTML = evs.map(e => {
-      const t = fmtWhen(e.at);
+      const t = fmtWhenMs(e.at);
       const extra = e.detail ? `<span style="color:var(--dim2)"> · ${esc(e.detail)}</span>` : '';
       return `<div style="padding:2px 0"><span style="color:var(--text)">${esc(t)}</span> · ${
         esc(LABEL[e.action] || e.action)}${extra}</div>`;
@@ -4725,6 +4742,13 @@ async function loadModHistory() {
       if (rec.modId) byModId[String(rec.modId)] = rec;
     }
     state.modHistory = byId;
+    // 同一 Mod 的开关流水散落在 disk: 与 nexus: 两套 id 上，mods() 里
+    // byModId 会被后一条覆盖、只留一半时间。用主进程按事件 fold 出的
+    // 聚合状态覆盖它，enabled/disabledAt/启用时间才是「最后一次」的真值。
+    try {
+      const agg = await call(window.api.history.statesByModId(), { silent: true });
+      if (agg && Object.keys(agg).length) Object.assign(byModId, agg);
+    } catch { /* 没有新通道就用旧口径 */ }
     state.modHistoryByModId = byModId;
   } catch { state.modHistory = {}; state.modHistoryByModId = {}; }
 }

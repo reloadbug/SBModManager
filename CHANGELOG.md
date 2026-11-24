@@ -1,4 +1,20 @@
 # 更新日志
+## [0.9.13] - 2026-11-25
+
+### 修复
+
+- **启用 / 禁用时间不更新、详情没有状态变更记录**（用户 2026-11-25：「现在禁用时间没有更新，只记录了第一次禁用的时间，详情页面里面也没有状态变更记录」「启用时间也没更新」）。
+  - 根因：同一个 Mod 的事件散落在**两套 id** 上 —— 未登记时开关记在 `disk:paks:xxx [nx<id>]`（扫描条目稳定 id），补登记 / 关联之后又记在 `nexus:<id>:0`（虚拟 id），`modId` 都是同一个。数据层其实每次开关都记了、毫秒各异，但三个读取端都按「精确 id」匹配：`groupEnabledAt` 只读 disk 上的旧回填时间、`byModId` 被后一条覆盖只剩一半、详情 `fillDrawerHistory` 用 `forMod(modId)` 精确匹配取不到 → 显示「还没有记录」。
+  - 修：`modHistory` 新增 `statesByModId()`（按 modId 把两套 id 的所有事件 fold 成一份当前状态：enabled 取最新开关结论、enabledAt/disabledAt 取各自最新时刻）与 `forModId(modId)`（按 modId 聚合事件流水）；新增 `history:statesByModId` / `history:forModId` IPC 通道 + preload 暴露；渲染层 `loadModHistory`、`groupEnabledAt`、`groupInstalled.disabledAt`、详情 `fillDrawerHistory` 三个读取端全部改用按 modId 聚合口径。
+- **所有时间精确到毫秒**（用户 2026-11-25：「开启禁用时间，所有的时间记录都要精确到毫秒，否则排序时都是一样的秒数」）。
+  - 数据层本来就带毫秒（`new Date().toISOString()`）；真病根是 `backfill()` 把时间放在循环外整批 300 个回填 mod 共用同一时间戳 → 排序全撞车。改为每条递增 1ms、整批仍只写一次盘。
+  - 详情抽屉的发布时间/更新时间/修改时间/开启时间/禁用时间/安装时间统一用 `fmtWhenMs()` 显示到毫秒（卡片主显示仍精简，符合界面约定）；状态变更记录时间线也带毫秒。
+
+### 测试
+
+- 新增 `_probe/timeline-fix-test.js` 15 条（两套 id 按 modId 聚合 / 精确 id 只取一半的反证 / backfill 每条错开 1ms / IPC+preload 通道 / 三处读取端 / 详情毫秒显示），接进 `test:all`。
+- 修 `enabletime-test.js`、`modhistory-test.js` 两条过时断言；全量探针 67/0 全绿。
+
 ## [0.9.12] - 2026-11-25
 
 ### 修复

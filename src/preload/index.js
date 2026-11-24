@@ -200,7 +200,9 @@ contextBridge.exposeInMainWorld('api', {
     events: (opts) => invoke('history:events', opts),
     mod: (id) => invoke('history:mod', id),
     forMod: (id, limit) => invoke('history:forMod', id, limit),
+    forModId: (modId, limit) => invoke('history:forModId', modId, limit),
     mods: () => invoke('history:mods'),
+    statesByModId: () => invoke('history:statesByModId'),
     enabledBetween: (since, until) => invoke('history:enabledBetween', since, until),
     backfill: (items) => invoke('history:backfill', items),
     clear: () => invoke('history:clear')

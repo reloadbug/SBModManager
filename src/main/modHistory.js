@@ -114,13 +114,59 @@ function createModHistory(file) {
     /** 所有 mod 的当前状态（数组） */
     mods: () => Object.values(db.mods).map(m => ({ ...m })),
 
+    /**
+     * 按 Nexus modId 聚合出的「当前状态」（详情 / 排序 / 时间段筛选按它认人）。
+     *
+     * 同一个 Mod 的记录可能同时存在于两条 id 上（未登记的 `disk:paks:...` +
+     * 补登记后的 `nexus:<id>:0`），各自记着一半的开关流水。这里按 modId 把
+     * **所有事件的最后一次** fold 成一份当前状态：enabled 取最新一条开关事件的
+     * 结论，enabledAt / disabledAt 取各自最新时刻，所以「disk 上禁用、nexus 上启用」
+     * 也能正确显示成「已启用 · 开启时间=nexus 那次」。
+     * @returns {Record<string, {modId,name,enabled,enabledAt,disabledAt,enabledAtGuess,downloadedAt,installedAt,uninstalledAt,at}>}
+     */
+    statesByModId() {
+      const out = {};
+      for (const e of db.events) {
+        const mid = Number(e.modId) || 0;
+        if (!mid) continue;
+        const k = String(mid);
+        const rec = out[k] || { modId: mid, name: '', enabled: false, enabledAt: '', disabledAt: '', enabledAtGuess: false, at: '' };
+        if (e.name) rec.name = e.name;
+        if (e.at > rec.at) rec.at = e.at;
+        if (e.action === 'enable') { rec.enabled = true; rec.enabledAt = e.at; rec.enabledAtGuess = false; }
+        else if (e.action === 'backfill') { rec.enabled = true; if (!rec.enabledAt || e.at > rec.enabledAt) { rec.enabledAt = e.at; rec.enabledAtGuess = true; } }
+        else if (e.action === 'disable') { rec.enabled = false; rec.disabledAt = e.at; }
+        else if (e.action === 'download') rec.downloadedAt = e.at;
+        else if (e.action === 'install') rec.installedAt = e.at;
+        else if (e.action === 'uninstall') { rec.enabled = false; rec.uninstalledAt = e.at; }
+        out[k] = rec;
+      }
+      return out;
+    },
+
     /** 单个 mod 的当前状态 */
     mod: (id) => { const m = db.mods[keyOf(id)]; return m ? { ...m } : null; },
 
-    /** 某 mod 的事件流水（新→旧） */
+    /** 某 mod 的事件流水（新→旧）—— 按扫描条目稳定 id 精确匹配 */
     forMod: (id, limit) => {
       const k = keyOf(id);
       return db.events.filter(e => e.id === k).slice(-(Math.max(1, Number(limit) || 200)))
+        .reverse().map(e => ({ ...e }));
+    },
+
+    /**
+     * 按 Nexus modId 取事件流水（新→旧）—— 详情「状态变更记录」用。
+     *
+     * 为什么不能只用 forMod(id)：同一个 Mod 的事件会散落在两套 id 上 ——
+     *   未登记时开关记在 `disk:paks:xxx [nx<id>]`（稳定 id），
+     *   补登记/关联之后开关又记在 `nexus:<id>:0`（虚拟 id）。
+     * 按 modId 聚合才能把「禁用（disk）+ 启用（nexus）」串成一条完整时间线。
+     */
+    forModId: (modId, limit) => {
+      const mid = Number(modId) || 0;
+      if (!mid) return [];
+      return db.events.filter(e => Number(e.modId) === mid)
+        .slice(-(Math.max(1, Number(limit) || 200)))
         .reverse().map(e => ({ ...e }));
     },
 
@@ -135,7 +181,9 @@ function createModHistory(file) {
      * @returns 回填条数
      */
     backfill(items) {
-      const stamp = now();
+      // 每条回填时间逐个错开 1ms —— 整批共用同一时间戳时排序会全部撞车
+      // （用户 2026-11-25：「所有的时间记录都要精确到毫秒，否则排序时都是一样的秒数」）。
+      let stampMs = Date.now();
       let n = 0;
       for (const it of (Array.isArray(items) ? items : [])) {
         const id = keyOf(it && it.id);
@@ -143,6 +191,7 @@ function createModHistory(file) {
         const rec = db.mods[id];
         if (rec && rec.enabledAt) continue;              // 已有时间（真实或回填过）都不动
         if (it.enabled === false) continue;              // 关着的不补"开启时间"
+        const stamp = new Date(stampMs++).toISOString(); // 每条独立、递增 1ms
         // 直接改内存 + 记一条回填事件（不调用 add()，避免每条都整文件写盘）
         db.events.push({
           at: stamp, action: 'backfill', id,

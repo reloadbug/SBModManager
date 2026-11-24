@@ -3950,7 +3950,9 @@ function register() {
   handle('history:events', (opts) => modHistory.events(opts || {}));
   handle('history:mod', (id) => modHistory.mod(id));
   handle('history:forMod', (id, limit) => modHistory.forMod(id, limit));
+  handle('history:forModId', (modId, limit) => modHistory.forModId(modId, limit));
   handle('history:mods', () => modHistory.mods());
+  handle('history:statesByModId', () => modHistory.statesByModId());
   handle('history:enabledBetween', (since, until) => modHistory.enabledBetween(since, until));
   handle('history:backfill', (items) => {
     const n = modHistory.backfill(items);

@@ -167,7 +167,7 @@ t('D refreshAll 画卡片前加载档案', () => {
   return !!m || '顺序不对';
 });
 t('D 详情抽屉有状态变更记录段', () => (/状态变更记录/.test(app) && /id="drawerHistory"/.test(app)) || '没有');
-t('D fillDrawerHistory 走 history.forMod', () => /window\.api\.history\.forMod\(/.test(app) || '没有');
+t('D fillDrawerHistory 走 history.forModId（按 modId 聚合）', () => /window\.api\.history\.forModId\(/.test(app) || '没有');
 t('D 禁用时间排序维度 off', () => {
   const m = app.match(/const LIB_SORTS\s*=\s*\[[\s\S]{0,900}?\n\]/);
   return (m && m[0].indexOf("value: 'off'") >= 0) || '没有 off';
