@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>安装冲突 · 两图对比选择 — UI 设计</title>
+<style>
+:root{
+  --bg:#14161A; --panel:#1B1E24; --panel2:#22262E; --panel3:#2A2F38;
+  --border:#2C313A; --border2:#3A414D;
+  --text:#E6E9EF; --dim:#8C94A3; --dim2:#666E7C;
+  --accent:#E8A33D; --accent-d:#C8852A; --red:#D9534F; --ok:#3FB950; --blue:#4A9EFF;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Microsoft YaHei UI","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px;padding:26px;line-height:1.5}
+.wrap{max-width:960px;margin:0 auto}
+h2{font-size:16px;margin-bottom:6px;color:var(--accent)}
+.note{color:var(--dim);font-size:12px;margin-bottom:22px;background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:7px;padding:10px 13px}
+.note b{color:var(--text)}
+.sec-title{font-size:13px;color:var(--dim);margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+
+/* 模态框外观（复刻 openModal） */
+.modal{background:var(--panel);border:1px solid var(--border2);border-radius:12px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.5)}
+.mhead{padding:14px 18px;border-bottom:1px solid var(--border);font-size:14.5px;font-weight:600;display:flex;align-items:center;gap:9px}
+.mhead .warn{color:var(--red)}
+.mbody{padding:18px}
+.mfoot{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:9px;background:var(--panel2)}
+
+/* 冲突摘要条 */
+.summary{background:rgba(217,83,79,.1);border:1px solid rgba(217,83,79,.4);border-radius:8px;padding:10px 13px;margin-bottom:16px;font-size:12.5px}
+.summary b{color:var(--red)}
+.summary .mesh{color:var(--dim);font-size:11.5px;margin-top:4px}
+
+/* 两图对比 */
+.cmpgrid{display:grid;grid-template-columns:1fr 44px 1fr;gap:0;align-items:stretch}
+.cmpcol{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:12px;position:relative}
+.cmpcol.keep{border-color:rgba(63,185,80,.5)}
+.cmpcol.drop{border-color:rgba(217,83,79,.5)}
+.cmpcol h4{font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.tag{font-size:9.5px;padding:2px 7px;border-radius:9px;font-weight:600}
+.tag.keep{background:rgba(63,185,80,.18);color:#7ee29a}
+.tag.drop{background:rgba(217,83,79,.18);color:#ff8b86}
+.face{width:100%;height:150px;border-radius:7px;background:linear-gradient(135deg,#2a2f38,#20242b);display:flex;align-items:center;justify-content:center;color:var(--dim2);font-size:11px;overflow:hidden;margin-bottom:10px;border:1px solid var(--border)}
+.face img{width:100%;height:100%;object-fit:cover}
+.gallery{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+.gallery .th{width:34px;height:34px;border-radius:5px;background:var(--panel3);border:1px solid var(--border);overflow:hidden}
+.gallery .th img{width:100%;height:100%;object-fit:cover}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.04)}
+.kv b{color:var(--dim);font-weight:400;flex:none}
+.kv span{color:var(--text);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vs{display:flex;align-items:center;justify-content:center;color:var(--dim2);font-size:11px;font-weight:700}
+
+/* 每列底部的“保留/禁用”选择 */
+.pick{margin-top:11px;padding:9px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--panel3);cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px}
+.pick.sel-keep{border-color:var(--ok);background:rgba(63,185,80,.12)}
+.pick.sel-drop{border-color:var(--red);background:rgba(217,83,79,.12)}
+.radio{width:15px;height:15px;border-radius:50%;border:2px solid var(--dim2);flex:none;display:flex;align-items:center;justify-content:center}
+.pick.sel-keep .radio{border-color:var(--ok)}
+.pick.sel-drop .radio{border-color:var(--red)}
+.pick.sel-keep .radio::after,.pick.sel-drop .radio::after{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pick.sel-keep .radio{color:var(--ok)}
+.pick.sel-drop .radio{color:var(--red)}
+
+/* 结果说明 */
+.result{margin-top:14px;padding:10px 12px;background:var(--panel2);border-radius:7px;font-size:11.5px;color:var(--dim)}
+.result b{color:var(--accent)}
+
+/* 按钮 */
+.btn{padding:7px 15px;border-radius:7px;border:1px solid var(--border2);background:var(--panel3);color:var(--text);font-size:12px;cursor:pointer}
+.btn.p{background:var(--accent);border-color:var(--accent-d);color:#1A1206;font-weight:600}
+.btn.d{color:#ff8b86;border-color:rgba(217,83,79,.5)}
+
+/* 时间显示 */
+.timecard{background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:14px 16px;font-size:12px}
+.timecard .row{display:flex;gap:14px;padding:6px 0;border-bottom:1px dashed rgba(255,255,255,.05)}
+.timecard .row:last-child{border-bottom:none}
+.timecard .lab{color:var(--dim);width:90px;flex:none}
+.timecard .val{font-family:Consolas,monospace;color:var(--text)}
+.timecard .val .ms{color:var(--accent);font-weight:600}
+.timecard .full{color:var(--dim2);font-size:11px;margin-left:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h2>安装冲突处理 · 两图对比选择（设计评审稿）</h2>
+  <div class="note">
+    <b>触发时机</b>：批量安装下载完成的包时，若新包内 CNS 数据文件的 <b>UniqueFitID</b> 与已装 mod 撞车 → 弹出此框。<br>
+    <b>你的决定已落实</b>：① 选完「留哪个」后 <b>主动禁用落选方</b>；② 共享网格（不同 UniqueFitID 用同一 base mesh）<b>只在详情/日志提示、不拦截</b>。<br>
+    下方三个按钮仅用于切换预览场景，<b>实际软件里不存在</b>。
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button class="btn p" onclick="show('fit')">场景1：UniqueFitID 撞车</button>
+    <button class="btn" onclick="show('mesh')">场景2：共享网格（只提示）</button>
+    <button class="btn" onclick="show('time')">场景3：毫秒时间显示</button>
+  </div>
+
+  <!-- 场景 1 -->
+  <div id="sc-fit" class="modal">
+    <div class="mhead"><span class="warn">⚠</span> 服装 ID 冲突：这套衣服已被别的 Mod 定义过</div>
+    <div class="mbody">
+      <div class="summary">
+        两套 Mod 定义了<b>同一个 UniqueFitID</b>：<code>EVE_PinkBodysuit</code>。同时启用会让 CNS 不知道用哪套，可能模型错乱或崩溃。
+        <div class="mesh">检测口径：UniqueFitID 撞车（强冲突，必须选）；本包来自刚下载的压缩包，已装那份来自本机扫描 + 文件归属表。</div>
+      </div>
+      <div class="cmpgrid">
+        <div class="cmpcol keep">
+          <h4>已装着 <span class="tag keep">当前启用</span></h4>
+          <div class="face"><img alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='150'><rect width='300' height='150' fill='%232a2f38'/><text x='150' y='80' fill='%23666e7c' text-anchor='middle' font-size='13'>封面图 A</text></svg>"></div>
+          <div class="gallery"><div class="th"><img alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='34' height='34'><rect width='34' height='34' fill='%233a414d'/></svg>"></div><div class="th"></div><div class="th"></div></div>
+          <div class="kv"><b>名称</b><span>Cute Pink Kitty Bodysuit</span></div>
+          <div class="kv"><b>Mod ID</b><span>#105</span></div>
+          <div class="kv"><b>版本 / 作者</b><span>v2.1 · ItsRokaya</span></div>
+          <div class="kv"><b>UniqueFitID</b><span>EVE_PinkBodysuit</span></div>
+          <div class="kv"><b>替换网格</b><span>CH_P_EVE_31_TypeB</span></div>
+          <div class="kv"><b>安装位置</b><span title="点击可在资源管理器定位">📁 ~Mods\105EVEPinkBodysuit.*</span></div>
+          <div class="pick sel-keep" onclick="pick(this,'keep')"><span class="radio"></span><span><b>留这个</b> —— 禁用新包（新包跳过安装）</span></div>
+        </div>
+        <div class="vs">VS</div>
+        <div class="cmpcol drop">
+          <h4>新下载的 <span class="tag drop">正要安装</span></h4>
+          <div class="face"><img alt="" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='150'><rect width='300' height='150' fill='%232a2f38'/><text x='150' y='80' fill='%23666e7c' text-anchor='middle' font-size='13'>封面图 B</text></svg>"></div>
+          <div class="gallery"><div class="th"></div><div class="th"></div></div>
+          <div class="kv"><b>名称</b><span>Pink Bodysuit Remake</span></div>
+          <div class="kv"><b>Mod ID</b><span>#2187</span></div>
+          <div class="kv"><b>版本 / 作者</b><span>v1.0 · ModAuthor</span></div>
+          <div class="kv"><b>UniqueFitID</b><span>EVE_PinkBodysuit</span></div>
+          <div class="kv"><b>替换网格</b><span>CH_P_EVE_31_TypeB</span></div>
+          <div class="kv"><b>来源包</b><span>2187_PinkBodysuit_v1.0.zip</span></div>
+          <div class="pick sel-drop" onclick="pick(this,'drop')"><span class="radio"></span><span><b>留这个</b> —— 禁用已装那份（装新的）</span></div>
+        </div>
+      </div>
+      <div class="result">当前选择：<b>留「已装着」</b>，新包 #2187 的冲突文件跳过不装，已装 #105 保持不变。</div>
+    </div>
+    <div class="mfoot">
+      <button class="btn">全部跳过这类冲突</button>
+      <button class="btn d">取消本次安装</button>
+      <button class="btn p">按选择继续安装</button>
+    </div>
+  </div>
+
+  <!-- 场景 2 -->
+  <div id="sc-mesh" class="modal" style="display:none">
+    <div class="mhead">共享网格提示（不拦截）：这套网格还有其他 Mod 在用</div>
+    <div class="mbody">
+      <div class="summary" style="background:rgba(74,158,255,.08);border-color:rgba(74,158,255,.4)">
+        <b style="color:var(--blue)">提示（不弹选择、不影响安装）</b>：新包替换网格 <code>CH_P_EVE_24</code>，本机还有 2 个 Mod 也基于这套网格：
+        <div class="mesh">Scarlet Semi、SummerOutfit —— 它们的 UniqueFitID 各不相同，通常是<b>正常共存的不同衣服</b>，因此照常安装，只在详情与日志里标注。</div>
+      </div>
+      <div class="timecard">
+        <div class="row"><span class="lab">冲突类型</span><span class="val">共享网格（mesh-shared）· 提示级</span></div>
+        <div class="row"><span class="lab">本包 UniqueFitID</span><span class="val">NakedNPC_GirlsSet</span></div>
+        <div class="row"><span class="lab">同网格 Mod</span><span class="val">CH_P_EVE_24 ← 3 个</span></div>
+      </div>
+    </div>
+    <div class="mfoot"><button class="btn p">知道了，继续安装</button></div>
+  </div>
+
+  <!-- 场景 3 -->
+  <div id="sc-time" class="modal" style="display:none">
+    <div class="mhead">时间精确到毫秒</div>
+    <div class="mbody">
+      <div class="note" style="margin-bottom:14px">
+        <b>数据层本来就带毫秒</b>（<code>.887Z</code>）；真正的病根是回填时整批共用同一时间戳、且界面只显示到分钟。修：回填逐个错开 1ms，详情显示完整毫秒，卡片主显示仍精简、完整时间放 title 与详情。
+      </div>
+      <div class="timecard">
+        <div class="row"><span class="lab">开启时间</span><span class="val">11-25 00:18:13<span class="ms">.887</span> <span class="full">2026-11-25 00:18:13.887Z</span></span></div>
+        <div class="row"><span class="lab">禁用时间</span><span class="val">11-25 01:03:28<span class="ms">.041</span> <span class="full">2026-11-25 01:03:28.041Z</span></span></div>
+        <div class="row"><span class="lab">安装时间</span><span class="val">11-24 15:37:59<span class="ms">.753</span></span></div>
+        <div class="row"><span class="lab">卡片显示</span><span class="val">开启于 11-25 00:18 <span class="full">（title 悬停显示到毫秒）</span></span></div>
+      </div>
+    </div>
+    <div class="mfoot"><button class="btn p">关闭</button></div>
+  </div>
+
+</div>
+<script>
+function show(k){
+  for(const s of ['fit','mesh','time']) document.getElementById('sc-'+s).style.display = (s===k?'':'none');
+}
+function pick(el,which){
+  const grid=el.closest('.cmpgrid');
+  const cols=grid.querySelectorAll('.cmpcol');
+  cols.forEach(c=>{c.classList.remove('keep','drop'); c.querySelector('.pick').classList.remove('sel-keep','sel-drop');});
+  const chosen = which==='keep' ? cols[0] : cols[1];
+  const other  = which==='keep' ? cols[1] : cols[0];
+  chosen.classList.add('keep'); chosen.querySelector('.pick').classList.add('sel-keep');
+  other.classList.add('drop');  other.querySelector('.pick').classList.add('sel-drop');
+  const name = chosen.querySelector('.kv span').textContent;
+  document.querySelector('#sc-fit .result').innerHTML='当前选择：<b>留「'+name+'」</b>，落选方将被<b>主动禁用</b>（标记 .disabled，不删除文件、可随时恢复）。';
+}
+</script>
+</body>
+</html>

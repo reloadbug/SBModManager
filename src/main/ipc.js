@@ -46,6 +46,7 @@ const variantCover = require('./variantCover');
 const dataMigrate = require('./dataMigrate');
 const gameHome = require('./gameHome');
 const { createModInfo, fromCatalog } = require('./modInfo');
+const modConflicts = require('./modConflicts');
 const { readJson, writeJson, setMirror } = require('./store');
 
 let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites, bugFlags, verifiedFlags, modHistory, fileOwner;
@@ -1656,6 +1657,22 @@ async function setEnabledMany(ids, enabled) {
   return { total, ok, failed, results };
 }
 
+/**
+ * 冲突扫描（用户 2026-11-25）：读已装 Mod 的 CNS 数据文件，按 UniqueFitID / 共享网格找冲突。
+ * 归属表用当前 fileOwner（已在 init 里建好），拿不到归属时退化到文件名 [nx] 标识。
+ */
+function scanModConflicts() {
+  const root = currentRoot();
+  if (!root) return { scannedMods: 0, strong: 0, tips: 0, groups: [], error: '尚未配置有效的游戏目录' };
+  try { if (fileOwner && typeof fileOwner.reload === 'function') fileOwner.reload(); } catch { /* 忽略 */ }
+  const result = modConflicts.scanAll(root, {
+    modsDir: game.layout(root).modsDir,
+    fileOwner
+  });
+  logger.event('mods:conflictsScan', { scanned: result.scannedMods, strong: result.strong, tips: result.tips });
+  return result;
+}
+
 function toggleScriptMod(L, name, enabled) {
   let raw = '';
   try { raw = fs.readFileSync(L.modsTxt, 'utf8'); } catch { raw = ''; }
@@ -2388,6 +2405,29 @@ function register() {
   handle('mods:setEnabled', (id, enabled) => setEnabled(id, enabled));
   handle('mods:setEnabledMany', (ids, enabled) => setEnabledMany(ids, enabled));
   handle('mods:uninstall', (id, opts) => uninstall(id, opts));
+  /** 全局冲突扫描：把所有已装 Mod 对比一遍，列出 UniqueFitID 撞车 / 共享网格 */
+  handle('mods:conflictsScan', () => scanModConflicts());
+  /** 安装前冲突预检：读安装包里的 dekcns，跟已装 Mod 比，返回冲突组供界面选留谁 */
+  handle('install:checkConflicts', async (archivePath, meta) => {
+    const root = currentRoot();
+    if (!root) return { incoming: null, dekcns: 0, conflicts: [], error: '尚未配置有效的游戏目录' };
+    if (!archivePath || !fs.existsSync(archivePath)) return { incoming: null, dekcns: 0, conflicts: [], error: '安装包不存在' };
+    let installedRecords = [];
+    try {
+      installedRecords = modConflicts.scanInstalled(root, {
+        modsDir: game.layout(root).modsDir,
+        fileOwner
+      });
+    } catch (e) {
+      logger.warn('conflicts:scanInstalled 失败：' + e.message);
+    }
+    const result = modConflicts.checkInstall(archivePath, meta || {}, installedRecords);
+    logger.event('install:checkConflicts', {
+      name: (meta && meta.name) || '', modId: (meta && meta.modId) || 0,
+      dekcns: result.dekcns, conflicts: result.conflicts.length
+    });
+    return result;
+  });
   // 记录丢了但文件还在盘上：按安装包把注册表条目补回来（不解压、不写文件）
   handle('mods:registerExisting', (opts) => registerExisting(opts || {}));
   /**

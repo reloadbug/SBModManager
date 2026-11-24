@@ -80,6 +80,8 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('mods:batchProgress', h);
     },
     uninstall: (id, opts) => invoke('mods:uninstall', id, opts),
+    /** 全局冲突扫描：列出已装 Mod 里的 UniqueFitID 撞车 / 共享网格 */
+    conflictsScan: () => invoke('mods:conflictsScan'),
     reveal: (id) => invoke('mods:reveal', id),
     /** 某个 Nexus modId 已装着的文件清单（覆盖对比用） */
     filesForModId: (modId) => invoke('mods:filesForModId', modId),
@@ -234,6 +236,8 @@ contextBridge.exposeInMainWorld('api', {
   install: {
     tools: () => invoke('install:tools'),
     analyze: (archivePath, meta, opts) => invoke('install:analyze', archivePath, meta, opts),
+    /** 安装前冲突预检：安装包里的 dekcns vs 已装 Mod */
+    checkConflicts: (archivePath, meta) => invoke('install:checkConflicts', archivePath, meta),
     /** 变体包每套内容的预览图（`{ [目录]: 'file://...' }`，拿不到就是空对象） */
     variantCovers: (archivePath, dirs) => invoke('install:variantCovers', archivePath, dirs),
     run: (payload) => invoke('install:run', payload),

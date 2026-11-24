@@ -351,6 +351,103 @@ async function openCmpModal(oldModId, oldName, oldInfo = {}) {
   }
 }
 
+/* ---------------- Mod 冲突全局扫描（用户 m17145）----------------
+ * 扫全部已装 Mod 的 CNS 数据，列 UniqueFitID 撞车（强）/ 共享网格（提示），
+ * 勾选后批量禁用或卸载。安装前预检复用同一份主进程判定。
+ */
+let conflictGroups = [];   // 本轮结果（扁平化后的冲突项，供批量操作取 modId）
+
+/** 冲突结果里收集到的 modId（去重） */
+function conflictModIds(items) {
+  const ids = new Set();
+  for (const it of items) {
+    const mid = Number(it && it.modId) || 0;
+    if (mid) ids.add(mid);
+  }
+  return [...ids];
+}
+
+async function runConflictScan() {
+  const box = $('#conflictResult');
+  const actRow = $('#conflictActRow');
+  if (!box) return;
+  box.textContent = '正在扫描全部已装 Mod 的 CNS 数据…';
+  if (actRow) actRow.hidden = true;
+  conflictGroups = [];
+  try {
+    const r = await call(window.api.mods.conflictsScan(), { silent: true });
+    if (r && r.error) { box.textContent = '扫描失败：' + r.error; return; }
+    const groups = (r && r.groups) || [];
+    if (!groups.length) {
+      box.innerHTML = `扫描了 <b>${(r && r.scannedMods) || 0}</b> 个 Mod，<b style="color:var(--ok)">没有发现冲突</b>。`;
+      return;
+    }
+    // 扁平化成「一行一个 Mod」，每组标题标明冲突类型；勾选是按行采集的
+    let rowIdx = 0;
+    conflictGroups = [];
+    const parts = [`<div style="margin-bottom:8px">扫描 ${r.scannedMods} 个 Mod，发现 <b style="color:var(--red)">${r.strong}</b> 处撞车、<b style="color:var(--blue)">${r.tips}</b> 处共享网格。</div>`];
+    for (const g of groups) {
+      const strong = g.level === 'strong';
+      const badge = strong
+        ? `<span style="color:var(--red)">UniqueFitID 撞车</span>`
+        : `<span style="color:var(--blue)">共享网格（可共存）</span>`;
+      parts.push(`<div style="margin:8px 0 3px;font-weight:600;color:var(--text)">${badge} · ${esc(g.label || '')}</div>`);
+      for (const m of (g.mods || [])) {
+        const i = rowIdx++;
+        conflictGroups.push({ modId: m.modId, name: m.name, displayName: m.displayName, enabled: m.enabled });
+        parts.push(`<label style="display:flex;align-items:center;gap:7px;padding:3px 0;color:var(--text);cursor:pointer">` +
+          `<input type="checkbox" class="conflict-chk" data-i="${i}" ${strong ? 'checked' : ''}>` +
+          `<span>${esc(m.displayName || m.name || ('Mod #' + m.modId))}</span>` +
+          `<span style="color:var(--dim2);font-size:11px">#${m.modId}${m.enabled === false ? ' · 已禁用' : ''}` +
+          (m.uniqueFits && m.uniqueFits.length ? ' · ' + esc(m.uniqueFits.join(', ')) : '') + `</span>` +
+          (m.modId ? `<button class="btn sm" data-conflict-cmp="${m.modId}" title="和另一个对比截图">对比</button>` : '') +
+          `</label>`);
+      }
+    }
+    box.innerHTML = parts.join('');
+    if (actRow) actRow.hidden = false;
+  } catch (e) {
+    box.textContent = '扫描失败：' + ((e && e.message) || e);
+  }
+}
+
+/** 冲突批量操作：disable=setEnabledMany(false)，uninstall 走和库里一样的卸载口径 */
+async function runConflictBatch(kind, all) {
+  if (!conflictGroups.length) { toast('先扫描一遍'); return; }
+  let chosen;
+  if (all) {
+    chosen = conflictGroups.slice();
+  } else {
+    chosen = [];
+    document.querySelectorAll('.conflict-chk').forEach((c) => {
+      if (c.checked) { const it = conflictGroups[Number(c.dataset.i)]; if (it) chosen.push(it); }
+    });
+  }
+  if (!chosen.length) { toast('先勾选要处理的 Mod'); return; }
+  const idsToDisable = [];   // 磁盘扫描条目 id（开关用的是这个）
+  const modIds = conflictModIds(chosen);
+  for (const m of (state.installed || [])) {
+    const candidates = [m.modId, m.meta && m.meta.modId, m.meta && m.meta.source && m.meta.source.modId,
+      m.link && m.link.modId, m.tag && m.tag.modId].map(Number);
+    if (candidates.some(x => modIds.includes(x)) && m.id) idsToDisable.push(String(m.id));
+  }
+  if (kind === 'disable') {
+    if (!idsToDisable.length) { toast('这些 Mod 现在都不在游戏里了', 'ok'); return; }
+    toast('正在禁用 ' + idsToDisable.length + ' 个文件…');
+    try {
+      const r = await call(window.api.mods.setEnabledMany(idsToDisable, false), { silent: true });
+      toast('已禁用 ' + ((r && r.ok) || 0) + ' 个', (r && r.failed) ? 'err' : 'ok');
+      await refreshAfterModsChanged();
+    } catch (e) { toast('禁用失败：' + ((e && e.message) || e), 'err'); }
+    return;
+  }
+  // uninstall：复用批量卸载（按 modId 找 group → gselBatchUninstall），不重装、不删安装包
+  const groups = (state.installedGroups || []).filter(g => modIds.includes(Number(g.modId)));
+  if (!groups.length) { toast('这些 Mod 现在都不在游戏里了', 'ok'); return; }
+  await gselBatchUninstall(groups);
+  await runConflictScan();
+}
+
 /* ---------------- 导航 ---------------- */
 
 const TITLES = {
@@ -6479,6 +6576,90 @@ function confirmBugMarked(items) {
   });
 }
 
+/* ---------------- 安装前冲突预检（用户 m16638/m17008）----------------
+ * 装单个包之前先读它的 dekcns，跟已装 Mod 比 UniqueFitID / 网格；
+ * 撞车就弹两列图对比，让用户选留哪个。选留已装=跳过新包；选留新=先禁用旧那份再装。
+ */
+let installConflictCtx = null;
+
+async function confirmInstallConflicts(it) {
+  let r;
+  try {
+    r = await call(window.api.install.checkConflicts(it.archivePath, {
+      modId: it.modId, name: it.name, version: it.version
+    }), { silent: true });
+  } catch { return 'proceed'; }   // 预检失败不该拦住安装
+  if (!r || r.error || !r.dekcns) return 'proceed';
+  const strong = (r.conflicts || []).filter(g => g.level === 'strong');
+  if (!strong.length) return 'proceed';   // 只有提示级共享网格 → 不拦
+
+  const face = (url) => url
+    ? `<img class="cmp-face" src="${esc(url)}" alt="" onerror="this.style.display='none'">`
+    : `<div class="cmp-face ph">没有封面图</div>`;
+  const kv = (k, v) => `<div class="cmp-kv"><b>${esc(k)}</b><span>${esc(String(v || '—'))}</span></div>`;
+
+  // 取第一个撞车组里「不是这次要装的」那份作为对比对象
+  const grp = strong[0];
+  const other = (grp.mods || []).find(m => Number(m.modId) !== Number(it.modId)) || grp.mods[0];
+  const otherId = other && other.modId;
+  let otherImgs = [], newImgs = [];
+  try { otherImgs = await call(window.api.modImages(otherId, null, undefined), { silent: true }) || []; } catch { /* 忽略 */ }
+  try { newImgs = await call(window.api.modImages(it.modId, null, undefined), { silent: true }) || []; } catch { /* 忽略 */ }
+
+  const gallery = (imgs, fallback) => (imgs.length > 1 ? imageGrid(imgs.slice(0, 5)) : (fallback ? `<img class="cmp-face" src="${esc(fallback)}" alt="">` : ''));
+
+  return new Promise(resolve => {
+    installConflictCtx = { resolve };
+    openModal('安装冲突：两套服装用了同一个 CNS 身份证', `
+      <div class="callout warn">这两套 Mod 的 <b>UniqueFitID 都是 ${esc(grp.label || '')}</b>，装进去会互相顶掉。选一个留着：</div>
+      <div class="cmpgrid">
+        <div class="cmpcol old">
+          <h4>已装着的</h4>
+          <div class="cmp-body">
+            ${face(otherImgs[0] && otherImgs[0].localUrl)}
+            <div class="cmp-name">${esc(other && (other.displayName || other.name) || ('Mod #' + otherId))}</div>
+            ${kv('Mod ID', otherId ? '#' + otherId : '')}
+            ${kv('UniqueFitID', grp.label)}
+            ${kv('替换网格', (other && other.meshes || []).join(', '))}
+            ${gallery(otherImgs.slice(1))}
+          </div>
+        </div>
+        <div class="cmpcol new">
+          <h4>这次要装的</h4>
+          <div class="cmp-body">
+            ${face(newImgs[0] && newImgs[0].localUrl)}
+            <div class="cmp-name">${esc(it.name || ('Mod #' + it.modId))}</div>
+            ${kv('Mod ID', it.modId ? '#' + it.modId : '')}
+            ${kv('UniqueFitID', grp.label)}
+            ${gallery(newImgs.slice(1))}
+          </div>
+        </div>
+      </div>
+      <div class="txt" style="color:var(--dim2);font-size:11px;margin-top:10px">
+        「留已装」会跳过这次安装；「留新的」会先禁用已装那份（文件保留，可随时切回）再装。
+      </div>
+    `, [
+      { id: 'icKeepOld', label: '留已装的' },
+      { id: 'icKeepNew', label: '禁用旧的，装这个', primary: true },
+      { id: 'icSkip', label: '这次不装了' }
+    ]);
+  });
+}
+
+/** 安装前把「落选的已装 Mod」禁用（走标准 setEnabledMany，toggleName 口径在 main 里） */
+async function disableConflictLoser(modId) {
+  if (!modId) return;
+  const ids = [];
+  for (const m of (state.installed || [])) {
+    const c = [m.modId, m.meta && m.meta.modId, m.meta && m.meta.source && m.meta.source.modId,
+      m.link && m.link.modId, m.tag && m.tag.modId].map(Number);
+    if (c.includes(Number(modId)) && m.id) ids.push(String(m.id));
+  }
+  if (ids.length) {
+    try { await call(window.api.mods.setEnabledMany(ids, false), { silent: true }); } catch { /* 忽略 */ }
+  }
+}
+
 async function libInstall(modId) {
   const find = () => ((state.library && state.library.items) || []).find(x => String(x.modId) === String(modId));
   let it = find();
@@ -6488,6 +6669,18 @@ async function libInstall(modId) {
   // 单个安装也问一句：标过「有 bug」的包，别手滑又装进去
   const ok = await confirmBugMarked([it]);
   if (!ok || !ok.length) return;
+  // 安装前冲突预检：撞 UniqueFitID 就弹两图对比选留哪个
+  const choice = await confirmInstallConflicts(it);
+  if (choice === 'skip') return;
+  if (choice === 'keepNew') {
+    // 找出被顶掉的那份（第一个强冲突组里不是本次的 modId），先禁用
+    try {
+      const r = await call(window.api.install.checkConflicts(it.archivePath, { modId: it.modId, name: it.name }), { silent: true });
+      const g = ((r && r.conflicts) || []).find(x => x.level === 'strong');
+      const loser = g && (g.mods || []).find(m => Number(m.modId) !== Number(it.modId));
+      if (loser) await disableConflictLoser(loser.modId);
+    } catch { /* 忽略 */ }
+  }
   try {
     await libInstallOne(it);
     toast('已加入安装队列');
@@ -7876,6 +8069,31 @@ function renderSettings() {
       <div class="f">
         <label></label>
         <div class="hint">每次下载 / 安装 / 开启 / 禁用 / 卸载都会记进档案（跟随游戏目录，删 Mod 也不删记录），详情抽屉里也能看到单个 Mod 的状态变更。</div>
+      </div>
+    </div>
+
+    <div class="frm">
+      <h3>Mod 冲突扫描<span style="font-weight:400;font-size:12px;color:var(--dim2)">（重复替换同一套服装）</span></h3>
+      <div class="f">
+        <label></label>
+        <div class="hint">
+          把所有已装 Mod 的 CNS 数据对比一遍：
+          <b style="color:var(--red)">UniqueFitID 撞车</b>是按同一个「衣服身份证」装了两套，会互相顶掉，需要选留哪个；
+          <b style="color:var(--blue)">共享网格</b>（替换同一套游戏模型）多数本来就该共存，仅提示、默认不勾。
+        </div>
+      </div>
+      <div class="f">
+        <label></label>
+        <button class="btn sm p" id="btnConflictScan">扫描全部已装 Mod</button>
+      </div>
+      <div class="f">
+        <label>结果</label>
+        <div id="conflictResult" style="flex:1;min-width:0;font-size:12px;color:var(--dim2)">点「扫描」开始，约几秒。</div>
+      </div>
+      <div class="f" id="conflictActRow" hidden>
+        <label></label>
+        <button class="btn sm p" id="btnConflictDisable">禁用勾选的</button>
+        <button class="btn sm d" id="btnConflictUninstall">卸载勾选的</button>
       </div>
     </div>
   `;
@@ -9755,6 +9973,14 @@ function bindEvents() {
       }
       else if (id === 'impGo') await parseAndInstall($('#impUrl') && $('#impUrl').value);
 
+      // ---- 安装前冲突：选留哪个 ----
+      else if (id === 'icKeepOld' || id === 'icKeepNew' || id === 'icSkip') {
+        const c = installConflictCtx;
+        installConflictCtx = null;
+        closeModal();
+        if (c) c.resolve(id === 'icKeepOld' ? 'skip' : id === 'icKeepNew' ? 'keepNew' : 'skip');
+      }
+
       // ---- 「有 bug」标记的安装前提示 ----
       else if (id === 'bugSkipAll' || id === 'bugKeepAll' || id === 'bugCancel') {
         const c = bugSkipCtx;
@@ -10010,6 +10236,15 @@ function bindEvents() {
       await runRollbackDisable(false);
     } else if (e.target.id === 'btnRollDisableAll') {
       await runRollbackDisable(true);
+    } else if (e.target.id === 'btnConflictScan') {
+      await runConflictScan();
+    } else if (e.target.id === 'btnConflictDisable') {
+      await runConflictBatch('disable', false);
+    } else if (e.target.id === 'btnConflictUninstall') {
+      await runConflictBatch('uninstall', false);
+    } else if (e.target.closest('[data-conflict-cmp]')) {
+      const mid = Number(e.target.closest('[data-conflict-cmp]').dataset.conflictCmp);
+      if (mid) { state.drawer = null; openModDrawer({ modId: mid, kind: 'installed' }); }
     } else if (e.target.id === 'btnOpenLogDir') {
       window.api.log.openDir();
     } else if (e.target.id === 'btnResetCfg') {
