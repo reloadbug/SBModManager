@@ -2317,6 +2317,81 @@ function register() {
   // 记录丢了但文件还在盘上：按安装包把注册表条目补回来（不解压、不写文件）
   handle('mods:registerExisting', (opts) => registerExisting(opts || {}));
   /**
+   * 详情页里那些「其实查得到、只是没去查」的字段。
+   *
+   * 用户 2026-11-24：详情页面里很多空的数据要补完整。这里的来源分别是：
+   *   ① 发布时间 —— 本地档案没有就问一次 Nexus 的 `createdAt`，问到就落盘（之后纯本地可得）；
+   *   ② 压缩包位置 —— 注册表 → 本地安装包库 → 下载队列，按可信度依次找。
+   *      注意**不能用** `localLibrary.scan()`：它按设计会跳过「已经装着的」modId，
+   *      而详情页问的正好是已安装的那些，用它永远查不到。
+   *   ③ 安装时间 —— 注册表记的 `installedAt`（本程序装的才有；磁盘扫描来的由渲染层
+   *      用文件创建时间补记）。
+   * 只读，任何一步失败都只返回空值 —— 详情页宁可显示「—」，也不能弹错误框。
+   */
+  async function modFacts({ modId = 0 } = {}) {
+    const id = Number(modId) || 0;
+    const out = { modId: id, publishedAt: '', archivePath: '', archiveFrom: '', installedAt: '', installedFrom: '' };
+    if (!id) return out;
+    const exists = (p) => { try { return !!p && fs.existsSync(p); } catch { return false; } };
+
+    // ① 发布时间：本地档案 → 问一次 Nexus
+    try {
+      const store = modInfoStore();
+      const rec = store.get(id);
+      if (rec && rec.publishedAt) out.publishedAt = rec.publishedAt;
+      else {
+        const d = await nexus.getMod(id);
+        if (d && d.createdAt) {
+          out.publishedAt = d.createdAt;
+          try { store.put({ modId: id, publishedAt: d.createdAt }); } catch { /* 存不下不影响这次 */ }
+        }
+      }
+    } catch { /* 没网 / 没 key：空着 */ }
+
+    // ② 压缩包位置：注册表 → 本地安装包库 → 下载队列
+    try {
+      for (const rec of registry.all()) {
+        if (Number(rec.source && rec.source.modId) !== id) continue;
+        if (exists(rec.archivePath)) { out.archivePath = rec.archivePath; out.archiveFrom = '注册表'; break; }
+      }
+    } catch { /* ignore */ }
+    if (!out.archivePath) {
+      try {
+        let best = null;
+        for (const f of fs.readdirSync(paths.LIBRARY)) {
+          const info = localLibrary.parseArchiveName(f);
+          if (!info || Number(info.modId) !== id) continue;
+          const p = path.join(paths.LIBRARY, f);
+          if (!exists(p)) continue;
+          let mt = '';
+          try { mt = fs.statSync(p).mtime.toISOString(); } catch { /* ignore */ }
+          if (!best || mt > best.mt) best = { p, mt };
+        }
+        if (best) { out.archivePath = best.p; out.archiveFrom = '本地库'; }
+      } catch { /* 本地库目录不存在就算了 */ }
+    }
+    if (!out.archivePath) {
+      try {
+        const t = engine.list().find(x => Number(x.meta && x.meta.modId) === id && exists(x.archivePath));
+        if (t) { out.archivePath = t.archivePath; out.archiveFrom = '下载队列'; }
+      } catch { /* ignore */ }
+    }
+
+    // ③ 安装时间：注册表里最早的一条（同一个 modId 可能有多次安装记录）
+    try {
+      let best = '';
+      for (const rec of registry.all()) {
+        if (Number(rec.source && rec.source.modId) !== id) continue;
+        const at = String(rec.installedAt || '');
+        if (at && (!best || at < best)) best = at;
+      }
+      if (best) { out.installedAt = best; out.installedFrom = '注册表'; }
+    } catch { /* ignore */ }
+
+    return out;
+  }
+  handle('mods:facts', (opts) => modFacts(opts || {}));
+  /**
    * 管理器自带安装包的盘点：`data/library` 里那些包，哪些现在能装进当前游戏目录。
    *
    * 下载队列只是「任务账本」，用户点了「清理已完成记录」之后就什么都不剩了，

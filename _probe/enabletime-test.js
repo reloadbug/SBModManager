@@ -140,9 +140,9 @@ section('C. 前端：带出时间 / 排序 / 入口');
 
   ok('卡片上显示开启时间',
     appSrc.includes('开启于 ${esc(fmtWhen(rec.enabledAt))}'));
-  // 0.9.6：信息表改成 unifiedInfoRows 统一输出，开启时间由 row('开启时间', ...) 生成
+  // 0.9.6：信息表改成 unifiedInfoRows 统一输出，开启时间由 row('enabledAt', '开启时间', ...) 生成
   ok('抽屉信息里有一行「开启时间」',
-    appSrc.includes("row('开启时间'"));
+    appSrc.includes("row('enabledAt', '开启时间'"));
   ok('推算出来的时间会标注（推算/补记）',
     appSrc.includes('推算/补记'));
 
@@ -212,7 +212,7 @@ section('E. i18n');
   for (const w of ['开启时间', '开启时间 ↓', '开启时间 ↑', '安装时间 ↓', '（按安装时间推算）']) {
     ok('词条在册：' + w, keys.includes(w));
   }
-  ok('总条数 = 1316', keys.length === 1316, '实际 ' + keys.length);
+  ok('总条数 = 1318', keys.length === 1318, '实际 ' + keys.length);
 }
 
 /* ---------------- 汇总 ---------------- */

@@ -121,7 +121,15 @@ function scanPaks(L, registry) {
     }
     const g = groups.get(key);
     const st = statOf(name);
-    g.files.push({ name, disabled, size: st ? st.size : 0, mtime: st ? st.mtime.toISOString() : null });
+    // btime = 文件**创建**时间。详情页「安装时间」在没有注册表记录时用它补记
+    // （拷贝/移动过来的文件 CreationTime 会跟着搬，比 mtime 更接近「什么时候落到盘上」）。
+    g.files.push({
+      name,
+      disabled,
+      size: st ? st.size : 0,
+      mtime: st ? st.mtime.toISOString() : null,
+      btime: st ? st.birthtime.toISOString() : null
+    });
     g.size += st ? st.size : 0;
     if (!g.mtime || (st && st.mtime.toISOString() > g.mtime)) g.mtime = st ? st.mtime.toISOString() : g.mtime;
     if (disabled) g.enabled = false;
@@ -155,6 +163,7 @@ function scanPaks(L, registry) {
       disabled: c.disabled,
       size: st ? st.size : 0,
       mtime: st ? st.mtime.toISOString() : null,
+      btime: st ? st.birthtime.toISOString() : null,
       companion: true,
       cnsData: true
     });

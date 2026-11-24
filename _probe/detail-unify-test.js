@@ -142,7 +142,8 @@ async function main() {
   ok('C12 空值加 na 占位', rowsHtml.includes('class="kv na"'));
   ok('C13 安装位置带 📁', rowsHtml.includes('📁') === false /* ctx 未给 installPathBtn */);
   // 作者行有值 → 那一行是 `<div class="kv">` 而不是 `<div class="kv na">`
-  ok('C14 有值时不是 na', /<div class="kv"><span>作者<\/span><span>Dek<\/span><\/div>/.test(rowsHtml));
+  // 0.9.6：每行还带 data-f 字段标识（详情页补查数据后按字段重画）
+  ok('C14 有值时不是 na', /<div class="kv" data-f="author"><span>作者<\/span><span>Dek<\/span><\/div>/.test(rowsHtml));
 
   /* ---------------- D. 硬约束 ---------------- */
   ok('D1 详情只用统一表格（无旧 rows.push 逐字段残留）', !grabFunction(app, 'openModDrawer').includes("rows.push(kvHtml('作者'"));

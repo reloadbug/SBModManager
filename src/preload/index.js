@@ -90,7 +90,13 @@ contextBridge.exposeInMainWorld('api', {
      * 按安装包把注册表记录补回来 —— 不解压、不覆盖任何文件。
      * opts: { taskId } 或 { archivePath, meta }
      */
-    registerExisting: (opts) => invoke('mods:registerExisting', opts)
+    registerExisting: (opts) => invoke('mods:registerExisting', opts),
+    /**
+     * 详情页补齐那几个「查得到但没查」的字段：
+     * 发布时间（Nexus）、压缩包位置（注册表 / 本地库 / 下载队列）、安装时间（注册表）。
+     * 返回 { modId, publishedAt, archivePath, archiveFrom, installedAt, installedFrom }
+     */
+    facts: (opts) => invoke('mods:facts', opts)
   },
 
   /**

@@ -1319,5 +1319,7 @@
     'Nexus 上有、你还没下载过的 Mod（点它去浏览在线）': 'Jest na Nexus, ale nie pobrano (kliknij, aby przeglądać online)',
     '弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」': 'Wybierz folder gry w oknie systemowym; zapis i sprawdzenie od razu',
     '补登记': 'Zarejestruj',
+    '无记录': 'Brak wpisu',
+    '本地没有这个包': 'Brak pakietu',
   });
 })();

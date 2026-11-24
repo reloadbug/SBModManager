@@ -1611,6 +1611,9 @@ const TABLE = [
   ['弹系统窗口挑游戏根目录；选完立刻保存并校验，不用再点「保存并校验」', ['開系統視窗挑遊戲根目錄；選完立刻儲存並校驗，不用再點「儲存並校驗」', 'Open a folder picker for the game root; it saves and checks right away, no extra click needed', 'システムの画面でゲームのルートフォルダを選びます。選ぶとすぐ保存と検証まで行います', '시스템 창에서 게임 루트 폴더를 고릅니다. 고르면 바로 저장하고 검사합니다', 'Выбрать корневую папку игры в системном окне; сохраняется и проверяется сразу', 'Spielordner im Systemdialog wählen; wird sofort gespeichert und geprüft', 'Choisir le dossier du jeu dans une fenêtre système ; enregistré et vérifié aussitôt', 'Elegir la carpeta del juego en una ventana del sistema; se guarda y verifica al instante', 'Escolher a pasta do jogo numa janela do sistema; salva e verifica na hora', 'Scegli la cartella del gioco nella finestra di sistema; salva e verifica subito', 'Wybierz folder gry w oknie systemowym; zapis i sprawdzenie od razu', 'Oyun klasörünü sistem penceresinden seç; hemen kaydedilir ve doğrulanır', 'เลือกโฟลเดอร์เกมจากหน้าต่างระบบ บันทึกและตรวจสอบทันที']],
   // ── ㉝ 2026-11-24：下载页「补登记」（记录丢了但文件还在盘上时把记录补回来）──
   ['补登记', ['補登記', 'Register', '再登録', '재등록', 'Учесть', 'Nachtragen', 'Enregistrer', 'Registrar', 'Registrar', 'Registra', 'Zarejestruj', 'Kaydet', 'ลงทะเบียน']],
+  // ── ㉞ 2026-11-24：详情页空字段补齐（禁用时间从没记录过 / 压缩包本地没有）──
+  ['无记录', ['無記錄', 'None', '記録なし', '기록 없음', 'Нет записи', 'Kein Eintrag', 'Aucun', 'Sin registro', 'Sem registro', 'Nessuno', 'Brak wpisu', 'Kayıt yok', 'ไม่มีบันทึก']],
+  ['本地没有这个包', ['本機沒有這個包', 'No package', 'ローカルに無し', '로컬에 없음', 'Нет пакета', 'Nicht lokal', 'Pas de paquet', 'Sin paquete', 'Sem pacote', 'Nessun pacchetto', 'Brak pakietu', 'Paket yok', 'ไม่มีแพ็กเกจ']],
 ];
 
 /**

@@ -761,6 +761,26 @@ function groupInstalled(list) {
         return (m.meta && m.meta.enabledAtGuess === true) || (rec && rec.enabledAtGuess === true);
       }),
       archive: (items.find(m => m.archive) || {}).archive || null,
+      // 这一组「什么时候落到盘上」的补记依据：文件创建时间里最早的那个。
+      // 本程序装的用注册表 installedAt；磁盘扫描来的（未登记 / 已关联）只能靠它。
+      btime: (() => {
+        let t = '';
+        for (const m of items) {
+          for (const f of (m.files || [])) {
+            const b = String((f && f.btime) || '');
+            if (b && (!t || b < t)) t = b;
+          }
+        }
+        return t;
+      })(),
+      installedAt: (() => {
+        let t = '';
+        for (const m of items) {
+          const at = String((m.meta && m.meta.installedAt) || '');
+          if (at && (!t || at < t)) t = at;
+        }
+        return t;
+      })(),
       location: items[0].location,
       meta
     });
@@ -1747,33 +1767,88 @@ function cnsEvidence(rec) {
  */
 function unifiedInfoRows(c) {
   c = c || {};
-  const row = (label, value) => {
+  // data-f 是给「补查数据回来后只改这一行」用的（见 renderDrawerInfo / fillDrawerFacts）。
+  // 用户 2026-11-24：详情页里空着的字段要尽量补齐 —— 能查到的就别留「—」。
+  const row = (field, label, value) => {
     const empty = value === '' || value === undefined || value === null || value === '0' && label === '文件数';
-    return `<div class="kv${empty ? ' na' : ''}"><span>${esc(label)}</span><span>${value || '—'}</span></div>`;
+    return `<div class="kv${empty ? ' na' : ''}" data-f="${esc(field)}"><span>${esc(label)}</span><span>${value || '—'}</span></div>`;
   };
+  const dim = (t) => `<span style="color:var(--dim2)">${esc(t)}</span>`;
   const nf = v => (v ? Number(v).toLocaleString() : '');
   const out = [];
-  out.push(row('Mod ID', c.modId ? '#' + c.modId + (c.fileId ? `<span style="color:var(--dim2)"> · 文件 ${esc(String(c.fileId))}</span>` : '') : ''));
-  out.push(row('状态', c.statusText ? `<span style="color:${c.statusColor || 'var(--text)'}">${esc(c.statusText)}</span>` : ''));
-  out.push(row('类型', esc(c.typeText || '')));
-  out.push(row('版本', c.version ? 'v' + String(c.version).replace(/^v/i, '') : ''));
-  out.push(row('作者', esc(c.author || '')));
-  out.push(row('分类', esc(c.category || '')));
-  out.push(row('成人', c.adult === true ? '是' : (c.adult === false ? '否' : '')));
-  out.push(row('下载量', nf(c.downloads)));
-  out.push(row('点赞数', nf(c.endorsements)));
-  out.push(row('发布时间', c.posted ? esc(fmtDate(c.posted)) : ''));
-  out.push(row('更新时间', c.updated ? esc(fmtDate(c.updated)) : ''));
-  out.push(row('修改时间', c.mtime ? esc(fmtDate(c.mtime)) : ''));
-  out.push(row('开启时间', c.enabledAt ? esc(fmtWhen(c.enabledAt)) + (c.enabledAtGuess ? '<span style="color:var(--dim2)">（推算/补记）</span>' : '') : ''));
-  out.push(row('禁用时间', c.disabledAt ? esc(fmtWhen(c.disabledAt)) : ''));
-  out.push(row('安装时间', c.installedAt ? esc(fmtDate(c.installedAt)) : ''));
-  out.push(row('登记状态', esc(c.registry || '')));
-  out.push(row('安装位置', c.installPath ? esc(c.installPath) + (c.installPathBtn || '') : ''));
-  out.push(row('压缩包位置', c.archivePath ? esc(c.archivePath) + (c.archivePathBtn || '') : ''));
-  out.push(row('文件数', (c.fileCount === undefined || c.fileCount === null || c.fileCount === '') ? '' : String(c.fileCount)));
-  out.push(row('占用', c.size ? esc(fmtSize(c.size)) : ''));
+  out.push(row('modId', 'Mod ID', c.modId ? '#' + c.modId + (c.fileId ? `<span style="color:var(--dim2)"> · 文件 ${esc(String(c.fileId))}</span>` : '') : ''));
+  out.push(row('status', '状态', c.statusText ? `<span style="color:${c.statusColor || 'var(--text)'}">${esc(c.statusText)}</span>` : ''));
+  out.push(row('type', '类型', esc(c.typeText || '')));
+  out.push(row('version', '版本', c.version ? 'v' + String(c.version).replace(/^v/i, '') : ''));
+  out.push(row('author', '作者', esc(c.author || '')));
+  out.push(row('category', '分类', esc(c.category || '')));
+  out.push(row('adult', '成人', c.adult === true ? '是' : (c.adult === false ? '否' : '')));
+  out.push(row('downloads', '下载量', nf(c.downloads)));
+  out.push(row('endorsements', '点赞数', nf(c.endorsements)));
+  out.push(row('posted', '发布时间', c.posted ? esc(fmtDate(c.posted)) + (c.postedFrom ? dim('（' + c.postedFrom + '）') : '') : ''));
+  out.push(row('updated', '更新时间', c.updated ? esc(fmtDate(c.updated)) : ''));
+  out.push(row('mtime', '修改时间', c.mtime ? esc(fmtDate(c.mtime)) : ''));
+  out.push(row('enabledAt', '开启时间', c.enabledAt ? esc(fmtWhen(c.enabledAt)) + (c.enabledAtGuess ? dim('（推算/补记）') : '') : ''));
+  out.push(row('disabledAt', '禁用时间', c.disabledAt
+    ? esc(fmtWhen(c.disabledAt))
+    : (c.disabledNever ? dim('无记录') : '')));
+  out.push(row('installedAt', '安装时间', c.installedAt
+    ? esc(fmtDate(c.installedAt)) + (c.installedAtGuess ? dim('（补记：文件创建时间）') : (c.installedFrom ? dim('（' + c.installedFrom + '）') : ''))
+    : ''));
+  out.push(row('registry', '登记状态', esc(c.registry || '')));
+  out.push(row('installPath', '安装位置', c.installPath ? esc(c.installPath) + (c.installPathBtn || '') : ''));
+  out.push(row('archivePath', '压缩包位置', c.archivePath
+    ? esc(c.archivePath) + (c.archivePathBtn || '') + (c.archiveFrom ? dim('（' + c.archiveFrom + '）') : '')
+    : (c.archiveNone ? dim('本地没有这个包') : '')));
+  out.push(row('fileCount', '文件数', (c.fileCount === undefined || c.fileCount === null || c.fileCount === '') ? '' : String(c.fileCount)));
+  out.push(row('size', '占用', c.size ? esc(fmtSize(c.size)) : ''));
   return out.join('');
+}
+
+/**
+ * 信息表最终取值 = 打开抽屉时的基础数据 + 随后补查到的数据。
+ *
+ * 用户 2026-11-24：详情页里很多空字段要补完整。补的三样：
+ *   ① 发布时间 —— 来自 Nexus 的 `createdAt`（本地档案没有时才去问一次）；
+ *   ② 压缩包位置 —— 注册表 / 本地安装包库 / 下载队列 里找（磁盘扫描来的 Mod 也常有包）；
+ *   ③ 安装时间 —— 没有注册表记录时，用这批文件的**创建时间**补记（明确标注是补记）。
+ * 这几样要联网/读盘，不能卡住抽屉打开，所以是「先渲染 → 回来再改这几行」。
+ */
+function mergedInfoCtx(base, facts) {
+  const c = Object.assign({}, base || {});
+  const f = (facts && !facts.pending) ? facts : null;
+  if (f) {
+    if (!c.posted && f.publishedAt) { c.posted = f.publishedAt; c.postedFrom = 'Nexus'; }
+    if (!c.archivePath && f.archivePath) {
+      c.archivePath = f.archivePath;
+      c.archivePathBtn = '<span style="color:var(--blue);margin-left:6px">📦</span>';
+    }
+    if (!c.installedAt && f.installedAt) c.installedAt = f.installedAt;
+  }
+  // 磁盘扫描来的（本程序没装过、注册表也没记录）→ 用文件创建时间补记
+  if (!c.installedAt && c.btime) { c.installedAt = c.btime; c.installedAtGuess = true; }
+  return c;
+}
+
+/** 只重画信息表那一段（补查数据回来后调用，不动抽屉其它部分） */
+function renderDrawerInfo() {
+  const box = document.getElementById('drawerInfo');
+  const base = state.drawer && state.drawer.infoBase;
+  if (!box || !base) return;
+  const facts = (base.factId && state.modFacts) ? state.modFacts[base.factId] : null;
+  box.innerHTML = unifiedInfoRows(mergedInfoCtx(base, facts));
+}
+
+/** 抽屉打开后去补查这个 Mod 的「发布时间 / 压缩包位置 / 安装时间」，一次一 Mod，查过就记住 */
+function fillDrawerFacts(modId) {
+  const id = Number(modId) || 0;
+  if (!id) return;
+  if (!state.modFacts) state.modFacts = {};
+  if (state.modFacts[id]) return;
+  state.modFacts[id] = { pending: true };
+  call(window.api.mods.facts({ modId: id }), { silent: true })
+    .then(f => { state.modFacts[id] = f || {}; renderDrawerInfo(); })
+    .catch(() => { state.modFacts[id] = {}; });
 }
 
 /**
@@ -1924,10 +1999,15 @@ function openModDrawer(rec) {
     posted: mod.createdAt,
     updated: r.updatedAt || mod.updatedAt || (info && info.updatedAt),
     mtime: group && group.mtime,
+    // 磁盘扫描来的 Mod 没有 installedAt：拿这批文件的创建时间当「安装时间」的补记依据
+    btime: group && group.btime,
+    factId: srcModId || modId,
     enabledAt: group && group.enabledAt,
     disabledAt: group && group.disabledAt,
+    disabledNever: !!(group && !group.disabledAt),
     enabledAtGuess: group && group.enabledAtGuess,
     installedAt: group && (group.installedAt || (group.archive && group.archive.at)),
+    archiveNone: !!group,
     registry: group ? (group.registered ? '已登记（含来源信息）' : (group.linked ? '未登记 · 已关联 Nexus' : '未登记（磁盘扫描发现）')) : (kind === 'downloaded' ? '下载包（未安装）' : ''),
     installPath,
     installPathBtn: installPath ? '<span style="color:var(--blue);margin-left:6px">📁</span>' : '',
@@ -1938,7 +2018,9 @@ function openModDrawer(rec) {
   };
   const rows = [];
   if (kind === 'online') rows.push(localStateRowHtml());
-  rows.push(unifiedInfoRows(infoCtx));
+  const factsNow = (infoCtx.factId && state.modFacts) ? state.modFacts[infoCtx.factId] : null;
+  state.drawer.infoBase = infoCtx;
+  rows.push(unifiedInfoRows(mergedInfoCtx(infoCtx, factsNow)));
 
   // ---------- ⑤ 文件 / 内容 ----------
   let filesHtml = '';
@@ -1997,6 +2079,10 @@ function openModDrawer(rec) {
          ${linkNote}`
       : '<div class="txt" style="color:var(--dim2)">未知来源（没有 Mod ID 可以拼 Nexus 地址）</div>'}
   `;
+
+  // 信息表里那几样要联网 / 读盘才知道的（发布时间、压缩包位置、安装时间）：
+  // 抽屉先打开，数据回来再补这几行，不挡打开速度。
+  if (kind === 'installed') fillDrawerFacts(infoCtx.factId);
 
   // ---------- ⑦ 底部固定栏 ----------
   const foot = [];
