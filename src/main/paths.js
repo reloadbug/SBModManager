@@ -206,7 +206,7 @@ if (DATA_SOURCE !== 'custom' && GAME_HOME_READY && canUseDir(GAME_HOME)) {
 const STATE_NAMES = [
   'config.json', 'mods.json', 'mod-links.json', 'blacklist.json',
   'favorites.json', 'downloads.json', 'watch-seen.json', 'ledger.json',
-  'bugs.json', 'verified.json', 'mod-history.json'
+  'bugs.json', 'verified.json', 'mod-history.json', 'mod-file-owner.json'
 ];
 
 /**
@@ -361,6 +361,12 @@ module.exports = {
   verifiedFile: path.join(DATA, 'verified.json'),
   /** Mod 生命周期事件档案（跟着游戏走的 `mod-history.json`，见 modHistory.js） */
   modHistoryFile: path.join(DATA, 'mod-history.json'),
+  /**
+   * 「哪个文件属于哪个 Mod」的归属表（跟着游戏走的 `mod-file-owner.json`，见 fileOwner.js）。
+   * 安装时本来就把装了哪些文件写进了登记记录（`pkg` 账本），但早期装的那批没有这份账；
+   * 这份表拿安装包里的条目反推归属，把丢掉的对应关系补回来。
+   */
+  modOwnerFile: path.join(DATA, 'mod-file-owner.json'),
   translateCache: path.join(CACHE, 'translate.json'),
   nexusCache: path.join(CACHE, 'nexus.json'),
   nexusCatalog: path.join(CACHE, 'nexus-catalog.json')

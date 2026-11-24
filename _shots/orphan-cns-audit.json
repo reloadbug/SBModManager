@@ -1,0 +1,774 @@
+{
+  "at": "2026-11-24T14:59:52.010Z",
+  "items": 464,
+  "diskCns": 248,
+  "orphans": [
+    "AncientAngel.dekcns.json",
+    "AuRaSphere-UltimateUndressedComfortForce.dekcns.json",
+    "AuRaSphere-UltimateUndressedDailyForce.dekcns.json",
+    "AuRaSphere-UndressableBlueMonsoon.dekcns.json",
+    "AuRaSphere-UndressableFluffyBear.dekcns.json",
+    "AuRaSphere-UndressableKeyholeDress.dekcns.json",
+    "AuRaSphere-UndressableKeyholeSuit.dekcns.json",
+    "AuRaSphere-UndressableMotivation.dekcns.json",
+    "AuRaSphere-UndressablePinkBear.dekcns.json",
+    "AuRaSphere-UndressablePunkStyle.dekcns.json",
+    "AuRaSphere-UndressablePunkTop.dekcns.json",
+    "AuRaSphere-UndressableResonance.dekcns.json",
+    "AuRaSphere-UndressableStargazerSuit.dekcns.json",
+    "AuRaSphere-UndressableWhiteMonsoon.dekcns.json",
+    "BagOfPopcorn-ArmorOutfit.dekcns.json",
+    "BagOfPopcorn-LunaSnowFit-2.dekcns.json",
+    "Bayonetta.dekcns.json",
+    "Bayonetta_Glassess.dekcns.json",
+    "bcasecoolingsuit.dekcns.json",
+    "bcaserapi.dekcns.json",
+    "bellyband_638.dekcns.json",
+    "Black Pearl.dekcns.json",
+    "Blackfullshort_cns_713.dekcns.json",
+    "Dia_Elias.dekcns.json",
+    "Eve_Head.dekcns.json",
+    "eve_widowmaker.dekcns.json",
+    "FreynaSP.dekcns.json",
+    "Freyna_Oasis_Party.dekcns.json",
+    "Gantz_Reika.dekcns.json",
+    "GleyBikini.dekcns.json",
+    "Godfather.dekcns.json",
+    "HaileyBikini.dekcns.json",
+    "Hailey_Albion_Sport.dekcns.json",
+    "Harris.dekcns.json",
+    "Heipao_Ahuang.dekcns.json",
+    "Ines_Mk26.dekcns.json",
+    "Jingjue_Queen_CNS.dekcns.json",
+    "JK_uniform_11641.dekcns.json",
+    "latex_catsuit_635.dekcns.json",
+    "LilyHead.dekcns.json",
+    "LunaSnowCoolSummer.dekcns.json",
+    "Luna_TFD.dekcns.json",
+    "Minervha_KitagawaBikini.dekcns.json",
+    "Monakade_LoreAccurateRAPI.dekcns.json",
+    "MyOutfit.dekcns.json",
+    "Nell_Albion_Sport_Club.dekcns.json",
+    "Night_Rider.dekcns.json",
+    "Nv_pu_CNS.dekcns.json",
+    "Nv_pu_CNS_En.dekcns.json",
+    "Red Pearl.dekcns.json",
+    "S2J_shibari_roope_outfit.dekcns.json",
+    "Sugar_Perfume.dekcns.json",
+    "ValbySV.dekcns.json",
+    "Viessa_Assassin.dekcns.json",
+    "Viessa_Summer_Paradise.dekcns.json",
+    "Viper_Suit.dekcns.json",
+    "voidnon_Klukai_SwimHat.dekcns.json",
+    "voidnon_Klukai_SwimSuit.dekcns.json",
+    "Yorha_1.dekcns.json"
+  ],
+  "found": [
+    {
+      "name": "AncientAngel.dekcns.json",
+      "size": 893,
+      "btime": "2026-11-10T06:54:00.318Z",
+      "src": {
+        "archive": "2562_Ancient Angel (CNS)_1.1.zip",
+        "modId": 2562,
+        "entry": "AncientAngel/AncientAngel.dekcns.json",
+        "size": 893
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UltimateUndressedComfortForce.dekcns.json",
+      "size": 41511,
+      "btime": "2026-11-11T13:50:29.956Z",
+      "src": {
+        "archive": "3146_Undressable Force Series (CNS)_1.rar",
+        "modId": 3146,
+        "entry": "AuRaSphere-UltimateUndressedComfortForce.dekcns.json",
+        "size": 41511
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UltimateUndressedDailyForce.dekcns.json",
+      "size": 41418,
+      "btime": "2026-11-11T13:50:29.990Z",
+      "src": {
+        "archive": "3146_Undressable Force Series (CNS)_1.rar",
+        "modId": 3146,
+        "entry": "AuRaSphere-UltimateUndressedDailyForce.dekcns.json",
+        "size": 41418
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressableBlueMonsoon.dekcns.json",
+      "size": 12475,
+      "btime": "2026-11-11T13:56:12.946Z",
+      "src": {
+        "archive": "1583_Undressable Monsoon Series (CNS)_2.1.rar",
+        "modId": 1583,
+        "entry": "AuRaSphere-UndressableBlueMonsoon.dekcns.json",
+        "size": 12475
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressableFluffyBear.dekcns.json",
+      "size": 33048,
+      "btime": "2026-11-11T13:48:58.685Z",
+      "src": {
+        "archive": "3109_Undressable Bear Series (CNS)_2.rar",
+        "modId": 3109,
+        "entry": "Undressable Bear Series/AuRaSphere-UndressableFluffyBear.dekcns.json",
+        "size": 33048
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressableKeyholeDress.dekcns.json",
+      "size": 58751,
+      "btime": "2026-11-09T15:43:54.340Z",
+      "src": {
+        "archive": "3270_Undressable Keyhole Series (CNS)_1.rar",
+        "modId": 3270,
+        "entry": "Undressable Keyhole Series/AuRaSphere-UndressableKeyholeDress.dekcns.json",
+        "size": 58751
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressableKeyholeSuit.dekcns.json",
+      "size": 59182,
+      "btime": "2026-11-09T15:43:54.382Z",
+      "src": {
+        "archive": "3270_Undressable Keyhole Series (CNS)_1.rar",
+        "modId": 3270,
+        "entry": "Undressable Keyhole Series/AuRaSphere-UndressableKeyholeSuit.dekcns.json",
+        "size": 59182
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressableMotivation.dekcns.json",
+      "size": 47378,
+      "btime": "2026-11-09T15:46:42.391Z",
+      "src": {
+        "archive": "3210_Undressable Motivation and Resonance (CNS)_1.rar",
+        "modId": 3210,
+        "entry": "Undressable Motivation & Resonance/AuRaSphere-UndressableMotivation.dekcns.json",
+        "size": 47378
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressablePinkBear.dekcns.json",
+      "size": 33033,
+      "btime": "2026-11-11T13:48:58.685Z",
+      "src": {
+        "archive": "3109_Undressable Bear Series (CNS)_2.rar",
+        "modId": 3109,
+        "entry": "Undressable Bear Series/AuRaSphere-UndressablePinkBear.dekcns.json",
+        "size": 33033
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressablePunkStyle.dekcns.json",
+      "size": 34407,
+      "btime": "2026-11-11T13:47:39.183Z",
+      "src": {
+        "archive": "3224_Undressable Punk Series (CNS)_1.rar",
+        "modId": 3224,
+        "entry": "Undressable Punk Series/AuRaSphere-UndressablePunkStyle.dekcns.json",
+        "size": 34407
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressablePunkTop.dekcns.json",
+      "size": 33826,
+      "btime": "2026-11-11T13:47:39.184Z",
+      "src": {
+        "archive": "3224_Undressable Punk Series (CNS)_1.rar",
+        "modId": 3224,
+        "entry": "Undressable Punk Series/AuRaSphere-UndressablePunkTop.dekcns.json",
+        "size": 33826
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressableResonance.dekcns.json",
+      "size": 47385,
+      "btime": "2026-11-09T15:46:42.391Z",
+      "src": {
+        "archive": "3210_Undressable Motivation and Resonance (CNS)_1.rar",
+        "modId": 3210,
+        "entry": "Undressable Motivation & Resonance/AuRaSphere-UndressableResonance.dekcns.json",
+        "size": 47385
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressableStargazerSuit.dekcns.json",
+      "size": 59300,
+      "btime": "2026-11-09T15:43:54.382Z",
+      "src": {
+        "archive": "3270_Undressable Keyhole Series (CNS)_1.rar",
+        "modId": 3270,
+        "entry": "Undressable Keyhole Series/AuRaSphere-UndressableStargazerSuit.dekcns.json",
+        "size": 59300
+      },
+      "hits": 1
+    },
+    {
+      "name": "AuRaSphere-UndressableWhiteMonsoon.dekcns.json",
+      "size": 12479,
+      "btime": "2026-11-11T13:56:12.947Z",
+      "src": {
+        "archive": "1583_Undressable Monsoon Series (CNS)_2.1.rar",
+        "modId": 1583,
+        "entry": "AuRaSphere-UndressableWhiteMonsoon.dekcns.json",
+        "size": 12479
+      },
+      "hits": 1
+    },
+    {
+      "name": "BagOfPopcorn-ArmorOutfit.dekcns.json",
+      "size": 538,
+      "btime": "2026-11-11T13:47:23.656Z",
+      "src": {
+        "archive": "1682_CNS - Custom Sexy Armor Outfit_1.2.zip",
+        "modId": 1682,
+        "entry": "BagOfPopcorn-ArmorOutfit.dekcns.json",
+        "size": 538
+      },
+      "hits": 1
+    },
+    {
+      "name": "BagOfPopcorn-LunaSnowFit-2.dekcns.json",
+      "size": 602,
+      "btime": "2026-11-11T13:48:45.494Z",
+      "src": {
+        "archive": "1906_Luna Snow MODULAR (CNS compatible)_1.6.zip",
+        "modId": 1906,
+        "entry": "BagOfPopcorn-LunaSnowFit-2.dekcns.json",
+        "size": 602
+      },
+      "hits": 1
+    },
+    {
+      "name": "Bayonetta.dekcns.json",
+      "size": 426,
+      "btime": "2026-11-11T13:03:37.587Z",
+      "src": {
+        "archive": "2439_Bayonetta_1.1.zip",
+        "modId": 2439,
+        "entry": "Bayonetta/Bayonetta.dekcns.json",
+        "size": 426
+      },
+      "hits": 1
+    },
+    {
+      "name": "Bayonetta_Glassess.dekcns.json",
+      "size": 496,
+      "btime": "2026-11-11T13:03:37.588Z",
+      "src": {
+        "archive": "2439_Bayonetta_1.1.zip",
+        "modId": 2439,
+        "entry": "Bayonetta/Bayonetta_Glassess.dekcns.json",
+        "size": 496
+      },
+      "hits": 1
+    },
+    {
+      "name": "bcasecoolingsuit.dekcns.json",
+      "size": 3748,
+      "btime": "2026-11-11T13:57:28.484Z",
+      "src": {
+        "archive": "533_Cake Unveiled - Cooling Suit with Jacketless and CNS Option (Nikke Alice)_6.0.zip",
+        "modId": 533,
+        "entry": "bcasecoolingsuit.dekcns.json",
+        "size": 3748
+      },
+      "hits": 1
+    },
+    {
+      "name": "bcaserapi.dekcns.json",
+      "size": 1084,
+      "btime": "2026-11-11T13:55:47.759Z",
+      "src": {
+        "archive": "771_Cake Unveiled - Elysion Combat Uniform (Nikke Rapi) - CNS Available_1.1.zip",
+        "modId": 771,
+        "entry": "CustomNanosuitSystem/bcaserapi.dekcns.json",
+        "size": 1084
+      },
+      "hits": 1
+    },
+    {
+      "name": "bellyband_638.dekcns.json",
+      "size": 720,
+      "btime": "2026-11-09T15:41:40.067Z",
+      "src": {
+        "archive": "2253_bellyband for eve(CNS)_1.0.zip",
+        "modId": 2253,
+        "entry": "bellyband/bellyband_638.dekcns.json",
+        "size": 720
+      },
+      "hits": 1
+    },
+    {
+      "name": "Black Pearl.dekcns.json",
+      "size": 615,
+      "btime": "2026-11-23T16:06:18.489Z",
+      "src": {
+        "archive": "1770_Lewd Black Pearl and Red Pearl(CNS)_1.0.7z",
+        "modId": 1770,
+        "entry": "Black Pearl.dekcns.json",
+        "size": 615
+      },
+      "hits": 1
+    },
+    {
+      "name": "Blackfullshort_cns_713.dekcns.json",
+      "size": 1446,
+      "btime": "2026-11-11T13:54:32.523Z",
+      "src": {
+        "archive": "1372_Revealing Black full dress CNS add bodyslider_2.0.zip",
+        "modId": 1372,
+        "entry": "Blackfullshort_cns_713.dekcns.json",
+        "size": 1446
+      },
+      "hits": 1
+    },
+    {
+      "name": "Dia_Elias.dekcns.json",
+      "size": 484,
+      "btime": "2026-11-09T15:43:52.181Z",
+      "src": {
+        "archive": "2761_Eve - Dia Elias (CNS)_1.1.zip",
+        "modId": 2761,
+        "entry": "DiaElias/Dia_Elias.dekcns.json",
+        "size": 484
+      },
+      "hits": 1
+    },
+    {
+      "name": "Eve_Head.dekcns.json",
+      "size": 1291,
+      "btime": "2026-11-09T15:23:30.913Z",
+      "src": {
+        "archive": "3227_(CNS) THICCified TFD Western Bunny_1.7z",
+        "modId": 3227,
+        "entry": "Eve_Head.dekcns.json",
+        "size": 1291
+      },
+      "hits": 3
+    },
+    {
+      "name": "eve_widowmaker.dekcns.json",
+      "size": 2506,
+      "btime": "2026-11-09T15:26:37.776Z",
+      "src": {
+        "archive": "2940_Widowmaker - Overwatch (CNS)_1.zip",
+        "modId": 2940,
+        "entry": "eve widowmaker CNS/eve_widowmaker.dekcns.json",
+        "size": 2506
+      },
+      "hits": 1
+    },
+    {
+      "name": "FreynaSP.dekcns.json",
+      "size": 673,
+      "btime": "2026-11-11T13:50:12.810Z",
+      "src": {
+        "archive": "2264_Freyna Summer Paradise (CNS Only)_1.0.zip",
+        "modId": 2264,
+        "entry": "FreynaSP/FreynaSP.dekcns.json",
+        "size": 673
+      },
+      "hits": 1
+    },
+    {
+      "name": "Freyna_Oasis_Party.dekcns.json",
+      "size": 1479,
+      "btime": "2026-11-11T13:46:54.460Z",
+      "src": {
+        "archive": "3044_Eve - Freyna Oasis Party (CNS)_1.0.zip",
+        "modId": 3044,
+        "entry": "FreynaOasisParty/Freyna_Oasis_Party.dekcns.json",
+        "size": 1479
+      },
+      "hits": 1
+    },
+    {
+      "name": "Gantz_Reika.dekcns.json",
+      "size": 654,
+      "btime": "2026-11-09T15:37:21.099Z",
+      "src": {
+        "archive": "3561_Gantz Reika (CNS)_1.00.zip",
+        "modId": 3561,
+        "entry": "Hawkins_GantzReika/Gantz_Reika.dekcns.json",
+        "size": 654
+      },
+      "hits": 1
+    },
+    {
+      "name": "GleyBikini.dekcns.json",
+      "size": 653,
+      "btime": "2026-11-11T13:53:17.554Z",
+      "src": {
+        "archive": "1596_Gley Summer Paradise (CNS Supported)_1.1.zip",
+        "modId": 1596,
+        "entry": "GleyBikini/GleyBikini.dekcns.json",
+        "size": 653
+      },
+      "hits": 1
+    },
+    {
+      "name": "Godfather.dekcns.json",
+      "size": 503,
+      "btime": "2026-11-09T15:43:17.301Z",
+      "src": {
+        "archive": "2181_Godfather (CNS Only)_1.2.zip",
+        "modId": 2181,
+        "entry": "Godfather/Godfather.dekcns.json",
+        "size": 503
+      },
+      "hits": 1
+    },
+    {
+      "name": "HaileyBikini.dekcns.json",
+      "size": 458,
+      "btime": "2026-11-11T13:48:00.595Z",
+      "src": {
+        "archive": "1803_Hailey Summer Paradise Bikini (CNS Only)_1.3.zip",
+        "modId": 1803,
+        "entry": "HaileyBikini/HaileyBikini.dekcns.json",
+        "size": 458
+      },
+      "hits": 1
+    },
+    {
+      "name": "Hailey_Albion_Sport.dekcns.json",
+      "size": 4169,
+      "btime": "2026-11-09T15:34:29.043Z",
+      "src": {
+        "archive": "3078_Hailey Albion Sport (CNS)_1.1.zip",
+        "modId": 3078,
+        "entry": "Eve_HaileySport/Hailey_Albion_Sport.dekcns.json",
+        "size": 4169
+      },
+      "hits": 1
+    },
+    {
+      "name": "Harris.dekcns.json",
+      "size": 8019,
+      "btime": "2026-11-11T13:48:47.405Z",
+      "src": {
+        "archive": "2522_The First Descendant Harris (CNS)_1.2.7z",
+        "modId": 2522,
+        "entry": "Harris.dekcns.json",
+        "size": 8019
+      },
+      "hits": 1
+    },
+    {
+      "name": "Heipao_Ahuang.dekcns.json",
+      "size": 2501,
+      "btime": "2026-11-09T15:31:46.686Z",
+      "src": {
+        "archive": "2097_Hei_Pao_2.3.zip",
+        "modId": 2097,
+        "entry": "Heipao_2.3_CNS/Heipao_Ahuang.dekcns.json",
+        "size": 2501
+      },
+      "hits": 1
+    },
+    {
+      "name": "Ines_Mk26.dekcns.json",
+      "size": 3511,
+      "btime": "2026-11-09T15:43:16.425Z",
+      "src": {
+        "archive": "2373_Ines's Raley mk 26 (CNS)_1.1.7z",
+        "modId": 2373,
+        "entry": "Ines_Mk26.dekcns.json",
+        "size": 3511
+      },
+      "hits": 1
+    },
+    {
+      "name": "Jingjue_Queen_CNS.dekcns.json",
+      "size": 4276,
+      "btime": "2026-11-11T13:48:35.175Z",
+      "src": {
+        "archive": "3332_Jingjue Queen (CNS)_2.rar",
+        "modId": 3332,
+        "entry": "Jingjue Queen CNS/Jingjue_Queen_CNS.dekcns.json",
+        "size": 4276
+      },
+      "hits": 1
+    },
+    {
+      "name": "JK_uniform_11641.dekcns.json",
+      "size": 4167,
+      "btime": "2026-11-11T13:47:57.152Z",
+      "src": {
+        "archive": "2332_JK_uniform for EVE(CNS)_1.4.zip",
+        "modId": 2332,
+        "entry": "JK_uniform/JK_uniform_11641.dekcns.json",
+        "size": 4167
+      },
+      "hits": 1
+    },
+    {
+      "name": "latex_catsuit_635.dekcns.json",
+      "size": 880,
+      "btime": "2026-11-11T13:56:21.561Z",
+      "src": {
+        "archive": "2085_latex_catsuit For EVE(CNS)_1.2.zip",
+        "modId": 2085,
+        "entry": "latex_catsuit/latex_catsuit_635.dekcns.json",
+        "size": 880
+      },
+      "hits": 1
+    },
+    {
+      "name": "LilyHead.dekcns.json",
+      "size": 453,
+      "btime": "2026-11-11T13:53:23.311Z",
+      "src": {
+        "archive": "2306_Lily - Valby Summer Vacation (CNS Only)_1.0.zip",
+        "modId": 2306,
+        "entry": "Lily_ValbyVacation/LilyHead.dekcns.json",
+        "size": 453
+      },
+      "hits": 1
+    },
+    {
+      "name": "LunaSnowCoolSummer.dekcns.json",
+      "size": 4581,
+      "btime": "2026-11-09T15:34:05.689Z",
+      "src": {
+        "archive": "2452_Marvel Rivals LunaSnow(CNS)_1.0.7z",
+        "modId": 2452,
+        "entry": "LunaSnowCoolSummer.dekcns.json",
+        "size": 4581
+      },
+      "hits": 1
+    },
+    {
+      "name": "Minervha_KitagawaBikini.dekcns.json",
+      "size": 3070,
+      "btime": "2026-11-11T13:53:11.955Z",
+      "src": {
+        "archive": "2241_Marin Kitagawa Bikini - CNS_v.1.0.rar",
+        "modId": 2241,
+        "entry": "Minervha_KitagawaBikini.dekcns.json",
+        "size": 3070
+      },
+      "hits": 1
+    },
+    {
+      "name": "Monakade_LoreAccurateRAPI.dekcns.json",
+      "size": 827,
+      "btime": "2026-11-11T13:53:41.518Z",
+      "src": {
+        "archive": "1713_Thicker Elysion Combat Uniform (Rapi Outfit - CNS Compatible)_1.2.7z",
+        "modId": 1713,
+        "entry": "Monakade_LoreAccurateRAPI.dekcns.json",
+        "size": 827
+      },
+      "hits": 1
+    },
+    {
+      "name": "MyOutfit.dekcns.json",
+      "size": 644,
+      "btime": "2026-11-10T07:04:31.107Z",
+      "src": {
+        "archive": "2829_Stray Strappy Leather Harness CNS_V1.1.zip",
+        "modId": 2829,
+        "entry": "MyOutfit.dekcns.json",
+        "size": 644
+      },
+      "hits": 1
+    },
+    {
+      "name": "Nell_Albion_Sport_Club.dekcns.json",
+      "size": 1221,
+      "btime": "2026-11-11T13:46:59.287Z",
+      "src": {
+        "archive": "3102_Nell Albion Sport (CNS)_1.10.zip",
+        "modId": 3102,
+        "entry": "Eve_NellSport/Nell_Albion_Sport_Club.dekcns.json",
+        "size": 1221
+      },
+      "hits": 1
+    },
+    {
+      "name": "Night_Rider.dekcns.json",
+      "size": 442,
+      "btime": "2026-11-09T15:44:09.084Z",
+      "src": {
+        "archive": "2479_Night Rider (CNS Only)_1.1.zip",
+        "modId": 2479,
+        "entry": "NightRider/Night_Rider.dekcns.json",
+        "size": 442
+      },
+      "hits": 1
+    },
+    {
+      "name": "Nv_pu_CNS.dekcns.json",
+      "size": 3445,
+      "btime": "2026-11-23T16:06:19.484Z",
+      "src": {
+        "archive": "3970_Nv_pu_CNS_1.0.zip",
+        "modId": 3970,
+        "entry": "Nv_pu_CNS/Nv_pu_CNS/Nv_pu_CNS.dekcns.json",
+        "size": 3445
+      },
+      "hits": 1
+    },
+    {
+      "name": "Nv_pu_CNS_En.dekcns.json",
+      "size": 3444,
+      "btime": "2026-11-23T16:06:19.487Z",
+      "src": {
+        "archive": "3970_Nv_pu_CNS_1.0.zip",
+        "modId": 3970,
+        "entry": "Nv_pu_CNS/Nv_pu_CNS/Nv_pu_CNS_En.dekcns.json",
+        "size": 3444
+      },
+      "hits": 1
+    },
+    {
+      "name": "Red Pearl.dekcns.json",
+      "size": 601,
+      "btime": "2026-11-23T16:06:18.487Z",
+      "src": {
+        "archive": "1770_Lewd Black Pearl and Red Pearl(CNS)_1.0.7z",
+        "modId": 1770,
+        "entry": "Red Pearl.dekcns.json",
+        "size": 601
+      },
+      "hits": 1
+    },
+    {
+      "name": "S2J_shibari_roope_outfit.dekcns.json",
+      "size": 2514,
+      "btime": "2026-11-23T06:26:41.604Z",
+      "src": {
+        "archive": "914_Shibari Rope Outfit_1.4.zip",
+        "modId": 914,
+        "entry": "S2J_shibari_roope_outfit.dekcns.json",
+        "size": 2514
+      },
+      "hits": 1
+    },
+    {
+      "name": "Sugar_Perfume.dekcns.json",
+      "size": 1243,
+      "btime": "2026-11-11T13:52:41.340Z",
+      "src": {
+        "archive": "2989_Eve - Sugar Perfume (CNS)_1.1.zip",
+        "modId": 2989,
+        "entry": "SugarPerfume/Sugar_Perfume.dekcns.json",
+        "size": 1243
+      },
+      "hits": 1
+    },
+    {
+      "name": "ValbySV.dekcns.json",
+      "size": 789,
+      "btime": "2026-11-11T13:53:24.162Z",
+      "src": {
+        "archive": "2306_Lily - Valby Summer Vacation (CNS Only)_1.0.zip",
+        "modId": 2306,
+        "entry": "Lily_ValbyVacation/ValbySV.dekcns.json",
+        "size": 789
+      },
+      "hits": 1
+    },
+    {
+      "name": "Viessa_Assassin.dekcns.json",
+      "size": 482,
+      "btime": "2026-11-11T13:50:34.292Z",
+      "src": {
+        "archive": "2902_Eve - Viessa Reborn Assassin (CNS)_1.1.zip",
+        "modId": 2902,
+        "entry": "Eve_ViessaAssassin/Viessa_Assassin.dekcns.json",
+        "size": 482
+      },
+      "hits": 1
+    },
+    {
+      "name": "Viessa_Summer_Paradise.dekcns.json",
+      "size": 714,
+      "btime": "2026-11-11T13:48:26.990Z",
+      "src": {
+        "archive": "2324_Viessa Summer Paradise (CNS Only)_1.1.zip",
+        "modId": 2324,
+        "entry": "ViessaSummerParadise/Viessa_Summer_Paradise.dekcns.json",
+        "size": 714
+      },
+      "hits": 1
+    },
+    {
+      "name": "Viper_Suit.dekcns.json",
+      "size": 893,
+      "btime": "2026-11-11T13:47:04.393Z",
+      "src": {
+        "archive": "3204_Viper Suit (CNS)_1.zip",
+        "modId": 3204,
+        "entry": "Viper Suit/Viper_Suit.dekcns.json",
+        "size": 893
+      },
+      "hits": 1
+    },
+    {
+      "name": "voidnon_Klukai_SwimHat.dekcns.json",
+      "size": 671,
+      "btime": "2026-11-11T13:49:52.176Z",
+      "src": {
+        "archive": "1982_Klukai (HK416) Swimsuit outfit from Girls Frontline 2 CNS compatible_1.01.zip",
+        "modId": 1982,
+        "entry": "voidnon_Klukai_SwimHat.dekcns.json",
+        "size": 671
+      },
+      "hits": 1
+    },
+    {
+      "name": "voidnon_Klukai_SwimSuit.dekcns.json",
+      "size": 887,
+      "btime": "2026-11-11T13:49:52.177Z",
+      "src": {
+        "archive": "1982_Klukai (HK416) Swimsuit outfit from Girls Frontline 2 CNS compatible_1.01.zip",
+        "modId": 1982,
+        "entry": "voidnon_Klukai_SwimSuit.dekcns.json",
+        "size": 887
+      },
+      "hits": 1
+    },
+    {
+      "name": "Yorha_1.dekcns.json",
+      "size": 20568,
+      "btime": "2026-11-09T15:23:30.982Z",
+      "src": {
+        "archive": "3299_(CNS) Super Thicc Yorha 1_1.7z",
+        "modId": 3299,
+        "entry": "Yorha_1.dekcns.json",
+        "size": 20568
+      },
+      "hits": 1
+    }
+  ],
+  "lost": [
+    {
+      "name": "Luna_TFD.dekcns.json",
+      "size": 17768,
+      "btime": "2026-11-09T15:32:02.212Z",
+      "src": null,
+      "hits": 0
+    }
+  ],
+  "archiveErrors": []
+}

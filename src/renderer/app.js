@@ -8908,7 +8908,30 @@ async function pickLocalArchive() {
 
 /* ---------------- 事件 ---------------- */
 
+/* 侧栏折叠（用户 2026-11-24）：折叠后只留图标，给列表让出可视区。
+   状态存 localStorage，下次启动沿用。按钮在 brand 行右侧，箭头随状态旋转（CSS）。 */
+function initSidebarCollapse() {
+  const side = document.querySelector('.side');
+  const btn = $('#btnSideToggle');
+  if (!side || !btn) return;
+  const KEY = 'sb.sideCollapsed';
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(KEY) === '1'; } catch (e) {}
+  const apply = () => {
+    side.classList.toggle('collapsed', collapsed);
+    btn.title = collapsed ? '展开侧栏' : '折叠侧栏';
+    btn.setAttribute('aria-label', btn.title);
+  };
+  apply();
+  btn.addEventListener('click', () => {
+    collapsed = !collapsed;
+    try { localStorage.setItem(KEY, collapsed ? '1' : '0'); } catch (e) {}
+    apply();
+  });
+}
+
 function bindEvents() {
+  initSidebarCollapse();
   $$('.nav-i').forEach(n => n.addEventListener('click', () => switchPage(n.dataset.p)));
   $('#dClose').addEventListener('click', closeDrawer);
   // 点抽屉外的空白处也关（用户 2026-10-13：详情页面打开后，点击空白的地方自动关闭）。

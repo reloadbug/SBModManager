@@ -485,7 +485,8 @@ t('新增的 4 个词条都在 keys.json 里', () => (
 /* ============ C. 批量开关的进度与「只扫一次盘」（2026-11-11） ============ */
 t('主进程有批量开关接口，且整批只扫一次盘', () => (
   ipcSrc.includes('async function setEnabledMany(ids, enabled)')
-    && ipcSrc.includes('const scanned = scanner.scan(root, registry, linkReaderSafe());')
+    // 扫描统一走 scanAll()（= scanner.scan + 数据文件归属补挂），全批只调一次
+    && ipcSrc.includes('const scanned = scanAll(root);')
     && ipcSrc.includes('setEnabled(id, enabled, { list: scanned, collect: pairs })')
     ? true : '批量接口没把扫描收成一次'));
 t('整批只写一次注册表（收集 patch → patchMany）', () => (

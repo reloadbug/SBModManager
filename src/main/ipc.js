@@ -32,6 +32,8 @@ const { createBugFlags } = require('./bugFlag');
 const { createVerified } = require('./verified');
 const { createFavorites } = require('./favorites');
 const { createModHistory } = require('./modHistory');
+const { createFileOwner, indexLibrary: indexOwnersFromLibrary, indexPlan: indexOwnerFromPlan } = require('./fileOwner');
+const { attachOwners } = require('./attachOwners');
 const archive = require('./archive');
 const nexusBrowser = require('./nexusBrowser');
 const nexusAutoAuth = require('./nexusAutoAuth');
@@ -46,7 +48,7 @@ const gameHome = require('./gameHome');
 const { createModInfo, fromCatalog } = require('./modInfo');
 const { readJson, writeJson, setMirror } = require('./store');
 
-let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites, bugFlags, verifiedFlags, modHistory;
+let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites, bugFlags, verifiedFlags, modHistory, fileOwner;
 
 /** UE4SS 最新 Release 的短时缓存（避免每次进前置组件页都打 GitHub API） */
 let ue4ssReleaseCache = { at: 0, release: null };
@@ -283,7 +285,10 @@ function init() {
   bugFlags = createBugFlags(paths.bugsFile);
   verifiedFlags = createVerified(paths.verifiedFile);
   modHistory = createModHistory(paths.modHistoryFile);
+  fileOwner = createFileOwner(paths.modOwnerFile);
   backfillEnabledAt();
+  // 归属表第一次是空的：拿本地安装包补一遍（后台跑，不挡启动）
+  ensureFileOwners();
 
   engine = createDownloadEngine({
     file: paths.downloadQueueFile,
@@ -907,7 +912,7 @@ function localIndex(force = false) {
   const root = currentRoot();
   let scanned = [];
   if (root) {
-    try { scanned = scanner.scan(root, registry, linkReaderSafe()); } catch (e) {
+    try { scanned = scanAll(root); } catch (e) {
       console.error('[浏览] 扫描本地 Mod 失败：' + e.message);
     }
   }
@@ -1076,6 +1081,60 @@ function linkReaderSafe() {
   }
 }
 
+/**
+ * 一次完整扫描：磁盘扫描 + 按「文件归属表」补挂。
+ *
+ * 为什么要多这一步：`scanner.scanPaks()` 只按「名字像不像」把 CNS 数据文件挂到 pak 组上
+ * （Dice ≥ 0.8）。像 `Bayonetta.dekcns.json` ↔ `Bayonetta_P [nx2439]` 这种能凑上，
+ * 但 `AuRaSphere-UndressableBlueMonsoon.dekcns.json` ↔ `43_UndressableMonsoon_P` 就凑不上，
+ * 于是那几十个数据文件变成「盘上有、界面上看不见」—— 开关不跟、卸载不清。
+ * 现在拿安装包反推出的归属（`fileOwner.js`）补挂，依据是「这个文件出自哪个安装包」，
+ * 不是猜名字，所以可靠得多。补挂失败绝不能让整次扫描挂掉。
+ */
+function scanAll(root) {
+  const list = scanner.scan(root, registry, linkReaderSafe());
+  try {
+    if (fileOwner) attachOwners(list, fileOwner, game.layout(root).modsDir);
+  } catch (e) {
+    console.error('[归属表] 补挂失败：' + e.message);
+  }
+  return list;
+}
+
+/** 归属表建过没有：一次扫库要读几百个压缩包，只在空表时自动跑一次，之后手动触发 */
+let ownersIndexing = null;
+async function ensureFileOwners(opts = {}) {
+  if (!fileOwner) return { ok: false, why: '归属表没初始化' };
+  try {
+    if (!opts.force && fileOwner.stats().mods > 0) return { ok: true, skipped: true, ...fileOwner.stats() };
+    if (ownersIndexing) return ownersIndexing;
+    ownersIndexing = (async () => {
+      try {
+        const r = await indexOwnersFromLibrary(fileOwner, paths.LIBRARY, {
+          archive,
+          parseName: localLibrary.parseArchiveName,
+          modIds: Array.isArray(opts.modIds) ? new Set(opts.modIds) : null
+        });
+        const st = fileOwner.stats();
+        logger.event('mods:ownersIndexed', {
+          archives: r.archives, read: r.read, entries: r.entries,
+          added: r.added, changed: r.changed, failed: r.failed.length,
+          files: st.files, mods: st.mods
+        });
+        return { ok: true, ...r, files: st.files, mods: st.mods };
+      } catch (e) {
+        console.error('[归属表] 扫库失败：' + e.message);
+        return { ok: false, error: e.message };
+      } finally {
+        ownersIndexing = null;
+      }
+    })();
+    return await ownersIndexing;
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 /** 目录缓存的倒排索引（3164 条建一次要几十毫秒，不能每条 mod 重建一次） */
 let catalogIdxCache = { key: '', index: null };
 function catalogIndex(mods) {
@@ -1156,7 +1215,7 @@ async function resolveLinks(event, opts = {}) {
     if (!mods.length) throw new Error('Nexus 目录是空的，检查网络或 API Key');
 
     // 2) 本地待解析条目
-    const list = scanner.scan(root, registry, linkReaderSafe());
+    const list = scanAll(root);
     const targets = linkTargets(list);
     const index = catalogIndex(mods);
 
@@ -1424,7 +1483,7 @@ function reconcileRegistry() {
 function listMods() {
   const root = currentRoot();
   if (!root) return { installed: [], root: null };
-  const list = scanner.scan(root, registry, linkReaderSafe());
+  const list = scanAll(root);
   // 顺手对齐下载任务：装过但现在游戏里找不到的，退回「已下载」好让人重装。
   // `reconcile: true` 只在扫描确实成功时传（没游戏目录时上面就返回了）。
   try { engine.syncFromInstalled(list, { reconcile: true }); } catch { /* 忽略 */ }
@@ -1468,7 +1527,7 @@ function setEnabled(id, enabled, opts) {
   const L = game.layout(root);
   // 批量开关时由调用方把「扫过一次的结果」传进来 —— 每处理一个 Mod 就把整个
   // ~Mods（几百个文件）重扫一遍是 2026-11-11 那次「批量禁用点了没反应」的主因。
-  const list = (opts && Array.isArray(opts.list)) ? opts.list : scanner.scan(root, registry, linkReaderSafe());
+  const list = (opts && Array.isArray(opts.list)) ? opts.list : scanAll(root);
   const mod = list.find(m => m.id === id);
   // 批量时把要写的东西收集起来，最后 patchMany 落一次盘（逐条 patch = 写 N 次 mods.json）
   const collect = (opts && Array.isArray(opts.collect)) ? opts.collect : null;
@@ -1576,7 +1635,7 @@ async function setEnabledMany(ids, enabled) {
 
   const root = currentRoot();
   if (!root) throw new Error('尚未配置有效的游戏目录');
-  const scanned = scanner.scan(root, registry, linkReaderSafe());   // ← 全批只扫这一次
+  const scanned = scanAll(root);   // ← 全批只扫这一次
   const pairs = [];
   let done = 0, ok = 0, failed = 0;
   for (const id of wanted) {
@@ -1618,7 +1677,7 @@ function uninstall(id, { purge = false } = {}) {
   const root = currentRoot();
   if (!root) throw new Error('尚未配置有效的游戏目录');
   const L = game.layout(root);
-  const list = scanner.scan(root, registry, linkReaderSafe());
+  const list = scanAll(root);
   const mod = list.find(m => m.id === id);
   if (!mod) throw new Error('未找到该 Mod');
 
@@ -1837,6 +1896,9 @@ async function registerExisting({ taskId = null, archivePath = null, meta = null
   };
   recordMod('install', rec, { detail: '按安装包补登记', at: installedAt });
   if (enabled) recordMod('enable', rec, { detail: '补登记时就是启用态', at: nowIso });
+  // 补登记时顺手把「包内文件 → 这个 Mod」的归属记进归属表：
+  // 之后再换目录 / 记录再丢，也能靠它把数据文件挂回卡片，不用重新扫库。
+  try { indexOwnerFromPlan(fileOwner, plan, Number(m.modId) || 0, ap); } catch { /* 归属表坏了不影响补登记 */ }
   logger.event('mods:registered', {
     id, modId: m.modId || null, files: manifest.length, enabled,
     taskId: m.taskId || null, installedAt
@@ -1849,7 +1911,7 @@ async function registerExisting({ taskId = null, archivePath = null, meta = null
   try {
     if (task) engine.markRegistered(task.id, { registryId: id, target: plan.target, at: installedAt });
   } catch { /* 队列对不上不影响补登记本身 */ }
-  try { engine.syncFromInstalled(scanner.scan(root, registry, linkReaderSafe()), { reconcile: true }); }
+  try { engine.syncFromInstalled(scanAll(root), { reconcile: true }); }
   catch { /* 队列对不上不影响补登记本身 */ }
 
   return {
@@ -2234,7 +2296,7 @@ function register() {
     const reconciled = reconcileRegistry();
     // 下载任务也跟着对齐：装在新目录里的算「已安装」，没搬过来的退回「已下载」
     try {
-      const list = scanner.scan(root, registry, linkReaderSafe());
+      const list = scanAll(root);
       engine.syncFromInstalled(list, { reconcile: true });
     } catch { /* 对齐失败不影响换目录本身 */ }
     return {
@@ -2403,6 +2465,17 @@ function register() {
     return out;
   }
   handle('mods:facts', (opts) => modFacts(opts || {}));
+
+  /* ---------------- 文件归属表（哪个文件属于哪个 Mod） ---------------- */
+
+  /**
+   * 手动重建归属表：拿本地安装包里的条目反推「文件 → Mod」。
+   *
+   * 早期装的那批 Mod 没记逐文件账，`~Mods` 里就留下一堆谁都不认领的数据文件
+   * （`.dekcns.json` / `.dekani.json`）。归属表建起来之后，扫描时会自动把它们挂回卡片。
+   */
+  handle('mods:indexOwners', (opts) => ensureFileOwners({ force: true, ...(opts || {}) }));
+  handle('mods:ownerStats', () => (fileOwner ? fileOwner.stats() : { files: 0, mods: 0 }));
 
   /* ---------------- 子 Mod：一个安装包里好几套，各自单独装 / 单独卸 ---------------- */
 

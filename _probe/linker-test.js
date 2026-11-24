@@ -289,9 +289,14 @@ function finish() {
       t('ipc 注册了 ' + ch, () => (ipc.includes(`handle('${ch}'`) || ipc.includes(`handleWithEvent('${ch}'`) ? true : '没找到'));
     }
     t('解析进度走 linker:progress 事件', () => (ipc.includes("'linker:progress'") ? true : '没找到'));
-    t('ipc 里三处扫描都带上了关联视图', () => {
-      const n = (ipc.match(/scanner\.scan\(root, registry, linkReaderSafe\(\)\)/g) || []).length;
-      return n >= 4 ? true : `只有 ${n} 处`;
+    t('ipc 里各处扫描都带上了关联视图', () => {
+      // 现在所有扫描统一走 scanAll()（里面 = scanner.scan + 文件归属补挂），
+      // 关联视图在 scanAll 内部包好了，不再各处手写。
+      const calls = (ipc.match(/scanAll\(root\)/g) || []).length;
+      const inner = /function scanAll\(root\)[\s\S]{0,300}?scanner\.scan\(root, registry, linkReaderSafe\(\)\)/.test(ipc);
+      if (calls < 4) return `只有 ${calls} 处调用 scanAll`;
+      if (!inner) return 'scanAll 里没把关联视图传进去';
+      return true;
     });
     t('卸载时顺手清掉关联记录', () => (ipc.includes('linker.removeLink(paths.modLinksFile, id)') ? true : '没找到'));
 

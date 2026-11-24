@@ -32,6 +32,22 @@ nav{padding:9px 8px;flex:1;overflow:auto}
 .dot.bad{background:var(--red);box-shadow:0 0 7px var(--red)}
 .path{font-size:10px;color:var(--dim2);word-break:break-all;line-height:1.55;font-family:Consolas,monospace;white-space:pre-line}
 
+/* ---------- 侧栏折叠（2026-11-24）---------- */
+/* 折叠开关：平时贴 brand 行右侧；箭头随展开/折叠旋转。 */
+.side-toggle{margin-left:auto;width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--panel2);color:var(--dim);border-radius:7px;cursor:pointer;transition:.13s;padding:0}
+.side-toggle:hover{color:var(--text);border-color:var(--accent-d)}
+.side-toggle svg{width:14px;height:14px;transition:transform .18s}
+/* 折叠态：侧栏收成窄条，只留 logo 与导航图标。 */
+.side.collapsed{width:60px}
+.side.collapsed .brand{padding:16px 8px 13px;justify-content:center;flex-wrap:wrap;gap:6px}
+.side.collapsed .brand-text{display:none}
+.side.collapsed .side-toggle{margin-left:0}
+.side.collapsed .side-toggle svg{transform:rotate(180deg)}
+.side.collapsed nav{padding:9px 8px}
+.side.collapsed .nav-i{justify-content:center;padding:9px 0}
+.side.collapsed .nav-i .nav-text,.side.collapsed .nav-i .badge{display:none}
+.side.collapsed .side-foot{display:none}
+
 /* ---------- 主区 ---------- */
 .main{flex:1;display:flex;flex-direction:column;min-width:0}
 .top{min-height:54px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:11px;padding:8px 16px;background:var(--panel)}

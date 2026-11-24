@@ -402,7 +402,8 @@ t('index.html 有状态行（#libStatus）与标记筛选（#libMarks），没�
 t('老的三组筛选（只看未安装 / 只看喜欢 / 只看黑名单）已经撤掉', () =>
   !/id="newOnlyTabs"/.test(html) && !/id="likeTabs"/.test(html) && !/id="blockTabs"/.test(html));
 t('导航里「已安装 Mod」只剩一个「Mod 库」入口', () =>
-  /data-p="p-browse">/.test(html) && !/data-p="p-installed"/.test(html));
+  // 2026-11-24 侧栏折叠给导航项加了 title 等属性，所以这里不再要求引号后面紧跟 '>'
+  /data-p="p-browse"[^>]*>/.test(html) && !/data-p="p-installed"/.test(html));
 t('老入口（p-installed）会被 switchPage 导向 Mod 库', () =>
   /if \(id === 'p-installed'\) \{[\s\S]{0,200}setLibStatus\('installed'[\s\S]{0,120}id = 'p-browse';/.test(app));
 t('renderBrowse 在非「在线」档位直接走合并渲染（零网络）', () =>
@@ -950,6 +951,35 @@ t('0.9.4：CNS 虚拟分类——三档 chip + 本地判定 + Nexus 不传该值
   if (!app.includes("const catForNexus = b.category === '__cns__' ? '' : b.category;")) return 'Nexus 没屏蔽 __cns__';
   if (!app.includes("if (b.category === '__cns__') return true;")) return 'isLocalFiltering 没认 CNS';
   if (!app.includes("b.category === '__cns__' ? 'CNS'")) return 'filterSummary 没显示 CNS 名';
+  return true;
+});
+
+t('侧栏折叠：折叠按钮存在且包了品牌文字/导航文字', () => {
+  if (!/id="btnSideToggle"/.test(html)) return '没有折叠按钮';
+  if (!/class="brand-text"/.test(html)) return '品牌文字没包进 brand-text';
+  const navTexts = (html.match(/class="nav-text"/g) || []).length;
+  if (navTexts < 5) return 'nav-text 不足 5 个：' + navTexts;
+  const navTitles = (html.match(/class="nav-i[^"]*"\s+data-p="[^"]+"\s+title="/g) || []).length;
+  if (navTitles < 5) return 'nav-i 缺 title 提示：' + navTitles;
+  return true;
+});
+t('侧栏折叠：CSS 有 collapsed 窄条与隐藏规则', () => {
+  if (!/\.side\.collapsed\{width:60px\}/.test(css)) return '没有 .side.collapsed 窄条';
+  if (!/\.side\.collapsed \.brand-text\{display:none\}/.test(css)) return 'brand-text 没隐藏';
+  if (!/\.side\.collapsed \.nav-i \.nav-text,\.side\.collapsed \.nav-i \.badge\{display:none\}/.test(css)) return 'nav-text/badge 没隐藏';
+  if (!/\.side\.collapsed \.side-foot\{display:none\}/.test(css)) return 'side-foot 没隐藏';
+  return true;
+});
+t('侧栏折叠：逻辑读写 localStorage 并切 collapsed 类', () => {
+  const i = app.indexOf('function initSidebarCollapse');
+  if (i < 0) return '没有 initSidebarCollapse';
+  const seg = app.slice(i, i + 1400);
+  if (!seg.includes("localStorage.getItem(KEY)")) return '没读 localStorage';
+  if (!seg.includes("localStorage.setItem(KEY")) return '没写 localStorage';
+  if (!seg.includes("'sb.sideCollapsed'")) return 'localStorage key 不对';
+  if (!seg.includes("classList.toggle('collapsed'")) return '没切 collapsed 类';
+  if (!seg.includes('btn.addEventListener(\'click\'')) return '按钮没绑 click';
+  if (!/\bfunction bindEvents\(\)\s*\{\s*initSidebarCollapse\(\);/.test(app)) return 'bindEvents 没调用 initSidebarCollapse';
   return true;
 });
 
