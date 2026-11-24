@@ -114,7 +114,7 @@ console.log('\n【E】详情页：facts 回来只重画信息区，不重画整�
 console.log('\n【F】i18n：两条新文案在册');
 {
   const keys = JSON.parse(fs.readFileSync(path.join(__dirname, 'i18n-keys.json'), 'utf8'));
-  ok('总键数 1318', keys.length === 1318, keys.length);
+  ok('总键数 1322', keys.length === 1322, keys.length);
   ok('「无记录」在册', keys.includes('无记录'));
   ok('「本地没有这个包」在册', keys.includes('本地没有这个包'));
   const zh = readSrc('src/renderer/locales/en-US.js');

@@ -1321,5 +1321,9 @@
     '补登记': 'Nachtragen',
     '无记录': 'Kein Eintrag',
     '本地没有这个包': 'Nicht lokal',
+    '包内文件': 'Im Paket',
+    '无需安装': 'Nicht nötig',
+    '子 Mod': 'Sub-Mod',
+    '其它': 'Sonstiges',
   });
 })();

@@ -96,7 +96,14 @@ contextBridge.exposeInMainWorld('api', {
      * 发布时间（Nexus）、压缩包位置（注册表 / 本地库 / 下载队列）、安装时间（注册表）。
      * 返回 { modId, publishedAt, archivePath, archiveFrom, installedAt, installedFrom }
      */
-    facts: (opts) => invoke('mods:facts', opts)
+    facts: (opts) => invoke('mods:facts', opts),
+    /**
+     * 包内文件表：把安装包里的每个文件摊开，标出「装了 / 没装 / 不用装」。
+     * 返回 { archivePath, archiveFrom, total, shown, truncated, installedCount, ledger, entries:[{rel,name,size,kind,state,disabled,top,onDisk}] }
+     *   kind: pak | ucas | utoc | cns（.dekcns.json）| doc | img | other
+     *   state: in（已在盘上）| no（没装）| skip（文档/图片，本来就不装）| na（不逐个判断）
+     */
+    packageFiles: (opts) => invoke('mods:packageFiles', opts)
   },
 
   /**

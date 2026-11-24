@@ -1321,5 +1321,9 @@
     '补登记': 'Kaydet',
     '无记录': 'Kayıt yok',
     '本地没有这个包': 'Paket yok',
+    '包内文件': 'Paket içi',
+    '无需安装': 'Gerekmez',
+    '子 Mod': 'Alt mod',
+    '其它': 'Diğer',
   });
 })();

@@ -953,6 +953,12 @@ async function analyze(root, archivePath, meta = {}, opts = {}) {
     totalBytes: mapping.reduce((s, m) => s + m.size, 0),
     mapping,
     preview: mapping.slice(0, 120).map(m => m.rel),
+    // 📒 包内**完整**文件清单（未剥前缀、未剔文档），给「详情页包内文件表」用。
+    // 为什么要在 analyze 里带出来：用户 2026-11-24 明确要求「安装时就记录好包里有
+    // 哪些文件、装了哪些没装」——靠事后按名字比对是靠不住的（改名、加 [nx] 标识、
+    // 换游戏目录都会让它对不上）。这里带出原始清单，落库时由 packageLedger() 一次性
+    // 算好「装了什么、没装什么」。
+    entries: rel.map(r => ({ rel: r.path, size: r.size })),
     conflicts: conflicts.map(m => m.to),
     conflictCount: conflicts.length,
     // 🔴 「同名 + 同大小」的软覆盖：**不算冲突、不拦自动安装**，但要把数量报出来。
@@ -1430,6 +1436,50 @@ function verifyExisting(plan) {
   };
 }
 
+/**
+ * 📒 安装账本的「未装清单」—— 把包内完整清单（`plan.entries`）与真正写进去的
+ * 文件（`plan.mapping`）对一遍，得出「包里有 N 个、装了 M 个、这 K 个没装」。
+ *
+ * 为什么不能直接比 `rel`：`mapping[].rel` 是**剥过包装层、还加了 `[nx<modId>]` 标识**
+ * 的名字（`Kamenlaideng_Sexy Jk_P [nx4184].pak`），而 `entries[].rel` 是归档内的原始
+ * 路径（`Kamenlaideng_Blossom Butterfly JK/Kamenlaideng_Sexy Jk_P.pak`）。两边只有
+ * 「主干」是一致的，所以统一按 `stemOf()` 的结果比对。
+ *
+ * 用户 2026-11-24：「安装时就记录好，哪些文件安装了哪些没装」——所以这份账本在
+ * `installFlow` 里**落进注册表记录**（`pkg` 字段），不依赖以后再扫一遍磁盘。
+ */
+function packageLedger(plan) {
+  const entries = (plan && plan.entries) || [];
+  const mapping = (plan && plan.mapping) || [];
+  const installed = new Set(mapping.map(m => stemOf(path.basename(String(m.rel || m.to || '')))));
+  const notInstalled = [];
+  for (const e of entries) {
+    const stem = stemOf(path.basename(String(e.rel || '')));
+    if (!stem) continue;
+    if (installed.has(stem)) continue;
+    notInstalled.push(String(e.rel || ''));
+  }
+  return {
+    entryCount: entries.length,
+    installedCount: mapping.length,
+    notInstalled,
+    // 界面只展示前若干条；这里留全量会撑大 `mods.json`（有的整合包上千个文件）
+    notInstalledCount: notInstalled.length,
+    truncated: false
+  };
+}
+
+/** 文件名主干：去 `.disabled`、去扩展名、去 `[nx123]` 标识、只留字母数字并小写 */
+function stemOf(name) {
+  let s = String(name || '');
+  s = s.replace(/\.disabled$/i, '');
+  // CNS 服装数据是双扩展名（`X.dekcns.json`），先整体剥掉，主干才和 pak 对得上
+  s = s.replace(/\.(dekcns|dekani)(\.json)?$/i, '');
+  s = s.replace(/\.[a-z0-9]{1,5}$/i, '');
+  s = s.replace(/\[nx\d+\]/gi, '');
+  return s.replace(/[^a-z0-9]+/gi, '').toLowerCase();
+}
+
 module.exports = {
   analyze,
   install,
@@ -1444,5 +1494,7 @@ module.exports = {
   commonPrefix,
   safeName,
   describeTarget,
+  packageLedger,
+  stemOf,
   KIND_LABEL
 };

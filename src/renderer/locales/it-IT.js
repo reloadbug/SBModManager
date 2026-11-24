@@ -1321,5 +1321,9 @@
     '补登记': 'Registra',
     '无记录': 'Nessuno',
     '本地没有这个包': 'Nessun pacchetto',
+    '包内文件': 'Nel pacchetto',
+    '无需安装': 'Non necessario',
+    '子 Mod': 'Sottomod',
+    '其它': 'Altro',
   });
 })();

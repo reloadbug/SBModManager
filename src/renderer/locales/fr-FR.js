@@ -1321,5 +1321,9 @@
     '补登记': 'Enregistrer',
     '无记录': 'Aucun',
     '本地没有这个包': 'Pas de paquet',
+    '包内文件': 'Dans le paquet',
+    '无需安装': 'Inutile',
+    '子 Mod': 'Sous-mod',
+    '其它': 'Autre',
   });
 })();

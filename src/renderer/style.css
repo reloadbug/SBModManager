@@ -948,3 +948,49 @@ body.sel .card .cover .sw{display:none}
 }
 .bhead .tabs.batch button.tone-dim{color:var(--dim2)}
 .bhead .tabs.batch button.tone-dim.on{background:var(--panel2);color:var(--text);font-weight:600}
+
+/* ================= 详情抽屉：包内文件表 =================
+ * 只给需要盯的类型上框：pak/ucas/utoc 绿、cns 蓝、其它灰；说明与图片不加框。
+ * 行高统一 24px、圆角 7px、字号 11.5px，与其它区域的 chip 规格一致。
+ */
+.pf-head,.pf-row{display:grid;grid-template-columns:minmax(0,1fr) 66px 52px 50px;align-items:center;gap:6px}
+.pf-head{
+  font-size:11px;color:var(--dim2);padding:0 2px 4px;border-bottom:1px solid var(--border);
+  position:sticky;top:0;background:var(--panel);z-index:1;
+}
+.pf-head span:nth-child(3),.pf-head span:nth-child(4){text-align:right}
+.pf-rows{max-height:210px;overflow-y:auto;overflow-x:hidden}
+.pf-row{
+  min-height:24px;padding:3px 2px;border-bottom:1px solid rgba(44,49,58,.5);
+  font-size:11.5px;line-height:1.35;
+}
+.pf-row:hover{background:var(--panel2)}
+.pf-name{display:flex;align-items:center;gap:6px;min-width:0}
+.pf-txt{
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);
+}
+.pf-top{
+  font-size:10.5px;color:var(--dim2);min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;
+}
+.pf-size{font-size:10.5px;color:var(--dim2);text-align:right;white-space:nowrap}
+.pf-st{font-size:11px;text-align:right;white-space:nowrap;color:var(--dim2)}
+.pf-row.ok .pf-st{color:var(--ok)}
+.pf-row.off .pf-st{color:var(--dim)}
+.pf-row.miss .pf-st{color:var(--accent)}
+.pf-row.miss .pf-txt{color:#ffd9a0}
+.pf-row.miss{background:rgba(232,163,61,.06)}
+.pf-sum{font-size:10.5px;color:var(--dim2);padding:6px 2px 0}
+.pchip{
+  flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  height:18px;padding:0 6px;border-radius:7px;font-size:10.5px;line-height:1;
+  border:1px solid var(--border2);color:var(--dim);background:transparent;
+}
+/* 三件套：绿框 —— 一组必须是 pak + ucas + utoc，缺哪个一眼看得出 */
+.pchip.pak,.pchip.ucas,.pchip.utoc{
+  border-color:rgba(63,185,80,.55);background:rgba(63,185,80,.16);color:#8ee6a2;
+}
+/* CNS 服装数据文件：蓝框 */
+.pchip.cns{border-color:rgba(74,158,255,.55);background:rgba(74,158,255,.16);color:#9ccbff}
+/* 其它类型：灰框，只是分类，不强调 */
+.pchip.other{border-color:var(--border2);color:var(--dim2)}

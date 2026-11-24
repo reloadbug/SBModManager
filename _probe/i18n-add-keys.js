@@ -1614,6 +1614,11 @@ const TABLE = [
   // ── ㉞ 2026-11-24：详情页空字段补齐（禁用时间从没记录过 / 压缩包本地没有）──
   ['无记录', ['無記錄', 'None', '記録なし', '기록 없음', 'Нет записи', 'Kein Eintrag', 'Aucun', 'Sin registro', 'Sem registro', 'Nessuno', 'Brak wpisu', 'Kayıt yok', 'ไม่มีบันทึก']],
   ['本地没有这个包', ['本機沒有這個包', 'No package', 'ローカルに無し', '로컬에 없음', 'Нет пакета', 'Nicht lokal', 'Pas de paquet', 'Sin paquete', 'Sem pacote', 'Nessun pacchetto', 'Brak pakietu', 'Paket yok', 'ไม่มีแพ็กเกจ']],
+  // ㉟ 2026-11-24 详情页「包内文件表」：一行一个包内文件，标出装了没装
+  ['包内文件', ['包內檔案', 'In package', 'パッケージ内', '패키지 내 파일', 'Файлы в пакете', 'Im Paket', 'Dans le paquet', 'En el paquete', 'No pacote', 'Nel pacchetto', 'W pakiecie', 'Paket içi', 'ไฟล์ในแพ็กเกจ']],
+  ['无需安装', ['無需安裝', 'Not needed', 'インストール不要', '설치 불필요', 'Не требуется', 'Nicht nötig', 'Inutile', 'No necesario', 'Desnecessário', 'Non necessario', 'Zbędne', 'Gerekmez', 'ไม่ต้องติดตั้ง']],
+  ['子 Mod', ['子 Mod', 'Sub-mod', 'サブMod', '하위 모드', 'Субмод', 'Sub-Mod', 'Sous-mod', 'Submod', 'Submod', 'Sottomod', 'Podmod', 'Alt mod', 'ม็อดย่อย']],
+  ['其它', ['其它', 'Other', 'その他', '기타', 'Прочее', 'Sonstiges', 'Autre', 'Otros', 'Outros', 'Altro', 'Inne', 'Diğer', 'อื่นๆ']],
 ];
 
 /**

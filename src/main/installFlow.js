@@ -335,6 +335,11 @@ async function runInstall({
   // 这一次新备份的补进来。因为已经跳过重复路径，直接拼接不会有重复项。
   const mergedOverwritten = [...(prev && prev.overwritten ? prev.overwritten : []), ...(r.backed || [])];
 
+  // 📒 安装账本：包里有几个文件、真正装了哪几个、哪些没装（文档 / 没选的那套变体）。
+  // 用户 2026-11-24：「不是用名称进行关联，而是安装时就记录好，哪些文件安装了哪些没装」。
+  // 落进注册表记录后，详情页不再需要靠名字去盘上猜。
+  const ledger = installer.packageLedger(plan);
+
   registry.upsert({
     id,
     name: meta.name || path.basename(plan.archivePath, path.extname(plan.archivePath)),
@@ -366,7 +371,16 @@ async function runInstall({
     // 依赖标记：装的是 ATOOL 体系的 Logic Mod（界面据此提示「需要 ATOOL」）
     requiresAtool: !!plan.requiresAtool,
     // 这个包本身是前置组件（UE4SS）—— 供 scanner 归类
-    prereqKey: plan.prereqKey || null
+    prereqKey: plan.prereqKey || null,
+    // 安装账本（见上）：包内文件总数 / 装了几个 / 没装的清单（前 300 条）
+    pkg: {
+      archivePath: plan.archivePath,
+      entryCount: ledger.entryCount,
+      installedCount: ledger.installedCount,
+      notInstalled: ledger.notInstalled.slice(0, 300),
+      notInstalledCount: ledger.notInstalledCount,
+      at: new Date().toISOString()
+    }
   });
 
   return {

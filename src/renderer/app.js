@@ -1839,6 +1839,78 @@ function renderDrawerInfo() {
   box.innerHTML = unifiedInfoRows(mergedInfoCtx(base, facts));
 }
 
+/* ================= 包内文件表（详情抽屉） =================
+ *
+ * 用户 2026-11-24：「详细信息里面要记录压缩包内的文件列表，并且记录每个文件是否安装，
+ * 能够通过表格一眼看出压缩包里面哪些文件被安装了，对于不同文件类型要显示不同颜色，
+ * 比如常见的 3 个文件一组的 pak/ucas/utoc 都用绿色背景框住，dekcns.json 用蓝色框住，
+ * 其他类型你看着分类，不需要关注的文件不加框」。
+ *
+ * 所以这里只给「要关注、要判断」的类型上框：
+ *   · pak / ucas / utoc —— 三件套，绿色框（一组必须齐，缺哪个一眼能看出）
+ *   · cns（.dekcns.json / .dekani.json）—— CNS 服装数据，蓝色框
+ *   · other（dll / lua / ini 等）—— 灰框，说明是「其它」
+ *   · doc / img（说明、预览图）—— 不加框，且状态写「无需安装」，免得被当成少装
+ * 状态只有四种：已安装 / 已关闭 / 未安装 / 无需安装（+ 「—」= 这类文件不逐个判断）。
+ */
+const PKG_KIND = { pak: 'pak', ucas: 'ucas', utoc: 'utoc', cns: 'cns', doc: '', img: '', other: '其它' };
+
+function pkgChip(kind) {
+  if (kind === 'doc' || kind === 'img') return '';
+  const label = PKG_KIND[kind] || '其它';
+  return `<span class="pchip ${esc(kind)}" data-i18n-skip>${esc(label)}</span>`;
+}
+
+function pkgStateText(e) {
+  if (!e) return '—';
+  if (e.state === 'in') return e.disabled ? '已关闭' : '已安装';
+  if (e.state === 'no') return '未安装';
+  if (e.state === 'skip') return '无需安装';
+  return '—';
+}
+
+function pkgTableHtml(d) {
+  if (!d) return '<div class="txt" style="color:var(--dim2)">正在读取安装包…</div>';
+  if (!d.archivePath) return '<div class="txt" style="color:var(--dim2)">本地没有这个安装包，看不到包内清单。</div>';
+  const list = d.entries || [];
+  const miss = list.filter(e => e.state === 'no').length;
+  const inside = list.filter(e => e.state === 'in').length;
+  const rows = list.map(e => {
+    const cls = e.state === 'no' ? ' miss' : (e.state === 'in' ? (e.disabled ? ' off' : ' ok') : '');
+    return `<div class="pf-row${cls}">
+      <span class="pf-name">${pkgChip(e.kind)}<span class="pf-txt" title="${esc(e.rel)}">${esc(e.name)}</span></span>
+      <span class="pf-top" data-i18n-skip title="${esc(e.top || '')}">${esc(e.top || '')}</span>
+      <span class="pf-size">${e.size ? fmtSize(e.size) : ''}</span>
+      <span class="pf-st">${esc(pkgStateText(e))}</span>
+    </div>`;
+  }).join('');
+  const sum = `<div class="pf-sum">包里 ${fmtNum(d.total || list.length)} 个文件 · 已装 ${fmtNum(inside)} 个`
+    + (miss ? ` · <b style="color:var(--warn)">没装 ${fmtNum(miss)} 个</b>` : '')
+    + (d.truncated ? ` · 只列前 ${fmtNum(d.shown)} 个` : '') + '</div>';
+  return `<div class="pf-head"><span>文件</span><span>子 Mod</span><span>大小</span><span>状态</span></div>
+    <div class="pf-rows">${rows}</div>${sum}`;
+}
+
+/** 抽屉打开后去读这个 Mod 的包内文件表（读安装包，不解压；一次一 Mod，读到就记住） */
+function fillDrawerPkg(modId, taskId) {
+  const box = document.getElementById('drawerPkg');
+  if (!box) return;
+  const key = 'pkg:' + (taskId || Number(modId) || 0);
+  if (!state.modPkg) state.modPkg = {};
+  if (state.modPkg[key]) { box.innerHTML = pkgTableHtml(state.modPkg[key]); return; }
+  box.innerHTML = pkgTableHtml(null);
+  call(window.api.mods.packageFiles({ modId: Number(modId) || 0, taskId: taskId || null }), { silent: true })
+    .then(d => {
+      state.modPkg[key] = d || {};
+      const b = document.getElementById('drawerPkg');
+      if (b) b.innerHTML = pkgTableHtml(d || {});
+    })
+    .catch(() => {
+      const b = document.getElementById('drawerPkg');
+      if (b) b.innerHTML = '<div class="txt" style="color:var(--dim2)">这个安装包读不出来（可能已损坏）。</div>';
+    });
+}
+
 /** 抽屉打开后去补查这个 Mod 的「发布时间 / 压缩包位置 / 安装时间」，一次一 Mod，查过就记住 */
 function fillDrawerFacts(modId) {
   const id = Number(modId) || 0;
@@ -2062,6 +2134,9 @@ function openModDrawer(rec) {
 
     ${filesHtml}
 
+    <div class="lbl">包内文件</div>
+    <div id="drawerPkg"></div>
+
     <div class="lbl">说明</div>
     <div class="langsw">
       <button class="${state.drawer.lang === 'zh' ? 'on' : ''}" data-lang="zh" title="翻译成中文后显示在这里">中文</button>
@@ -2083,6 +2158,8 @@ function openModDrawer(rec) {
   // 信息表里那几样要联网 / 读盘才知道的（发布时间、压缩包位置、安装时间）：
   // 抽屉先打开，数据回来再补这几行，不挡打开速度。
   if (kind === 'installed') fillDrawerFacts(infoCtx.factId);
+  // 包内文件表：读安装包、逐个标「装了没」，跟信息表并行（互不等待）
+  if (kind === 'installed' || kind === 'downloaded') fillDrawerPkg(infoCtx.factId, null);
 
   // ---------- ⑦ 底部固定栏 ----------
   const foot = [];

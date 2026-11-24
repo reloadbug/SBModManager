@@ -1812,7 +1812,19 @@ async function registerExisting({ taskId = null, archivePath = null, meta = null
     taskId: m.taskId || null,
     requiresCns: !!plan.requiresCns,
     requiresAtool: !!plan.requiresAtool,
-    prereqKey: plan.prereqKey || null
+    prereqKey: plan.prereqKey || null,
+    // 安装账本（同正常安装）：包里几个文件、装了几个、哪些没装
+    pkg: (() => {
+      const led = installer.packageLedger(plan);
+      return {
+        archivePath: ap,
+        entryCount: led.entryCount,
+        installedCount: manifest.length,
+        notInstalled: led.notInstalled.slice(0, 300),
+        notInstalledCount: led.notInstalledCount,
+        at: installedAt
+      };
+    })()
   });
 
   invalidateLocalIndex();
@@ -2391,6 +2403,144 @@ function register() {
     return out;
   }
   handle('mods:facts', (opts) => modFacts(opts || {}));
+
+  /**
+   * 📒 详情页「包内文件」表 —— 把安装包里的每个文件摊开，逐个标「装进游戏了 / 没装」。
+   *
+   * 用户 2026-11-24：「详细信息里面要记录压缩包内的文件列表，并且记录每个文件是否安装，
+   * 能够通过表格一眼看出压缩包里面哪些文件被安装了」「pak/ucas/utoc 三个一组用绿色框、
+   * dekcns.json 用蓝色框、其它类型你看着分类、不需要关注的文件不加框」。
+   *
+   * 数据来源是**安装包本身**（`archive.listEntries`，只读不改、不解压），所以：
+   *   · 老记录（没有装过的账本）也能看；
+   *   · 包被用户删了就直接说「本地没有这个包」，不猜；
+   *   · 「装没装」按**文件名主干**去 `~Mods` 等目录里找 —— 装的时候名字会被加上
+   *     `[nx<modId>]` 标识、关掉还会加 `.disabled`，所以不能按原名比。
+   */
+  async function packageFiles({ modId = 0, taskId = null } = {}) {
+    const id = Number(modId) || 0;
+    const out = {
+      modId: id, archivePath: '', archiveFrom: '', total: 0, shown: 0,
+      truncated: false, entries: [], ledger: null, installedCount: 0
+    };
+    const exists = (p) => { try { return !!p && fs.existsSync(p); } catch { return false; } };
+
+    // ① 找包：注册表 → 队列任务 → 本地安装包库（与 modFacts 同口径，顺序略调：队列优先，
+    //    因为它记的就是「这个 mod 的哪个包」）
+    let ap = '';
+    try {
+      const t = taskId ? engine.get(taskId) : null;
+      if (t && exists(t.archivePath)) { ap = t.archivePath; out.archiveFrom = '下载队列'; }
+      if (!ap) {
+        const tk = engine.list().find(x => Number(x.meta && x.meta.modId) === id && exists(x.archivePath));
+        if (tk) { ap = tk.archivePath; out.archiveFrom = '下载队列'; }
+      }
+    } catch { /* 队列读不到就往下走 */ }
+    if (!ap) {
+      try {
+        for (const rec of registry.all()) {
+          if (Number(rec.source && rec.source.modId) !== id) continue;
+          if (exists(rec.archivePath)) { ap = rec.archivePath; out.archiveFrom = '注册表'; break; }
+        }
+      } catch { /* ignore */ }
+    }
+    if (!ap) {
+      try {
+        let best = null;
+        for (const f of fs.readdirSync(paths.LIBRARY)) {
+          const info = localLibrary.parseArchiveName(f);
+          if (!info || Number(info.modId) !== id) continue;
+          const p = path.join(paths.LIBRARY, f);
+          if (!exists(p)) continue;
+          let mt = '';
+          try { mt = fs.statSync(p).mtime.toISOString(); } catch { /* ignore */ }
+          if (!best || mt > best.mt) best = { p, mt };
+        }
+        if (best) { ap = best.p; out.archiveFrom = '本地库'; }
+      } catch { /* 本地库不存在 */ }
+    }
+    if (!ap) return out;
+    out.archivePath = ap;
+
+    // ② 注册表里那份「安装账本」（装的时候写下的，不靠名字）
+    try {
+      for (const rec of registry.all()) {
+        if (Number(rec.source && rec.source.modId) !== id) continue;
+        if (rec.pkg) { out.ledger = rec.pkg; break; }
+      }
+    } catch { /* ignore */ }
+
+    // ③ 盘上现存的文件（按主干索引），用来判断每个包内文件是否装了
+    const disk = new Map();
+    const addDisk = (dir, rel) => {
+      let items = [];
+      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of items) {
+        if (!e.isFile()) continue;
+        const stem = installer.stemOf(e.name);
+        if (!stem) continue;
+        const disabled = /\.disabled$/i.test(e.name);
+        let size = 0;
+        try { size = fs.statSync(path.join(dir, e.name)).size; } catch { /* ignore */ }
+        // 同名两个（一开一关）时，先来的留着：状态以「哪个在生效」为准，界面另有 disabled 标记
+        if (!disk.has(stem)) disk.set(stem, { name: e.name, disabled, size, rel: rel + '/' + e.name });
+      }
+    };
+    let root = '';
+    try { root = currentRoot() || ''; } catch { root = ''; }
+    if (root) {
+      const L = game.layout(root);
+      addDisk(L.modsDir, '~Mods');
+      if (L.logicModsDir) addDisk(L.logicModsDir, 'LogicMods');
+      if (L.paks) addDisk(L.paks, 'Paks');
+      if (L.win64) addDisk(L.win64, 'Win64');
+    }
+
+    // ④ 摊开包内文件
+    const KIND_OF = (name) => {
+      const b = String(name || '');
+      if (/\.pak$/i.test(b)) return 'pak';
+      if (/\.ucas$/i.test(b)) return 'ucas';
+      if (/\.utoc$/i.test(b)) return 'utoc';
+      if (/\.(dekcns|dekani)(\.json)?$/i.test(b)) return 'cns';
+      if (/\.(txt|md|pdf|docx?|rtf|htm|html)$/i.test(b)) return 'doc';
+      if (/\.(png|jpe?g|webp|gif|bmp)$/i.test(b)) return 'img';
+      return 'other';
+    };
+    const VERIFY = new Set(['pak', 'ucas', 'utoc', 'cns']);
+
+    let list = [];
+    try { list = await archive.listEntries(ap); } catch { list = { entries: [] }; }
+    const files = ((list && list.entries) || []).filter(e => !e.dir);
+    out.total = files.length;
+
+    const MAX = 800;
+    const shown = files.slice(0, MAX);
+    out.truncated = files.length > MAX;
+    out.shown = shown.length;
+    for (const e of shown) {
+      const rel = String(e.path || '');
+      const base = path.basename(rel);
+      const kind = KIND_OF(base);
+      const seg = rel.split('/').filter(Boolean);
+      const top = seg.length > 1 ? seg[0] : '';
+      let state = 'na';       // na = 这类文件不判断（脚本 / dll 等分散在子目录里）
+      let off = false;
+      let onDisk = '';
+      if (VERIFY.has(kind)) {
+        const hit = disk.get(installer.stemOf(base));
+        if (hit) { state = 'in'; off = hit.disabled; onDisk = hit.rel; }
+        else state = 'no';
+      } else if (kind === 'doc' || kind === 'img') {
+        state = 'skip';       // 说明文档 / 预览图：本来就不装，不算「少装」
+      }
+      if (state === 'in') out.installedCount++;
+      out.entries.push({ rel, name: base, size: Number(e.size) || 0, kind, state, disabled: off, top, onDisk });
+    }
+    return out;
+  }
+  handle('mods:packageFiles', (opts) => packageFiles(opts || {}));
+
   /**
    * 管理器自带安装包的盘点：`data/library` 里那些包，哪些现在能装进当前游戏目录。
    *
