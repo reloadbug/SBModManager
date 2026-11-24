@@ -1443,7 +1443,10 @@ function verifyExisting(plan) {
  * 为什么不能直接比 `rel`：`mapping[].rel` 是**剥过包装层、还加了 `[nx<modId>]` 标识**
  * 的名字（`Kamenlaideng_Sexy Jk_P [nx4184].pak`），而 `entries[].rel` 是归档内的原始
  * 路径（`Kamenlaideng_Blossom Butterfly JK/Kamenlaideng_Sexy Jk_P.pak`）。两边只有
- * 「主干」是一致的，所以统一按 `stemOf()` 的结果比对。
+ * 文件名本身是一致的（去掉 `[nx<modId>]` 之后），所以统一按 `fileKey()` 的结果比对。
+ *
+ * ⚠️ 不能用 `stemOf()`（它连扩展名一起剥）：pak / ucas / utoc 三件套会压成同一个键，
+ * 于是「装了 4 个文件」会被记成「装了 2 个」，单独卸载某一套时只移走一半、剩下一半变孤儿。
  *
  * 用户 2026-11-24：「安装时就记录好，哪些文件安装了哪些没装」——所以这份账本在
  * `installFlow` 里**落进注册表记录**（`pkg` 字段），不依赖以后再扫一遍磁盘。
@@ -1451,20 +1454,43 @@ function verifyExisting(plan) {
 function packageLedger(plan) {
   const entries = (plan && plan.entries) || [];
   const mapping = (plan && plan.mapping) || [];
-  const installed = new Set(mapping.map(m => stemOf(path.basename(String(m.rel || m.to || '')))));
+  const installedByKey = new Map();
+  for (const m of mapping) {
+    const rel = String(m.rel || m.to || '');
+    installedByKey.set(fileKey(path.basename(rel)), rel);
+  }
   const notInstalled = [];
+  // 「子 Mod」= 包内顶层目录（整合包常见：`Body/` + `Outfit/` 两套）。
+  // 用户 2026-11-24：「安装时要记录好 mod 和子 mod 的关系」——这份表就是那个关系，
+  // 之后单独卸载某一套时，靠 `installedRels` 精确知道该动哪几个文件。
+  const subs = new Map();
   for (const e of entries) {
-    const stem = stemOf(path.basename(String(e.rel || '')));
-    if (!stem) continue;
-    if (installed.has(stem)) continue;
-    notInstalled.push(String(e.rel || ''));
+    const rel = String(e.rel || '');
+    const seg = rel.split('/').filter(Boolean);
+    const dir = seg.length > 1 ? seg[0] : '';
+    let s = subs.get(dir);
+    if (!s) {
+      s = { dir, entryCount: 0, installedCount: 0, installedRels: [], bytes: 0, installedBytes: 0 };
+      subs.set(dir, s);
+    }
+    const size = Number(e.size) || 0;
+    s.entryCount++;
+    s.bytes += size;
+    const hit = installedByKey.get(fileKey(path.basename(rel)));
+    if (hit) {
+      s.installedCount++;
+      s.installedBytes += size;
+      if (!s.installedRels.includes(hit)) s.installedRels.push(hit);
+    } else {
+      notInstalled.push(rel);
+    }
   }
   return {
     entryCount: entries.length,
     installedCount: mapping.length,
     notInstalled,
-    // 界面只展示前若干条；这里留全量会撑大 `mods.json`（有的整合包上千个文件）
     notInstalledCount: notInstalled.length,
+    subs: Array.from(subs.values()),
     truncated: false
   };
 }
@@ -1478,6 +1504,22 @@ function stemOf(name) {
   s = s.replace(/\.[a-z0-9]{1,5}$/i, '');
   s = s.replace(/\[nx\d+\]/gi, '');
   return s.replace(/[^a-z0-9]+/gi, '').toLowerCase();
+}
+
+/**
+ * 文件名「逐文件身份证」：去掉 `[nx123]` 标识、去掉 `.disabled`，**保留真实扩展名**。
+ *
+ * 为什么不能拿 `stemOf()` 记账：pak / ucas / utoc 三件套剥掉扩展名之后主干一模一样，
+ * `stemOf()` 会把一套 3 个文件压成 1 个 —— 用它记「这一套装了哪几个文件」，
+ * 单独卸载时就只会移走 1 个，剩下 2 个变孤儿（2026-11-24 实测 4184 就是这样）。
+ * 所以：逐个文件的账本用 `fileKey()`；「这个主干装上了没有」这种粗判断仍用 `stemOf()`。
+ */
+function fileKey(name) {
+  let s = String(name || '');
+  // 连标识前面的空格一起剥：`X [nx4184].pak` 要变成 `x.pak`，不能留成 `x .pak`
+  s = s.replace(/\s*\[nx\d+\]/gi, '');
+  s = s.replace(/\.disabled$/i, '');
+  return s.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 module.exports = {
@@ -1496,5 +1538,6 @@ module.exports = {
   describeTarget,
   packageLedger,
   stemOf,
+  fileKey,
   KIND_LABEL
 };

@@ -101,7 +101,10 @@ console.log('\n【D】`mods:packageFiles`：读安装包摊开清单，逐个标
     && src.includes("'cns'") && src.includes("'doc'") && src.includes("'img'"));
   ok('D4 四个状态都在', src.includes("state = 'in'") && src.includes("state = 'no'")
     && src.includes("state = 'skip'") && src.includes("'na'"));
-  ok('D5 按主干去盘上找（不按原名）', src.includes('disk.get(installer.stemOf(base))'));
+  // 逐文件身份证：去 `[nx]` 标识 / 去 `.disabled` 之后再去盘上找，不是按原名硬比。
+// （0.9.9 起从「主干」换成「逐文件键」：主干会把 pak/ucas/utoc 压成一个，三件套就没法逐个判断了）
+ok('D5 按逐文件键去盘上找（不按原名，且三件套各算各的）',
+  src.includes('disk.get(installer.fileKey(base))') && src.includes('const stem = installer.fileKey(e.name)'));
   ok('D6 找包三处来源：队列 / 注册表 / 本地库',
     src.includes("out.archiveFrom = '下载队列'") && src.includes("out.archiveFrom = '注册表'")
     && src.includes("out.archiveFrom = '本地库'"));

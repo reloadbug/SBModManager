@@ -782,6 +782,9 @@ function groupInstalled(list) {
         return t;
       })(),
       location: items[0].location,
+      // 全部子 Mod 都卸掉之后，记录和安装包还在 —— 这一组算「未安装」，
+      // 卡片标签随之改成「未安装」，点开还能按子 Mod 装回去（用户 2026-11-24 的要求）。
+      installed: items.some(m => m.installed !== false),
       meta
     });
   }
@@ -805,12 +808,15 @@ function installedCard(g) {
     ? `<img src="${esc(img)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'图片加载失败'}))">`
     : `<div class="ph">${g.kind === 'prereq' ? '前置组件' : '本地文件<br>无封面图'}</div>`;
   const tagCls = g.kind === 'prereq' ? 'tag pre' : (g.kind === 'script' ? 'tag script' : 'tag');
-  const tagTxt = g.builtin ? '内置'
-    : (g.registered ? KIND_LABEL[g.kind] : (g.linked ? '已关联' : '未登记'));
-  const tagTitle = g.builtin ? ''
-    : (g.registered ? '本程序安装的，卸载可完整回滚'
-      : (g.linked ? '批量解析对上的 Nexus Mod：文件是自己放的，来源信息来自 Nexus'
-        : '磁盘上发现的 Mod，不知道对应 Nexus 的哪个条目'));
+  const tagTxt = !g.installed ? '未安装'
+    : (g.builtin ? '内置'
+      : (g.registered ? KIND_LABEL[g.kind] : (g.linked ? '已关联' : '未登记')));
+  const tagTitle = !g.installed
+    ? '记录和安装包都还在，只是文件全卸掉了 —— 点开可以按子 Mod 重新装回'
+    : (g.builtin ? ''
+      : (g.registered ? '本程序安装的，卸载可完整回滚'
+        : (g.linked ? '批量解析对上的 Nexus Mod：文件是自己放的，来源信息来自 Nexus'
+          : '磁盘上发现的 Mod，不知道对应 Nexus 的哪个条目')));
   // 一个 Mod 装了多个文件时，卡片上直接标出来（点开能逐个看）
   const n = g.items.length;
   const multi = n > 1
@@ -1887,8 +1893,48 @@ function pkgTableHtml(d) {
   const sum = `<div class="pf-sum">包里 ${fmtNum(d.total || list.length)} 个文件 · 已装 ${fmtNum(inside)} 个`
     + (miss ? ` · <b style="color:var(--warn)">没装 ${fmtNum(miss)} 个</b>` : '')
     + (d.truncated ? ` · 只列前 ${fmtNum(d.shown)} 个` : '') + '</div>';
-  return `<div class="pf-head"><span>文件</span><span>子 Mod</span><span>大小</span><span>状态</span></div>
+  return `<div class="lbl">包内文件</div>
+    <div class="pf-head"><span>文件</span><span>子 Mod</span><span>大小</span><span>状态</span></div>
     <div class="pf-rows">${rows}</div>${sum}`;
+}
+
+/* ================= 子 Mod 小结（一个安装包里好几套） =================
+ *
+ * 用户 2026-11-24：「一个安装包有多个 mod 的如果只选择了其中部分安装，则其余的子 mod
+ * 要显示安装按钮」「每个子 mod 都可以单独选择安装或卸载」。
+ *
+ * 归属按包内顶层目录（`top`）判断：装齐了给「卸载」，没装齐给「安装」。
+ * 只有**两套以上**才单独列 —— 单一一套就是整个包，多列一行只是噪音。
+ */
+function subSummary(d) {
+  const files = (d && d.entries) || [];
+  const map = new Map();
+  for (const f of files) {
+    const top = String(f.top || '');
+    if (!top) continue;
+    if (f.state === 'skip') continue;      // 说明 / 预览图不参与「装没装齐」
+    let s = map.get(top);
+    if (!s) { s = { dir: top, total: 0, installed: 0 }; map.set(top, s); }
+    s.total++;
+    if (f.state === 'in') s.installed++;
+  }
+  const list = Array.from(map.values()).filter(s => s.total > 0);
+  return list.length > 1 ? list.sort((a, b) => a.dir.localeCompare(b.dir)) : [];
+}
+
+function subsHtml(d) {
+  const list = subSummary(d);
+  if (!list.length) return '';
+  const rows = list.map(s => {
+    const done = s.installed >= s.total;
+    const btn = done
+      ? `<button class="btn sm" data-sub-uninstall="${esc(s.dir)}" title="只把这一套的文件移到备份目录，其它子 Mod 一个都不动">卸载</button>`
+      : `<button class="btn sm" data-sub-install="${esc(s.dir)}" title="从安装包里只装这一套，已经在游戏里的文件不覆盖">安装</button>`;
+    return `<div class="sf-row${done ? '' : ' miss'}">`
+      + `<span class="sf-name" title="${esc(s.dir)}">${esc(s.dir)}</span>`
+      + `<span class="sf-num" data-i18n-skip>${fmtNum(s.installed)}/${fmtNum(s.total)}</span>${btn}</div>`;
+  }).join('');
+  return `<div class="lbl">子 Mod</div><div class="sf-rows">${rows}</div>`;
 }
 
 /** 抽屉打开后去读这个 Mod 的包内文件表（读安装包，不解压；一次一 Mod，读到就记住） */
@@ -1897,18 +1943,50 @@ function fillDrawerPkg(modId, taskId) {
   if (!box) return;
   const key = 'pkg:' + (taskId || Number(modId) || 0);
   if (!state.modPkg) state.modPkg = {};
-  if (state.modPkg[key]) { box.innerHTML = pkgTableHtml(state.modPkg[key]); return; }
-  box.innerHTML = pkgTableHtml(null);
+  if (state.modPkg[key]) {
+    box.innerHTML = subsHtml(state.modPkg[key]) + pkgTableHtml(state.modPkg[key]);
+    return;
+  }
+  box.innerHTML = '<div class="lbl">包内文件</div>' + pkgTableHtml(null);
   call(window.api.mods.packageFiles({ modId: Number(modId) || 0, taskId: taskId || null }), { silent: true })
     .then(d => {
       state.modPkg[key] = d || {};
       const b = document.getElementById('drawerPkg');
-      if (b) b.innerHTML = pkgTableHtml(d || {});
+      if (b) b.innerHTML = subsHtml(d || {}) + pkgTableHtml(d || {});
     })
     .catch(() => {
       const b = document.getElementById('drawerPkg');
-      if (b) b.innerHTML = '<div class="txt" style="color:var(--dim2)">这个安装包读不出来（可能已损坏）。</div>';
+      if (b) b.innerHTML = '<div class="lbl">包内文件</div><div class="txt" style="color:var(--dim2)">这个安装包读不出来（可能已损坏）。</div>';
     });
+}
+
+/**
+ * 单独装某一套子 Mod。
+ *
+ * 为什么并进原记录而不是新建卡：同一个 Mod 的几套文件是**同一件东西的变体**，
+ * 分家之后开关会互相打架（用户 2026-11-24 明确「安装时不按文件显示按 mod 来显示」）。
+ */
+async function subModInstall(dir) {
+  const base = (state.drawer && state.drawer.infoBase) || {};
+  const modId = Number(base.factId) || 0;
+  if (!modId) { toast('这个 Mod 没有 Nexus 编号，认不出安装包', 'err'); return; }
+  const r = await call(window.api.mods.installSub({ modId, dir }), { silent: true });
+  state.modPkg = {};                       // 账本变了，重新读一遍包内清单
+  await fillDrawerPkg(modId, null);
+  refreshAfterModsChanged();
+  toast(`已安装：${dir}（${fmtNum(r.written)} 个文件）`);
+}
+
+/** 单独卸某一套子 Mod：只移走这一套的文件，其它子 Mod 一个都不动 */
+async function subModUninstall(dir) {
+  const base = (state.drawer && state.drawer.infoBase) || {};
+  const modId = Number(base.factId) || 0;
+  if (!modId) { toast('这个 Mod 没有 Nexus 编号，认不出安装包', 'err'); return; }
+  const r = await call(window.api.mods.uninstallSub({ modId, dir }), { silent: true });
+  state.modPkg = {};
+  await fillDrawerPkg(modId, null);
+  refreshAfterModsChanged();
+  toast(`已卸载：${dir}（移走 ${fmtNum(r.moved)} 个文件）`);
 }
 
 /** 抽屉打开后去补查这个 Mod 的「发布时间 / 压缩包位置 / 安装时间」，一次一 Mod，查过就记住 */
@@ -2134,7 +2212,6 @@ function openModDrawer(rec) {
 
     ${filesHtml}
 
-    <div class="lbl">包内文件</div>
     <div id="drawerPkg"></div>
 
     <div class="lbl">说明</div>
@@ -9525,6 +9602,11 @@ function bindEvents() {
     if (dlStartBtn) { await dlStart(dlStartBtn.dataset.dlStart); return; }
     const dlRegisterBtn = t.closest('[data-dl-register]');
     if (dlRegisterBtn) { await dlRegisterExisting(dlRegisterBtn.dataset.dlRegister); return; }
+    // 子 Mod：详情页里每一套自己的「安装 / 卸载」
+    const subInsBtn = t.closest('[data-sub-install]');
+    if (subInsBtn) { await subModInstall(subInsBtn.dataset.subInstall); return; }
+    const subUnBtn = t.closest('[data-sub-uninstall]');
+    if (subUnBtn) { await subModUninstall(subUnBtn.dataset.subUninstall); return; }
     const dlCancelBtn = t.closest('[data-dl-cancel]');
     if (dlCancelBtn) { await dlCancel(dlCancelBtn.dataset.dlCancel); return; }
     const dlPauseBtn = t.closest('[data-dl-pause]');

@@ -379,6 +379,8 @@ async function runInstall({
       installedCount: ledger.installedCount,
       notInstalled: ledger.notInstalled.slice(0, 300),
       notInstalledCount: ledger.notInstalledCount,
+      // 子 Mod 关系：包内顶层目录 → 装了几个、装的是哪几个文件（单独卸载时靠它）
+      subs: ledger.subs,
       at: new Date().toISOString()
     }
   });

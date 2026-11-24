@@ -451,7 +451,36 @@ function scan(root, registry, links = null) {
     const alive = entries.filter(f => {
       try { return fs.existsSync(f.path); } catch { return false; }
     });
-    if (!alive.length) continue;
+    if (!alive.length) {
+      // 子 Mod 全卸掉之后一个文件都不剩 —— 记录和安装包还在的话，仍然出一条。
+      //
+      // 用户 2026-11-24：「卸载后的文件名字依然正常显示，只是状态变成了未安装，
+      // 操作按钮变成了安装；不减少显示内容」。
+      // 所以这里不再直接 `continue`（那样这个 Mod 会从列表里凭空消失、再也点不回来），
+      // 而是给一条 `files: []` + `installed: false` 的条目：列表里仍看得到它，
+      // 详情页仍能列出包内所有文件名（数据来自安装包本身），按钮变成「安装」。
+      const pkg = reg.pkg;
+      const ap = String(reg.archivePath || (pkg && pkg.archivePath) || '');
+      let hasPkg = false;
+      try { hasPkg = !!ap && fs.statSync(ap).isFile(); } catch { hasPkg = false; }
+      if (!hasPkg || !pkg || !Number(pkg.entryCount)) continue;
+      out.push({
+        id: reg.id,
+        name: reg.name || reg.id,
+        kind: reg.kind || 'cns',
+        enabled: false,
+        installed: false,
+        reinstallable: true,
+        files: [],
+        fileCount: 0,
+        size: 0,
+        mtime: reg.installedAt || null,
+        location: reg.target || '',
+        registered: true,
+        meta: reg
+      });
+      continue;
+    }
 
     // —— 同一 modId 的重复登记：落点签名相同就只留 installedAt 更晚的那条 ——
     const modId = reg.source && reg.source.modId != null ? Number(reg.source.modId) : 0;

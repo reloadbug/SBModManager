@@ -2404,6 +2404,307 @@ function register() {
   }
   handle('mods:facts', (opts) => modFacts(opts || {}));
 
+  /* ---------------- 子 Mod：一个安装包里好几套，各自单独装 / 单独卸 ---------------- */
+
+  /**
+   * 找这个 Mod 的安装包（队列 → 注册表 → 本地安装包库，与详情页同口径）。
+   * 子 Mod 的装 / 卸都只认这一个入口，免得两处口径不一致。
+   */
+  function resolveArchive(modId, taskId = null) {
+    const id = Number(modId) || 0;
+    const exists = (p) => { try { return !!p && fs.existsSync(p); } catch { return false; } };
+    let ap = '', from = '', task = null;
+    try {
+      if (taskId) {
+        const t = engine.get(taskId);
+        if (t && exists(t.archivePath)) { ap = t.archivePath; from = '下载队列'; task = t; }
+      }
+      if (!ap) {
+        const tk = engine.list().find(x => Number(x.meta && x.meta.modId) === id && exists(x.archivePath));
+        if (tk) { ap = tk.archivePath; from = '下载队列'; task = tk; }
+      }
+    } catch { /* 队列读不到就往下走 */ }
+    if (!ap) {
+      try {
+        for (const rec of registry.all()) {
+          if (Number(rec.source && rec.source.modId) !== id) continue;
+          if (exists(rec.archivePath)) { ap = rec.archivePath; from = '注册表'; break; }
+        }
+      } catch { /* ignore */ }
+    }
+    if (!ap) {
+      try {
+        let best = null;
+        for (const f of fs.readdirSync(paths.LIBRARY)) {
+          const info = localLibrary.parseArchiveName(f);
+          if (!info || Number(info.modId) !== id) continue;
+          const p = path.join(paths.LIBRARY, f);
+          if (!exists(p)) continue;
+          let mt = '';
+          try { mt = fs.statSync(p).mtime.toISOString(); } catch { /* ignore */ }
+          if (!best || mt > best.mt) best = { p, mt };
+        }
+        if (best) { ap = best.p; from = '本地库'; }
+      } catch { /* 本地库不存在 */ }
+    }
+    return { ap, from, task };
+  }
+
+  /** 这个 modId 已经登记的那条记录（取安装时间最早的一条当主记录） */
+  function findRecByModId(modId) {
+    const id = Number(modId) || 0;
+    if (!id) return null;
+    let best = null;
+    for (const rec of registry.all()) {
+      if (Number(rec.source && rec.source.modId) !== id) continue;
+      if (!best || String(rec.installedAt || '') < String(best.installedAt || '')) best = rec;
+    }
+    return best;
+  }
+
+  /** 合并两份 manifest（按绝对路径去重，新的覆盖旧的） */
+  function mergeManifest(a, b) {
+    const map = new Map();
+    for (const f of (a || [])) if (f && f.path) map.set(String(f.path).toLowerCase(), f);
+    for (const f of (b || [])) if (f && f.path) map.set(String(f.path).toLowerCase(), f);
+    return Array.from(map.values());
+  }
+
+  /**
+   * 装「这一套」（包内某个顶层目录）。
+   *
+   * 用户 2026-11-24：「一个安装包有多个 mod 的如果只选择了其中部分安装，则其余的子 mod
+   * 要显示安装按钮」「每个子 mod 都可以单独选择安装或卸载」。
+   *
+   * 关键：**并入同一条记录**，不新建卡 —— 否则同一个 Mod 会变成两张卡、开关也分家。
+   */
+  async function installSub({ modId = 0, dir = '', taskId = null } = {}) {
+    const root = currentRoot();
+    if (!root) throw new Error('尚未配置有效的游戏目录');
+    const L = game.layout(root);
+    const { ap, task } = resolveArchive(modId, taskId);
+    if (!ap) throw new Error('本地没有这个 Mod 的安装包了，没法单独装这一套');
+
+    const m = { ...(task && task.meta ? task.meta : {}), modId: Number(modId) || null };
+    if (task) m.taskId = task.id;
+    const ownedPaths = installFlow.ownedPathsFor(registry, m);
+    // 先按「整包」分析一次（**不带 pickDir**）：只有整包视角的账本才说得清
+    // 「别的几套现在装没装」；带 pickDir 的话 mapping 只剩这一套，另外几套会被记成 0 装。
+    let plan = await installer.analyze(root, ap, m, { ownedPaths });
+    if (plan && !plan.ok && plan.needsTargetPick && plan.options && plan.options.length
+      && plan.hasConflicts === false) {
+      const dirs = (plan.defaultPick && plan.defaultPick.length)
+        ? plan.defaultPick : plan.options.map(o => o.dir);
+      plan = await installer.analyze(root, ap, m, { ownedPaths, pickDirs: dirs });
+    }
+    if (!plan || !plan.ok) {
+      throw new Error((plan && (plan.diagnosis || plan.reason)) || '这一套的结构认不出来，装不了');
+    }
+    // 整包账本（**过滤前**算）：包内一共几套、每套几个文件、哪几套其实已经在盘上。
+    // 老记录的子 Mod 表是后加的字段、可能不全，靠这份补。
+    const ledFull = installer.packageLedger(plan);
+
+    // analyze 的 `pickDir` 只管「多套变体挑哪套」；整合包里几个顶层目录各自是一套，
+    // 不构成「变体」，于是 mapping 仍会带上所有目录的文件。
+    // 单独装某一套时必须自己按「包内顶层目录」过滤，否则一按就把整套都写进去了。
+    if (dir) {
+      const want = new Set();
+      for (const e of (plan.entries || [])) {
+        const seg = String(e.rel || '').split('/').filter(Boolean);
+        if ((seg.length > 1 ? seg[0] : '') !== dir) continue;
+        want.add(installer.fileKey(path.basename(String(e.rel || ''))));
+      }
+      const only = (plan.mapping || []).filter(x =>
+        want.has(installer.fileKey(path.basename(String(x.rel || x.to || '')))));
+      if (!only.length) throw new Error(`这个安装包里没有「${dir}」这一套的文件`);
+      plan.mapping = only;
+      plan.fileCount = only.length;
+    }
+    const pre = installer.verifyExisting(plan);
+    if (pre.present.length && pre.ok) throw new Error('这一套已经在游戏里了，不用再装');
+
+    const r = await installer.install(root, plan, { onConflict: 'overwrite' });
+    const nowIso = new Date().toISOString();
+    const prev = findRecByModId(m.modId);
+
+    const manifest = mergeManifest(prev && prev.manifest, r.manifest);
+    const prevPkg = (prev && prev.pkg) || null;
+    const subs = ((prevPkg && prevPkg.subs) || []).map(s => ({ ...s, installedRels: [...(s.installedRels || [])] }));
+    // 按整包账本补齐：缺的几套补成空壳，已有的那几套若没记 rel 就把「已在盘上」的 rel 认回来
+    for (const s of (ledFull.subs || [])) {
+      const have = subs.find(x => String(x.dir) === String(s.dir));
+      if (!have) { subs.push({ ...s, installedRels: [...s.installedRels] }); continue; }
+      if (!have.entryCount) have.entryCount = s.entryCount;
+      if (!have.bytes) have.bytes = s.bytes;
+      if (!(have.installedRels || []).length && (s.installedRels || []).length) {
+        have.installedRels = [...s.installedRels];
+        have.installedCount = s.installedCount;
+      }
+    }
+    let sub = subs.find(s => String(s.dir) === String(dir));
+    if (!sub) {
+      sub = { dir, entryCount: 0, installedCount: 0, installedRels: [], bytes: 0, installedBytes: 0 };
+      subs.push(sub);
+    }
+    const newRels = r.manifest.map(f => String(f.rel));
+    sub.installedRels = Array.from(new Set([...(sub.installedRels || []), ...newRels]));
+    sub.installedCount = sub.installedRels.length;
+    sub.installedBytes = sub.installedBytes || 0;
+
+    const pkg = {
+      ...(prevPkg || {}),
+      archivePath: ap,
+      entryCount: (prevPkg && prevPkg.entryCount) || (plan.entries || []).length,
+      installedCount: manifest.length,
+      notInstalled: (prevPkg && prevPkg.notInstalled) || [],
+      notInstalledCount: (prevPkg && prevPkg.notInstalledCount) || 0,
+      subs,
+      at: nowIso
+    };
+
+    const patchBody = {
+      manifest,
+      fileCount: manifest.length,
+      size: manifest.reduce((s, f) => s + (f.size || 0), 0),
+      enabled: true,
+      enabledAt: nowIso,
+      backupDir: (prev && prev.backupDir) || r.backupDir || null,
+      overwritten: [...((prev && prev.overwritten) || []), ...(r.backed || [])],
+      archivePath: ap,
+      pkg
+    };
+    let id = prev && prev.id;
+    if (id) {
+      registry.patch(id, patchBody);
+    } else {
+      id = installFlow.registryIdFor(L, plan, manifest, m);
+      registry.upsert({
+        id, name: m.name || path.basename(ap, path.extname(ap)), kind: plan.kind,
+        source: {
+          url: m.sourceUrl || m.url || null, modId: m.modId || null, fileId: m.fileId || null,
+          author: m.author || null, version: m.version || null, pictureUrl: m.pictureUrl || null
+        },
+        installedAt: nowIso, target: plan.target, taskId: m.taskId || null,
+        requiresCns: !!plan.requiresCns, requiresAtool: !!plan.requiresAtool, prereqKey: plan.prereqKey || null,
+        ...patchBody
+      });
+    }
+    invalidateLocalIndex();
+    syncLedger();
+    const rec = { id, name: m.name || path.basename(ap, path.extname(ap)), kind: plan.kind, meta: { modId: m.modId || null, source: { modId: m.modId || null } } };
+    recordMod('install', rec, { detail: '补装子 Mod：' + (dir || '整套') });
+    recordMod('enable', rec, { detail: '补装子 Mod：' + (dir || '整套') });
+    logger.event('mods:subInstalled', { id, modId: m.modId || null, dir, written: r.written });
+    return { id, dir, written: r.written, fileCount: manifest.length, enabled: true };
+  }
+  handle('mods:installSub', (opts) => installSub(opts || {}));
+
+  /**
+   * 现算「这一套在游戏里是哪几个文件」。
+   *
+   * 0.9.9 之前的记录没有 `pkg.subs`（账本字段是后加的），但它们照样能单独卸载 ——
+   * 拿安装包重新分析一遍、逐个核对在位，就能得出这一套对应的 rel。
+   */
+  async function subRelsNow(modId, dir) {
+    const root = currentRoot();
+    if (!root) return [];
+    const { ap, task } = resolveArchive(modId, null);
+    if (!ap) return [];
+    const m = { ...(task && task.meta ? task.meta : {}), modId: Number(modId) || null };
+    if (task) m.taskId = task.id;
+    let plan = await installer.analyze(root, ap, m, {});
+    if (plan && !plan.ok && plan.needsTargetPick && plan.options && plan.options.length) {
+      const dirs = (plan.defaultPick && plan.defaultPick.length)
+        ? plan.defaultPick : plan.options.map(o => o.dir);
+      plan = await installer.analyze(root, ap, m, { pickDirs: dirs });
+    }
+    if (!plan || !plan.ok) return [];
+    const want = new Set();
+    for (const e of (plan.entries || [])) {
+      const seg = String(e.rel || '').split('/').filter(Boolean);
+      if ((seg.length > 1 ? seg[0] : '') !== dir) continue;
+      want.add(installer.fileKey(path.basename(String(e.rel || ''))));
+    }
+    const only = (plan.mapping || []).filter(x =>
+      want.has(installer.fileKey(path.basename(String(x.rel || x.to || '')))));
+    const v = installer.verifyExisting({ ...plan, mapping: only });
+    return v.present.map(f => String(f.rel));
+  }
+
+  /**
+   * 卸「这一套」：只把这一套的文件移进备份目录，其它子 Mod 一根头发都不动。
+   *
+   * 全卸光之后**记录不删**（用户 2026-11-24：卸载后文件名仍要正常显示、状态变「未安装」、
+   * 按钮变「安装」），所以这里只把 manifest 清空、`pkg.subs` 记成 0 装。
+   */
+  async function uninstallSub({ modId = 0, dir = '' } = {}) {
+    const root = currentRoot();
+    if (!root) throw new Error('尚未配置有效的游戏目录');
+    const rec = findRecByModId(modId);
+    if (!rec) throw new Error('游戏里没有这个 Mod 的安装记录');
+    const subs = ((rec.pkg && rec.pkg.subs) || []).map(s => ({ ...s, installedRels: [...(s.installedRels || [])] }));
+    let sub = subs.find(s => String(s.dir) === String(dir));
+    let rels = sub ? (sub.installedRels || []).map(String) : [];
+    // 老记录（0.9.9 之前）没有子 Mod 账本：现算一遍，别让用户没法单独卸
+    if (!rels.length) rels = await subRelsNow(modId, dir);
+    if (!rels.length) throw new Error('这一套已经不在游戏里了');
+    if (!sub) {
+      sub = { dir, entryCount: rels.length, installedCount: rels.length, installedRels: rels, bytes: 0, installedBytes: 0 };
+      subs.push(sub);
+    }
+
+    const relSet = new Set(rels);
+    const hit = (rec.manifest || []).filter(f => f && relSet.has(String(f.rel)));
+    if (!hit.length) throw new Error('没找到这一套对应的文件（记录可能已经过期，刷新一下再看）');
+
+    const dest = path.join(paths.BACKUP, 'uninstalled',
+      String(rec.id).replace(/[\\/:*?"<>|]/g, '-') + '-' + Date.now());
+    const moved = [];
+    for (const f of hit) {
+      let src = f.path;
+      if (!fs.existsSync(src)) {
+        // 关着的 mod 在盘上是 `.disabled` 写法
+        const alt = path.join(path.dirname(src), toggleName.counterpartName(path.basename(src)));
+        if (fs.existsSync(alt)) src = alt; else continue;
+      }
+      const to = path.join(dest, path.basename(src));
+      try {
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        // 备份目录可能在另一个盘（安装包库常年在 D:），必须走 fsMove 而不是 renameSync
+        fsMove.movePath(src, to);
+        moved.push(path.basename(src));
+      } catch (e) {
+        throw new Error('移走文件失败：' + path.basename(src) + '（' + e.message + '）');
+      }
+    }
+    if (!moved.length) throw new Error('这一套的文件一个都没找到，可能已经被手动删掉了');
+
+    const keep = (rec.manifest || []).filter(f => f && !relSet.has(String(f.rel)));
+    sub.installedRels = [];
+    sub.installedCount = 0;
+    const pkg = {
+      ...(rec.pkg || {}),
+      installedCount: keep.length,
+      subs,
+      at: new Date().toISOString()
+    };
+    registry.patch(rec.id, {
+      manifest: keep,
+      fileCount: keep.length,
+      size: keep.reduce((s, f) => s + (f.size || 0), 0),
+      ...(keep.length ? {} : { enabled: false, disabledAt: new Date().toISOString() }),
+      pkg
+    });
+    invalidateLocalIndex();
+    syncLedger();
+    recordMod('disable', { id: rec.id, name: rec.name, kind: rec.kind, meta: { modId, source: { modId } } },
+      { detail: '卸载子 Mod：' + (dir || '整套') });
+    logger.event('mods:subUninstalled', { id: rec.id, modId: Number(modId) || null, dir, moved: moved.length });
+    return { id: rec.id, dir, moved: moved.length, remaining: keep.length, backupDir: dest };
+  }
+  handle('mods:uninstallSub', (opts) => uninstallSub(opts || {}));
+
+
   /**
    * 📒 详情页「包内文件」表 —— 把安装包里的每个文件摊开，逐个标「装进游戏了 / 没装」。
    *
@@ -2477,7 +2778,7 @@ function register() {
       try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
       for (const e of items) {
         if (!e.isFile()) continue;
-        const stem = installer.stemOf(e.name);
+        const stem = installer.fileKey(e.name);
         if (!stem) continue;
         const disabled = /\.disabled$/i.test(e.name);
         let size = 0;
@@ -2528,7 +2829,7 @@ function register() {
       let off = false;
       let onDisk = '';
       if (VERIFY.has(kind)) {
-        const hit = disk.get(installer.stemOf(base));
+        const hit = disk.get(installer.fileKey(base));
         if (hit) { state = 'in'; off = hit.disabled; onDisk = hit.rel; }
         else state = 'no';
       } else if (kind === 'doc' || kind === 'img') {

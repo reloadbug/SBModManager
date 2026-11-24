@@ -103,7 +103,15 @@ contextBridge.exposeInMainWorld('api', {
      *   kind: pak | ucas | utoc | cns（.dekcns.json）| doc | img | other
      *   state: in（已在盘上）| no（没装）| skip（文档/图片，本来就不装）| na（不逐个判断）
      */
-    packageFiles: (opts) => invoke('mods:packageFiles', opts)
+    packageFiles: (opts) => invoke('mods:packageFiles', opts),
+
+    /**
+     * 子 Mod：一个安装包里好几套，单独装某一套 / 单独卸某一套。
+     * `dir` 是包内顶层目录名（详情页「子 Mod」那几行就是它）。
+     * 装的时候并入原来的注册记录（不会多出一张卡）；卸的时候只动这一套的文件。
+     */
+    installSub: (opts) => invoke('mods:installSub', opts),
+    uninstallSub: (opts) => invoke('mods:uninstallSub', opts)
   },
 
   /**

@@ -994,3 +994,19 @@ body.sel .card .cover .sw{display:none}
 .pchip.cns{border-color:rgba(74,158,255,.55);background:rgba(74,158,255,.16);color:#9ccbff}
 /* 其它类型：灰框，只是分类，不强调 */
 .pchip.other{border-color:var(--border2);color:var(--dim2)}
+
+/* ===== 子 Mod 小结（详情抽屉 · 一个安装包里好几套） =====
+   用户 2026-11-24：一个包里有多个子 Mod 时，没装的那几套要能单独点「安装」，
+   装着的能单独「卸载」。一行一套：名字 / 装了几个 / 按钮。
+   规格跟包内文件表统一：24px 高、7px 圆角、11.5px 字。 */
+.sf-rows { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 8px; }
+.sf-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 52px 58px;
+  align-items: center; gap: 6px; min-height: 24px;
+  padding: 0 4px; border-radius: 7px; background: var(--bg2, rgba(255, 255, 255, .03));
+  font-size: 11.5px;
+}
+.sf-row.miss { background: rgba(255, 176, 80, .10); }
+.sf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-num { text-align: right; color: var(--dim2); font-variant-numeric: tabular-nums; }
+.sf-row .btn.sm { height: 20px; line-height: 18px; padding: 0 8px; font-size: 11.5px; border-radius: 7px; }
