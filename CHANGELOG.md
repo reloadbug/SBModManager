@@ -1,4 +1,20 @@
 # 更新日志
+
+## [0.9.16] - 2026-11-25
+
+### 修改
+
+- **安装器固定装到 D 盘、安装包库随安装目录走**（用户：「将当前安装的管理器搬到 D 盘 program files，以后都安装到这里；libraries 目录移动到管理器安装目录，安装后默认 libraries 目录就在安装目录里，随管理器一起」）。
+  - 新增 `build/installer.nsh` NSIS 钩子：`customInit` 里 `StrCpy $INSTDIR "D:\Program Files\sbmodmanager"` 固定安装目录（electron-builder 26 无 `nsis.installDir` 选项，用官方 include 钩子覆盖 `$INSTDIR`）；`customInstall` 里用 icacls 给 BUILTIN\Users 完全控制，保证普通权限下仍能在 Program Files 里写下载包。
+  - `package.json`：nsis 加 `include: build/installer.nsh`、`allowToChangeInstallationDirectory: false`。
+  - `paths.js`：`DEFAULT_LIBRARY` 打包后改为 `<安装目录>\library`（`app.isPackaged` 时取 `path.dirname(app.getPath("exe"))/library`），开发时仍用 `APP_DATA/library`。
+  - 🚨 **升级覆盖安装不再删库（2026-11-25 血泪教训）**：electron-builder 的 NSIS 升级时会先跑旧版卸载器，默认 `RMDir /r $INSTDIR` 会把安装目录里 14.5GB / 336 个 mod 安装包全部清空。`installer.nsh` 新增 `!macro customRemoveFiles`，只删已知程序载荷、明确不碰 `$INSTDIR\library`。此宏已写进 `AGENTS.md` 铁律：**安装/升级只覆盖、绝不删用户数据**。
+
+### 测试
+
+- 更新 `gamehome-test` 的安装包默认目录断言（打包跟安装目录 / 开发跟 APP_DATA）；全量探针 68/0；打包 /S 静默安装验证 ProductVersion=0.9.16.0、目录固定为 `D:\Program Files\sbmodmanager`、快捷方式指向新 exe、Users 有写权限、库 336 包可读。
+- **升级删库回归验证**：第一次升级（旧卸载器）确实清空了 library，从源备份恢复后；第二次升级（受保护卸载器）library 保持 336 文件 / 15580313998 字节完全不变，保护生效。
+
 ## [0.9.15] - 2026-11-25
 
 ### 新增

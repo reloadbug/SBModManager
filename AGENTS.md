@@ -13,6 +13,25 @@
 
 打包相关细节见 `README.md` 的「打包」一节（旧 `dist\` 里有 73 个文件时要先逐项搬走，否则会撞批量删除护栏）。
 
+## 🚨 安装 = 覆盖，绝不许删用户数据（2026-11-25 血泪教训）
+
+**事故**：把 library 挪到安装目录（`D:\Program Files\sbmodmanager\library`）后，做了一次版本升级覆盖安装，
+14.5 GB / 336 个 mod 安装包被**全部清空**。根因：electron-builder 的 NSIS 在「升级」时会先跑**旧版本的卸载器**，
+而官方卸载模板 `uninstaller.nsh` 在未定义 `customRemoveFiles` 时默认执行 `RMDir /r $INSTDIR` ——
+它会连安装目录里所有非清单文件（包括我们的 `library\`）一起删掉。
+
+**铁律**：安装/升级/重装**只做文件覆盖，永远不做删除用户数据的操作**。用户数据 = library、下载的游戏 mod、
+config、历史档案等，任何情况下安装流程都不得删。要删只能由用户在界面里显式操作。
+
+**已落地的防护**：`build/installer.nsh` 定义了 `!macro customRemoveFiles`，只删已知的程序载荷
+（exe/dll/pak/dat/bin/json/txt/html/ico + locales\ + resources\），**明确不碰 `$INSTDIR\library`**。
+这个宏**绝对不能删**，删了升级又会清库。任何改动安装脚本时必须先验证：
+「升级覆盖安装后 library 文件数/字节数不变」。验证方法：装前记 `Get-ChildItem library -Recurse | Measure-Object Length -Sum`，
+覆盖装后再记一次，必须完全一致；不一致就是回归，立刻停手恢复数据（源备份在 `D:\AI game\StarBladeModManager\data\library`）。
+
+操作纪律：动 14GB 数据前先确认源还在、先 robocopy 不删源、验证通过再谈清理；用户说「真搬家删源」也只是指
+验证完成后手动清理，任何自动流程不得含删除。
+
 ## 低完整性标签会毒化签名外的所有可执行文件
 
 工作区根目录曾被标成 `Mandatory Label\Low Mandatory Level`（沙箱工具写的）。从那儿复制出来的 exe

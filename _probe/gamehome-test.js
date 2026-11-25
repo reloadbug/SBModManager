@@ -216,9 +216,11 @@ ok(/gameHome: gameHome\.info\(\)/.test(ipcSrc), 'data:info 带 gameHome');
 
 ok(/const APP_DATA = DATA/.test(pathsSrc), 'paths 区分 APP_DATA 与 DATA');
 ok(/const CACHE = path\.join\(APP_DATA, 'cache'\)/.test(pathsSrc), '缓存跟着 APP_DATA');
-// 0.4.0 起安装包目录可单独指定（指针里的 libraryDir），默认值仍然是 APP_DATA/library：
-// 这里断言「默认值跟着 APP_DATA，且能被 libraryDir 覆盖」，而不是死盯 LIBRARY 的拼法。
-ok(/const DEFAULT_LIBRARY = path\.join\(APP_DATA, 'library'\)/.test(pathsSrc), '安装包目录默认跟着 APP_DATA');
+// 0.4.0 起安装包目录可单独指定（指针里的 libraryDir）；默认值：
+//   打包版 = <安装目录>\library（跟管理器一起），开发版 = APP_DATA/library。
+// 这里断言「默认值有兜底、能被 libraryDir 覆盖」，不写死内部分支的拼法。
+ok(/const DEFAULT_LIBRARY = \(\(\) => \{/.test(pathsSrc) && /app\.isPackaged/.test(pathsSrc) && /path\.join\(APP_DATA, 'library'\)/.test(pathsSrc),
+  '安装包目录默认跟着安装目录（打包）/ APP_DATA（开发）');
 ok(/const LIBRARY = LIBRARY_CONFIGURED && canUseDir\(LIBRARY_CONFIGURED\) \? LIBRARY_CONFIGURED : DEFAULT_LIBRARY/
   .test(pathsSrc), 'LIBRARY 可被 libraryDir 覆盖，否则回落默认');
 ok(/DATA_SOURCE = 'game'/.test(pathsSrc), '支持 game 数据源');

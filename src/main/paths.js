@@ -267,8 +267,21 @@ const LIBRARY_CONFIGURED = (() => {
   if (!raw || !path.isAbsolute(raw)) return '';
   return path.resolve(raw);
 })();
-/** 默认安装包目录（= 管理器数据目录下的 library） */
-const DEFAULT_LIBRARY = path.join(APP_DATA, 'library');
+/**
+ * 默认安装包目录。
+ * 打包后跟着管理器安装目录走（`<exe 所在目录>\library`）—— 用户要求「安装包库随管理器一起」，
+ * 这样把整个安装目录搬到别的盘，库也跟着走，不必再单独配指针。
+ * 开发时仍用项目内 `data/library`（方便本地看文件）。
+ */
+const DEFAULT_LIBRARY = (() => {
+  try {
+    const { app } = require('electron');
+    if (app && typeof app.getPath === 'function' && app.isPackaged) {
+      return path.join(path.dirname(app.getPath('exe')), 'library');
+    }
+  } catch { /* 纯 Node 环境 */ }
+  return path.join(APP_DATA, 'library');
+})();
 /** 实际使用的安装包目录 */
 const LIBRARY = LIBRARY_CONFIGURED && canUseDir(LIBRARY_CONFIGURED) ? LIBRARY_CONFIGURED : DEFAULT_LIBRARY;
 
