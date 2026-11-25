@@ -82,6 +82,8 @@ contextBridge.exposeInMainWorld('api', {
     uninstall: (id, opts) => invoke('mods:uninstall', id, opts),
     /** 全局冲突扫描：列出已装 Mod 里的 UniqueFitID 撞车 / 共享网格 */
     conflictsScan: () => invoke('mods:conflictsScan'),
+    /** 一次性回填已装 Mod 的游戏内名称到本地档案 */
+    backfillGameNames: () => invoke('mods:backfillGameNames'),
     reveal: (id) => invoke('mods:reveal', id),
     /** 某个 Nexus modId 已装着的文件清单（覆盖对比用） */
     filesForModId: (modId) => invoke('mods:filesForModId', modId),

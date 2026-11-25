@@ -129,7 +129,8 @@ async function main() {
   eq('C9 libTypeOf 普通服装', vm.runInContext("libTypeOf({name:'Nice Dress'})", ctx), 'outfit');
 
   const rowsHtml = vm.runInContext("unifiedInfoRows({modId:1496,statusText:'已启用',statusColor:'var(--ok)',typeText:'套装',author:'Dek',installPath:'C:\\\\games',archivePath:'D:\\\\lib\\\\1.zip',fileCount:3,size:1024})", ctx);
-  const LABELS = ['Mod ID', '状态', '类型', '版本', '作者', '分类', '成人', '下载量', '点赞数', '发布时间', '更新时间', '修改时间', '开启时间', '禁用时间', '安装时间', '登记状态', '安装位置', '压缩包位置', '文件数', '占用'];
+  // 0.9.18：类型后新增 CNS 三行（游戏内名称 / UniqueFitID / 替换网格）
+  const LABELS = ['Mod ID', '状态', '类型', '游戏内名称', 'UniqueFitID', '替换网格', '版本', '作者', '分类', '成人', '下载量', '点赞数', '发布时间', '更新时间', '修改时间', '开启时间', '禁用时间', '安装时间', '登记状态', '安装位置', '压缩包位置', '文件数', '占用'];
   let lastPos = -1;
   let orderOK = true;
   for (const lab of LABELS) {
@@ -137,8 +138,9 @@ async function main() {
     if (p < 0 || p < lastPos) { orderOK = false; break; }
     lastPos = p;
   }
-  ok('C10 20 字段固定顺序', orderOK, 'rowsHtml 长度 ' + rowsHtml.length);
-  eq('C11 字段数正好 20', (rowsHtml.match(/class="kv/g) || []).length, 20);
+  ok('C10 23 字段固定顺序（含 CNS 三行）', orderOK, 'rowsHtml 长度 ' + rowsHtml.length);
+  // 0.9.18：类型后新增三行 CNS 元数据（游戏内名称 / UniqueFitID / 替换网格）→ 20 + 3 = 23
+  eq('C11 字段数正好 23（20 + CNS 三行）', (rowsHtml.match(/class="kv/g) || []).length, 23);
   ok('C12 空值加 na 占位', rowsHtml.includes('class="kv na"'));
   ok('C13 安装位置带 📁', rowsHtml.includes('📁') === false /* ctx 未给 installPathBtn */);
   // 作者行有值 → 那一行是 `<div class="kv">` 而不是 `<div class="kv na">`

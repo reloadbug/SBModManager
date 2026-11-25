@@ -7,6 +7,47 @@ const modTag = require('./modTag');
 const logger = require('./logger');
 
 /**
+ * 装完把这个 Mod 的「游戏内名称 / UniqueFitID / 替换网格」解析好存进本地档案（用户 m17942）。
+ * 游戏的 DisplayName 就是 CNS 服装在游戏里的名字，光看文件名对不上 —— 必须从
+ * 真正写进游戏目录的 dekcns 文件里读。只读刚写入的 manifest 路径，不联网。
+ * 失败绝不挡安装（try/catch 全包住）。
+ */
+function recordCnsMeta(modId, manifest, meta) {
+  const id = Number(modId) || 0;
+  if (!id) return null;
+  try {
+    const modConflicts = require('./modConflicts');
+    const { createModInfo } = require('./modInfo');
+    const store = createModInfo();
+    const old = store.get(id) || {};
+    // 已有游戏内名称就不覆盖（用户可能回填过 / 重装同名），只做合并去重
+    const pieces = [];
+    for (const f of (Array.isArray(manifest) ? manifest : [])) {
+      const p = String((f && f.path) || '');
+      if (!modConflicts.DATA_FILE_RE.test(p)) continue;
+      let text;
+      try { text = fs.readFileSync(p, 'utf8'); } catch { continue; }
+      pieces.push(modConflicts.cnsMetaFromText(text));
+    }
+    if (!pieces.length) return null;
+    const parsed = modConflicts.mergeCnsMeta(pieces);
+    const merged = modConflicts.mergeCnsMeta([
+      { gameNames: old.gameNames, uniqueFitIds: old.uniqueFitIds, meshes: old.meshes },
+      parsed
+    ]);
+    return store.put({
+      modId: id,
+      gameNames: merged.gameNames,
+      uniqueFitIds: merged.uniqueFitIds,
+      meshes: merged.meshes
+    });
+  } catch (e) {
+    try { logger.warn('[安装] 解析游戏内名称失败（不影响安装）：' + (e && e.message)); } catch { /* ignore */ }
+    return null;
+  }
+}
+
+/**
  * 「压缩包 → 游戏目录」的安装流程。
  *
  * 从 ipc.js 里抽出来，是因为现在有两条路都要用它：
@@ -300,6 +341,9 @@ async function runInstall({
 
   const id = registryIdFor(layout, plan, r.manifest, meta);
 
+  // 装完立刻解析 CNS 游戏内名称并存本地档案（用户 m17942；失败不影响安装）
+  recordCnsMeta(meta && meta.modId, r.manifest, meta);
+
   // ---- 改名残留：上一次装的是「无标识」的名字，这一次带上了 `[nx<modId>]` ----
   //
   // 用户装过旧版本时，`~Mods\HD-ATOOL_P.pak` 会留在原地，而这一次装进去的是
@@ -413,4 +457,4 @@ async function runInstall({
   };
 }
 
-module.exports = { registryIdFor, predictRegistryId, ownedPathsFor, explainConflicts, runInstall };
+module.exports = { registryIdFor, predictRegistryId, ownedPathsFor, explainConflicts, runInstall, recordCnsMeta };

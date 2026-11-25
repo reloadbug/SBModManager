@@ -146,6 +146,59 @@ t('E8 按钮委托三分支接好', () =>
 t('E9 安装冲突模态三按钮 resolve', () =>
   /id === 'icKeepOld'/.test(APP) && /id === 'icKeepNew'/.test(APP) && /id === 'icSkip'/.test(APP));
 
+console.log('\n===== F. 游戏内名称 / CNS 元数据进档案 + 详情 + 搜索（m17942/m17527） =====');
+const FLOW = fs.readFileSync(P('src/main/installFlow.js'), 'utf8');
+
+t('F1 cnsMetaFromText 解析 DisplayName / UniqueFitID / 替换网格', () => {
+  const m = mc.cnsMetaFromText(JSON.stringify([
+    { DisplayName: 'Cute Pink Kitty Bodysuit', UniqueFitID: 'EVE_PinkBodysuit',
+      OutfitPaths: ['/Game/OutfitMods/X/CH_P_EVE_31_TypeB.CH_P_EVE_31_TypeB'] }
+  ]));
+  return m.gameNames[0] === 'Cute Pink Kitty Bodysuit' &&
+    m.uniqueFitIds[0] === 'EVE_PinkBodysuit' && m.meshes[0] === 'CH_P_EVE_31_TypeB';
+});
+t('F2 cnsMetaFromText 容忍尾逗号 + OutfitNames 不当游戏内名', () => {
+  const m = mc.cnsMetaFromText('[{"DisplayName":"皮衣","OutfitNames":["Outfit 01",],},]');
+  return m.gameNames.length === 1 && m.gameNames[0] === '皮衣' &&
+    m.gameNames.indexOf('Outfit 01') < 0;
+});
+t('F3 mergeCnsMeta 多文件去重且顺序稳定', () => {
+  const m = mc.mergeCnsMeta([
+    { gameNames: ['A', 'B'], uniqueFitIds: ['X'], meshes: ['M1'] },
+    { gameNames: ['B', 'C'], uniqueFitIds: ['X', 'Y'], meshes: ['M1', 'M2'] }
+  ]);
+  return m.gameNames.join(',') === 'A,B,C' && m.uniqueFitIds.join(',') === 'X,Y' &&
+    m.meshes.join(',') === 'M1,M2';
+});
+t('F4 modConflicts 导出三个新纯函数', () =>
+  typeof mc.cnsMetaFromText === 'function' && typeof mc.mergeCnsMeta === 'function' &&
+  typeof mc.scanCnsMeta === 'function');
+t('F5 installFlow 装完解析 CNS 元数据写档案', () =>
+  /function recordCnsMeta\(/.test(FLOW) && /recordCnsMeta\(meta && meta\.modId, r\.manifest, meta\)/.test(FLOW) &&
+  /cnsMetaFromText/.test(FLOW));
+t('F6 ipc 有 backfillGameNames 通道 + 保住本地 CNS 字段', () =>
+  /handle\('mods:backfillGameNames'/.test(IPC) && /function backfillGameNames\(/.test(IPC) &&
+  /merged\.gameNames = rec\.gameNames/.test(IPC));
+t('F7 preload 暴露 backfillGameNames', () =>
+  /backfillGameNames:\s*\(\)\s*=>\s*invoke\('mods:backfillGameNames'\)/.test(PRE));
+t('F8 详情表在类型后加三行（游戏内名称 / UniqueFitID / 替换网格）', () => {
+  const seg = APP.slice(APP.indexOf("row('type'"), APP.indexOf("row('version'", APP.indexOf("row('type'")));
+  return /row\('gameNames',\s*'游戏内名称'/.test(seg) &&
+    /row\('uniqueFitIds',\s*'UniqueFitID'/.test(seg) &&
+    /row\('meshes',\s*'替换网格'/.test(seg);
+});
+t('F9 搜索匹配串并入游戏内名称 / UniqueFitID', () => {
+  const seg = APP.slice(APP.indexOf('function libRecordMatches'), APP.indexOf('function libFilterRecords'));
+  return /finfo\.gameNames/.test(seg) && /finfo\.uniqueFitIds/.test(seg) && /cnsBits/.test(seg);
+});
+t('F10 启动一次性回填游戏内名称', () =>
+  /state\.gameNamesBackfilled/.test(APP) && /window\.api\.mods\.backfillGameNames\(\)/.test(APP));
+t('F11 共享网格诊断已隐藏（扫描只渲染 strong）', () => {
+  const seg = APP.slice(APP.indexOf('async function runConflictScan'), APP.indexOf('async function runConflictBatch'));
+  return /\.filter\(g => g && g\.level === 'strong'\)/.test(seg) &&
+    /没有发现 UniqueFitID 撞车/.test(seg);
+});
+
 console.log('\n===== 结果 =====');
 console.log(`${pass} 通过 / ${fail} 失败`);
 process.exit(fail ? 1 : 0);

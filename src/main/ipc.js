@@ -142,6 +142,12 @@ async function infoLocal(ids) {
       const merged = fromCatalog(entry);
       if (rec) merged.description = rec.description || merged.description;
       if (rec) merged.descriptionZh = rec.descriptionZh || '';
+      // CNS 元数据（游戏内名称等）是纯本地解析出来的，目录里没有 —— 合并必须保住
+      if (rec) {
+        if (Array.isArray(rec.gameNames) && rec.gameNames.length) merged.gameNames = rec.gameNames;
+        if (Array.isArray(rec.uniqueFitIds) && rec.uniqueFitIds.length) merged.uniqueFitIds = rec.uniqueFitIds;
+        if (Array.isArray(rec.meshes) && rec.meshes.length) merged.meshes = rec.meshes;
+      }
       rec = store.put(merged);
     }
     if (!rec) continue;
@@ -1673,6 +1679,35 @@ function scanModConflicts() {
   return result;
 }
 
+/**
+ * 一次性回填已装 Mod 的游戏内名称（用户 m17942）：扫磁盘上所有 dekcns 的 DisplayName，
+ * 按 modId 合并写进 mod-info 档案。只在档案还没有 gameNames 时写，不覆盖已有的
+ * （安装时已解析过的、或用户改过的）。返回回填了几个 Mod。
+ */
+function backfillGameNames() {
+  const root = currentRoot();
+  if (!root) return { filled: 0, error: '尚未配置有效的游戏目录' };
+  try { if (fileOwner && typeof fileOwner.reload === 'function') fileOwner.reload(); } catch { /* 忽略 */ }
+  const map = modConflicts.scanCnsMeta(root, { modsDir: game.layout(root).modsDir, fileOwner });
+  const store = modInfoStore();
+  let filled = 0;
+  for (const k of Object.keys(map)) {
+    const id = Number(k);
+    const meta = map[k];
+    if (!id || !meta) continue;
+    const old = store.get(id);
+    if (old && Array.isArray(old.gameNames) && old.gameNames.length) continue; // 已有就不覆盖
+    const patch = { modId: id };
+    if (meta.gameNames.length) patch.gameNames = meta.gameNames;
+    if (meta.uniqueFitIds.length) patch.uniqueFitIds = meta.uniqueFitIds;
+    if (meta.meshes.length) patch.meshes = meta.meshes;
+    store.put(patch);
+    filled++;
+  }
+  logger.event('mods:backfillGameNames', { filled });
+  return { filled, scanned: Object.keys(map).length };
+}
+
 function toggleScriptMod(L, name, enabled) {
   let raw = '';
   try { raw = fs.readFileSync(L.modsTxt, 'utf8'); } catch { raw = ''; }
@@ -2407,6 +2442,8 @@ function register() {
   handle('mods:uninstall', (id, opts) => uninstall(id, opts));
   /** 全局冲突扫描：把所有已装 Mod 对比一遍，列出 UniqueFitID 撞车 / 共享网格 */
   handle('mods:conflictsScan', () => scanModConflicts());
+  /** 一次性回填已装 Mod 的游戏内名称（DisplayName）到本地档案 */
+  handle('mods:backfillGameNames', () => backfillGameNames());
   /** 安装前冲突预检：读安装包里的 dekcns，跟已装 Mod 比，返回冲突组供界面选留谁 */
   handle('install:checkConflicts', async (archivePath, meta) => {
     const root = currentRoot();

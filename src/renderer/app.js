@@ -377,26 +377,25 @@ async function runConflictScan() {
   try {
     const r = await call(window.api.mods.conflictsScan(), { silent: true });
     if (r && r.error) { box.textContent = '扫描失败：' + r.error; return; }
-    const groups = (r && r.groups) || [];
+    // 用户 m17527：共享网格的诊断结果纯文字、目前也不影响游戏，已隐藏。
+    // 只保留 UniqueFitID 撞车（strong）——主进程照常算 tip，只是这里不渲染。
+    const groups = ((r && r.groups) || []).filter(g => g && g.level === 'strong');
     if (!groups.length) {
-      box.innerHTML = `扫描了 <b>${(r && r.scannedMods) || 0}</b> 个 Mod，<b style="color:var(--ok)">没有发现冲突</b>。`;
+      box.innerHTML = `扫描了 <b>${(r && r.scannedMods) || 0}</b> 个 Mod，<b style="color:var(--ok)">没有发现 UniqueFitID 撞车</b>。`;
       return;
     }
     // 扁平化成「一行一个 Mod」，每组标题标明冲突类型；勾选是按行采集的
     let rowIdx = 0;
     conflictGroups = [];
-    const parts = [`<div style="margin-bottom:8px">扫描 ${r.scannedMods} 个 Mod，发现 <b style="color:var(--red)">${r.strong}</b> 处撞车、<b style="color:var(--blue)">${r.tips}</b> 处共享网格。</div>`];
+    const parts = [`<div style="margin-bottom:8px">扫描 ${r.scannedMods} 个 Mod，发现 <b style="color:var(--red)">${groups.length}</b> 处 UniqueFitID 撞车。</div>`];
     for (const g of groups) {
-      const strong = g.level === 'strong';
-      const badge = strong
-        ? `<span style="color:var(--red)">UniqueFitID 撞车</span>`
-        : `<span style="color:var(--blue)">共享网格（可共存）</span>`;
+      const badge = `<span style="color:var(--red)">UniqueFitID 撞车</span>`;
       parts.push(`<div style="margin:8px 0 3px;font-weight:600;color:var(--text)">${badge} · ${esc(g.label || '')}</div>`);
       for (const m of (g.mods || [])) {
         const i = rowIdx++;
         conflictGroups.push({ modId: m.modId, name: m.name, displayName: m.displayName, enabled: m.enabled });
         parts.push(`<label style="display:flex;align-items:center;gap:7px;padding:3px 0;color:var(--text);cursor:pointer">` +
-          `<input type="checkbox" class="conflict-chk" data-i="${i}" ${strong ? 'checked' : ''}>` +
+          `<input type="checkbox" class="conflict-chk" data-i="${i}" checked>` +
           `<span>${esc(m.displayName || m.name || ('Mod #' + m.modId))}</span>` +
           `<span style="color:var(--dim2);font-size:11px">#${m.modId}${m.enabled === false ? ' · 已禁用' : ''}` +
           (m.uniqueFits && m.uniqueFits.length ? ' · ' + esc(m.uniqueFits.join(', ')) : '') + `</span>` +
@@ -1896,6 +1895,13 @@ function unifiedInfoRows(c) {
   out.push(row('modId', 'Mod ID', c.modId ? '#' + c.modId + (c.fileId ? `<span style="color:var(--dim2)"> · 文件 ${esc(String(c.fileId))}</span>` : '') : ''));
   out.push(row('status', '状态', c.statusText ? `<span style="color:${c.statusColor || 'var(--text)'}">${esc(c.statusText)}</span>` : ''));
   out.push(row('type', '类型', esc(c.typeText || '')));
+  // 2026-11-26 用户 m17942：游戏内名称（dekcns DisplayName，文件名对不上时的唯一可靠来源）
+  out.push(row('gameNames', '游戏内名称', (c.gameNames && c.gameNames.length)
+    ? esc(c.gameNames.join(' / ')) : ''));
+  out.push(row('uniqueFitIds', 'UniqueFitID', (c.uniqueFitIds && c.uniqueFitIds.length)
+    ? esc(c.uniqueFitIds.join(' / ')) : ''));
+  out.push(row('meshes', '替换网格', (c.meshes && c.meshes.length)
+    ? esc(c.meshes.join(' / ')) : ''));
   out.push(row('version', '版本', c.version ? 'v' + String(c.version).replace(/^v/i, '') : ''));
   out.push(row('author', '作者', esc(c.author || '')));
   out.push(row('category', '分类', esc(c.category || '')));
@@ -2264,6 +2270,10 @@ function openModDrawer(rec) {
     fileId: group && src.fileId,
     statusText: stateText, statusColor: stateColor,
     typeText,
+    // CNS 元数据（游戏内名称 / UniqueFitID / 替换网格）——本地档案，装时就解析好
+    gameNames: (info && info.gameNames) || [],
+    uniqueFitIds: (info && info.uniqueFitIds) || [],
+    meshes: (info && info.meshes) || [],
     version: r.version || mod.version,
     author: r.author || mod.author || (info && info.author),
     category: r.category || mod.category || (info && (info.categoryZh || info.category)),
@@ -2452,11 +2462,16 @@ async function fillOnlineDrawer(modId) {
       let typeText = '在线 Mod';
       if (cnsHint) typeText += ' · CNS 服装（依据：' + cnsHint + '）';
       // 在线档：本地有安装/下载档案时带出时间与本机状态，否则只显示在线元数据
+      // 本地档案里的 CNS 元数据（游戏内名称 / UniqueFitID / 替换网格），在线档也要显示
+      const linfo = libInfoOf(m.modId) || {};
       const ctx = {
         modId: m.modId,
         statusText: localRec && localRec.enabled === true ? '已启用' : (localRec && localRec.enabled === false ? '已禁用' : '在线'),
         statusColor: localRec && localRec.enabled === true ? 'var(--ok)' : 'var(--accent)',
         typeText,
+        gameNames: linfo.gameNames || [],
+        uniqueFitIds: linfo.uniqueFitIds || [],
+        meshes: linfo.meshes || [],
         version: m.version, author: m.author, category: m.category, adult: !!m.adult,
         downloads: m.downloads, endorsements: m.endorsements,
         posted: m.createdAt, updated: m.updatedAt,
@@ -3902,15 +3917,22 @@ function buildLibRecords() {
   return out;
 }
 
-/** 关键词命中（名字 / 作者 / Mod ID / 版本 / 文件名 / 摘要） */
+/** 关键词命中（名字 / 作者 / Mod ID / 版本 / 文件名 / 摘要 / 游戏内名称 / UniqueFitID） */
 function libRecordMatches(rec, q) {
   if (!q) return true;
   const meta = rec.modId ? (typeof libMetaFor === 'function' ? libMetaFor(rec.modId) : null) : null;
+  // 本地档案里的 CNS 元数据（游戏内名称 DisplayName / UniqueFitID / 替换网格）——
+  // 用户 m17942：文件名对不上游戏内的名字，搜索必须能按游戏内名称命中。
+  const finfo = rec.modId ? (typeof libInfoOf === 'function' ? libInfoOf(rec.modId) : null) : null;
+  const cnsBits = finfo
+    ? [].concat(finfo.gameNames || [], finfo.uniqueFitIds || [], finfo.meshes || [])
+    : [];
   const hay = [
     rec.name, rec.author, rec.summary, rec.version, rec.filename,
     rec.modId ? '#' + rec.modId : '',
     meta ? meta.name : '', meta ? meta.author : '', meta ? meta.summary : ''
-  ].concat((rec.items || []).map(m => m.rel || m.file || ''))
+  ].concat(cnsBits)
+    .concat((rec.items || []).map(m => m.rel || m.file || ''))
     .filter(Boolean).join(' ').toLowerCase();
   return hay.indexOf(q) >= 0;
 }
@@ -8059,9 +8081,8 @@ function renderSettings() {
       <div class="f">
         <label></label>
         <div class="hint">
-          把所有已装 Mod 的 CNS 数据对比一遍：
-          <b style="color:var(--red)">UniqueFitID 撞车</b>是按同一个「衣服身份证」装了两套，会互相顶掉，需要选留哪个；
-          <b style="color:var(--blue)">共享网格</b>（替换同一套游戏模型）多数本来就该共存，仅提示、默认不勾。
+          把所有已装 Mod 的 CNS 数据对比一遍，列出
+          <b style="color:var(--red)">UniqueFitID 撞车</b>——按同一个「衣服身份证」装了两套，会互相顶掉，勾选后批量禁用或卸载即可。
         </div>
       </div>
       <div class="f">
@@ -10837,6 +10858,19 @@ async function refreshAll(showToast) {
     if (refilled) {
       renderInstalled();
       if ((state.lib.status || 'all') !== 'online') renderBrowse();
+    }
+    // 一次性回填游戏内名称（用户 m17942）：从已装 dekcns 的 DisplayName 存进本地档案。
+    // 只跑一次（进程内存标记），档案已有 gameNames 的不会覆盖；回填后重载 libInfo 让详情/搜索立刻拿到。
+    if (!state.gameNamesBackfilled) {
+      state.gameNamesBackfilled = true;
+      try {
+        const r = await call(window.api.mods.backfillGameNames(), { silent: true });
+        if (r && r.filled > 0) {
+          state.libInfoAsked = new Set();  // 让 libPrefetchInfo 重新读档案
+          renderSidebar();
+          if ((state.lib.status || 'all') !== 'online') renderBrowse();
+        }
+      } catch { /* 回填失败不影响主流程 */ }
     }
     renderDownload();
     renderPrereq();

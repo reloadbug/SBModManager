@@ -223,6 +223,73 @@ function scanAll(root, opts = {}) {
 }
 
 /**
+ * 从一份 dekcns 文本数组里抽出「游戏内名称 / UniqueFitID / 替换网格」。
+ * 游戏的 DisplayName 就是 CNS 服装在游戏里的显示名（实测 255 个 dekcns 全有）；
+ * OutfitNames 是变体名（"Outfit 01"…），不是 mod 名，绝不能用。
+ *
+ * 返回 { gameNames:[], uniqueFitIds:[], meshes:[] }（都去重）；认不出返回空结构。
+ * 供「安装后解析实际写入的文件」与「回填已装 Mod」两处共用。
+ */
+function cnsMetaFromText(text) {
+  const out = { gameNames: [], uniqueFitIds: [], meshes: [] };
+  const arr = parseLoose(text);
+  for (const item of arr || []) {
+    if (!item || typeof item !== 'object') continue;
+    const disp = String(item.DisplayName || item.Name || '').trim();
+    if (disp && out.gameNames.indexOf(disp) < 0) out.gameNames.push(disp);
+    const fid = String(item.UniqueFitID || '').trim();
+    if (fid && out.uniqueFitIds.indexOf(fid) < 0) out.uniqueFitIds.push(fid);
+    for (const p of (Array.isArray(item.OutfitPaths) ? item.OutfitPaths : [])) {
+      const mesh = meshOf(p);
+      if (mesh && out.meshes.indexOf(mesh) < 0) out.meshes.push(mesh);
+    }
+  }
+  return out;
+}
+
+/**
+ * 合并多份 dekcns 元数据（一个 Mod 常有多个数据文件 / 多个 DisplayName）。
+ * 三处数组都做去重，顺序稳定（先来的在前）。
+ */
+function mergeCnsMeta(list) {
+  const out = { gameNames: [], uniqueFitIds: [], meshes: [] };
+  for (const m of (Array.isArray(list) ? list : [])) {
+    if (!m) continue;
+    for (const key of ['gameNames', 'uniqueFitIds', 'meshes']) {
+      for (const v of (Array.isArray(m[key]) ? m[key] : [])) {
+        const s = String(v || '').trim();
+        if (s && out[key].indexOf(s) < 0) out[key].push(s);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 扫游戏目录里所有已装 Mod 的 CNS 元数据，按 modId 聚合。
+ * 复用 scanInstalled 的归属判定（fileOwner / [nx] / 同主干 pak），产出档案形状：
+ *   { modId: { gameNames, uniqueFitIds, meshes } }
+ * 只读取证，不改任何文件。回填脚本与 IPC 都用它。
+ */
+function scanCnsMeta(root, opts = {}) {
+  const records = scanInstalled(root, opts);
+  const out = {};
+  for (const r of records) {
+    if (!r || !Number(r.modId)) continue;
+    const pieces = (r.fits || []).map(f => ({
+      gameNames: [f.displayName].filter(Boolean),
+      uniqueFitIds: [f.uniqueFitId].filter(Boolean),
+      meshes: (f.meshes || []).slice()
+    }));
+    const merged = mergeCnsMeta(pieces);
+    if (merged.gameNames.length || merged.uniqueFitIds.length || merged.meshes.length) {
+      out[String(r.modId)] = merged;
+    }
+  }
+  return out;
+}
+
+/**
  * 安装前预检：从安装包里只抽出 CNS 数据文件读它的 UniqueFitID / OutfitPaths，
  * 拼成一条「新包」记录，跟已装 Mod 一起比对。
  * @param {string} archivePath 安装包绝对路径
@@ -297,5 +364,8 @@ module.exports = {
   scanInstalled,
   findConflicts,
   scanAll,
-  checkInstall
+  checkInstall,
+  cnsMetaFromText,
+  mergeCnsMeta,
+  scanCnsMeta
 };
