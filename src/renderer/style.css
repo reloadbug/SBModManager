@@ -1045,3 +1045,16 @@ body.sel .card .cover .sw{display:none}
 .pf-head { padding-right: 6px; }
 .pf-row { padding-right: 6px; }
 .pf-st { font-size: 11px; }
+/* ---------- 设置页改版（仅外观，2026-11-26）---------- */
+.settings-layout{display:flex;gap:16px;align-items:flex-start}
+.settings-nav{width:172px;flex:none;position:sticky;top:10px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px 10px}
+.sn-title{font-size:11px;color:var(--dim2);padding:0 6px 8px;letter-spacing:.5px}
+.sn-item{display:block;width:100%;text-align:left;background:transparent;border:0;border-radius:7px;color:var(--dim);font-size:12px;padding:7px 9px;cursor:pointer;font-family:inherit}
+.sn-item:hover{background:var(--panel2);color:var(--text)}
+.settings-body{flex:1;min-width:0}
+.setcat{margin-bottom:18px;scroll-margin-top:10px}
+.setcat>h2{font-size:14px;font-weight:600;color:var(--text);margin:0 0 10px;padding:0 0 8px;border-bottom:1px solid var(--border2)}
+.qm{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--dim2);color:var(--dim2);font-size:10px;font-weight:700;line-height:1;cursor:help;margin-left:5px;vertical-align:middle}
+.qm:hover{color:var(--accent);border-color:var(--accent)}
+.sh-share{margin-top:6px;padding:8px 10px;background:rgba(232,163,61,.08);border-left:2px solid var(--accent);border-radius:4px}
+@media(max-width:1000px){.settings-layout{flex-direction:column}.settings-nav{width:100%;position:static;display:flex;flex-wrap:wrap;gap:4px}.sn-title{width:100%}.sn-item{width:auto;flex:0 0 auto}}

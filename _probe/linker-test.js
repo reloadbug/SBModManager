@@ -305,7 +305,8 @@ function finish() {
     }
     t('preload 订阅 linker:progress', () => (preload.includes("ipcRenderer.on('linker:progress'") ? true : '没找到'));
 
-    t('设置页里有「批量解析」按钮', () => (app.includes('id="btnLinker"') && app.includes('<h3>工具</h3>') ? true : '没找到'));
+    // 0.9.17 设置页改版：h3 里多了 ? 说明图标 span，标题文字本身不变 → 容忍后续标签
+    t('设置页里有「批量解析」按钮', () => (app.includes('id="btnLinker"') && /<h3>工具(?:\s|<)/.test(app) ? true : '没找到'));
     t('顶栏不再放批量解析', () => (html.includes('id="btnLinker"') ? '顶栏还有' : true));
 
     t('app.js 用点击委托兜住 #btnLinker', () => (app.includes("e.target.id === 'btnLinker'") && app.includes('openLinkerModal()') ? true : '没找到'));

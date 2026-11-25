@@ -7689,48 +7689,23 @@ function renderSettings() {
   const g = state.game || {};
   const w = state.watch || {};
   $('#settingsArea').innerHTML = `
-    <div class="frm">
-      <h3>界面语言</h3>
-      <div class="f">
-        <label>显示语言</label>
-        <select id="setUiLang" style="flex:none;min-width:180px">
-          ${uiLangOptions()}
-        </select>
-        <div class="hint">切换后立即生效</div>
-      </div>
-    </div>
+    <div class="settings-layout">
+    <nav class="settings-nav" id="settingsNav">
+      <div class="sn-title">设置导航</div>
+      <button type="button" class="sn-item" onclick="document.getElementById('setcat-game').scrollIntoView({behavior:'smooth',block:'start'})">① 游戏与目录</button>
+      <button type="button" class="sn-item" onclick="document.getElementById('setcat-data').scrollIntoView({behavior:'smooth',block:'start'})">② 数据与存储</button>
+      <button type="button" class="sn-item" onclick="document.getElementById('setcat-nexus').scrollIntoView({behavior:'smooth',block:'start'})">③ Nexus 账号</button>
+      <button type="button" class="sn-item" onclick="document.getElementById('setcat-dl').scrollIntoView({behavior:'smooth',block:'start'})">④ 下载与安装</button>
+      <button type="button" class="sn-item" onclick="document.getElementById('setcat-diag').scrollIntoView({behavior:'smooth',block:'start'})">⑤ 诊断与回退</button>
+      <button type="button" class="sn-item" onclick="document.getElementById('setcat-ui').scrollIntoView({behavior:'smooth',block:'start'})">⑥ 界面与语言</button>
+      <button type="button" class="sn-item" onclick="document.getElementById('setcat-tools').scrollIntoView({behavior:'smooth',block:'start'})">⑦ 工具与日志</button>
+    </nav>
 
+    <div class="settings-body">
+    <section class="setcat" id="setcat-game">
+      <h2>① 游戏与目录 <span class="qm" title="游戏装在哪、Mod 放哪、下载包存哪；前置框架单独一页管理。">?</span></h2>
     <div class="frm">
-      <h3>浏览与筛选</h3>
-      <div class="f">
-        <label>记住筛选条件</label>
-        <select id="setRememberFilters" style="flex:none;min-width:210px">
-          <option value="1" ${c.rememberFilters !== false ? 'selected' : ''}>记住（下次启动自动套用）</option>
-          <option value="0" ${c.rememberFilters === false ? 'selected' : ''}>不记住（每次都用默认筛选）</option>
-        </select>
-      </div>
-      <div class="f">
-        <label></label>
-        <div class="hint">
-          记住浏览页与「已安装」页的筛选条件（排序、成人内容、只看未安装、黑名单、只看喜欢、分类、标签、内置脚本开关），下次启动自动套用。
-        </div>
-      </div>
-      <div class="f">
-        <label></label>
-        <div class="hint">搜索关键词不记 —— 那是临时查询，留着上次的词只会让人以为列表坏了。</div>
-      </div>
-    </div>
-
-    <div class="frm">
-      <h3>工具</h3>
-      <div class="f">
-        <label>批量解析</label>
-        <button class="btn" id="btnLinker" title="把手动放进 Mods 目录的 Mod 与 Nexus 上的条目对上号，自动补上名字、作者、版本和封面">批量解析</button>
-        <div class="hint">把手动放进 Mods 目录的 Mod 与 Nexus 上的条目对上号，自动补上名字、作者、版本和封面。</div>
-      </div>
-    </div>
-    <div class="frm">
-      <h3>游戏</h3>
+      <h3>游戏 <span class="qm" title="设置项：游戏。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
         <label>游戏目录</label>
         <input type="text" id="setGameRoot" value="${esc(c.gameRoot || '')}">
@@ -7766,7 +7741,41 @@ function renderSettings() {
     </div>
 
     <div class="frm">
-      <h3>已安装记录（跟着游戏走）</h3>
+      <h3>安装包目录 <span class="qm" title="设置项：安装包目录。下方有用途说明与操作建议。">?</span></h3>
+      <div class="f">
+        <label>目录</label>
+        <span id="libDirLine" style="font-size:12px;color:var(--dim)">读取中…</span>
+      </div>
+      <div class="f">
+        <label>里面的包</label>
+        <span id="libStatLine" style="font-size:12px;color:var(--dim)"></span>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">下载好的压缩包都放在这里，删除、重装都从这儿取。默认在管理器自己的数据目录下；包攒在别的盘（比如 D 盘的仓库目录）就可以点「更改目录」指过去 —— 指完之后启动时会读那个目录。换过游戏目录时，这里没装过的包还能在「下载」页重装。</div>
+      </div>
+      <div class="f">
+        <label></label>
+        <button class="btn sm" id="btnLibChoose">更改目录…</button>
+        <button class="btn sm" id="btnLibOpen">打开目录</button>
+        <button class="btn sm" id="btnLibReset">恢复默认</button>
+      </div>
+    </div>
+
+    <div class="frm">
+      <h3>前置组件 <span class="qm" title="UE4SS、CNS、ATOOL 的检测与一键安装集中在独立页面，这里只放入口">?</span></h3>
+      <div class="f">
+        <label>加载器与框架</label>
+        <button class="btn sm p" data-goto-page="p-prereq">前往前置组件页</button>
+        <div class="hint">UE4SS / CNS / ATOOL 的安装状态与一键安装都在「前置组件」页；这里只放跳转入口，不在两处重复同一批按钮。该页的「Mod 落点目录 / 游戏本体」只是状态展示，本页的「游戏目录」才是配置入口。</div>
+      </div>
+    </div>
+    </section>
+
+    <section class="setcat" id="setcat-data">
+      <h2>② 数据与存储 <span class="qm" title="配置与账本跟着游戏走；缓存和安装包放在管理器里，多个游戏副本可共用已下载的包。">?</span></h2>
+    <div class="frm">
+      <h3>已安装记录（跟着游戏走） <span class="qm" title="设置项：已安装记录（跟着游戏走）。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
         <label>账本</label>
         <span id="ledgerLine" style="font-size:12px;color:var(--dim)">读取中…</span>
@@ -7793,29 +7802,37 @@ function renderSettings() {
     </div>
 
     <div class="frm">
-      <h3>安装包目录</h3>
+      <h3>存储 <span class="qm" title="设置项：存储。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
-        <label>目录</label>
-        <span id="libDirLine" style="font-size:12px;color:var(--dim)">读取中…</span>
-      </div>
-      <div class="f">
-        <label>里面的包</label>
-        <span id="libStatLine" style="font-size:12px;color:var(--dim)"></span>
-      </div>
-      <div class="f">
-        <label></label>
-        <div class="hint">下载好的压缩包都放在这里，删除、重装都从这儿取。默认在管理器自己的数据目录下；包攒在别的盘（比如 D 盘的仓库目录）就可以点「更改目录」指过去 —— 指完之后启动时会读那个目录。换过游戏目录时，这里没装过的包还能在「下载」页重装。</div>
+        <label>数据目录</label>
+        <input type="text" id="setDataDir" value="${esc(state.dataDir || '')}" readonly>
+        <i class="tag gray" id="ddTag">默认位置</i>
+        <button class="btn sm" id="btnOpenData">打开</button>
+        <button class="btn sm" id="btnChangeData">更改位置…</button>
+        <button class="btn sm" id="btnRestoreData" hidden>恢复默认</button>
       </div>
       <div class="f">
         <label></label>
-        <button class="btn sm" id="btnLibChoose">更改目录…</button>
-        <button class="btn sm" id="btnLibOpen">打开目录</button>
-        <button class="btn sm" id="btnLibReset">恢复默认</button>
+        <div class="hint" id="ddHint">数据目录可以改到别的盘（下载缓存与安装包会占用较多空间）。改完需要重启程序才生效。</div>
+      <div class="hint sh-share">💡 <b>多个游戏副本可以共用这里已下载好的 Mod 包</b>：安装包与缓存留在管理器数据目录、不跟单个游戏走，第二个游戏（换盘或测试副本）可以直接用这些包安装，不用重新下载。</div>
+      </div>
+      <div class="f">
+        <label>接口缓存</label>
+        <div class="hint">浏览结果的本地缓存，10 分钟后自动失效</div>
+        <button class="btn sm" id="btnClearNexus">清空</button>
+      </div>
+      <div class="f">
+        <label>配置</label>
+        <button class="btn sm d" id="btnResetCfg">恢复默认设置</button>
       </div>
     </div>
 
+    </section>
+
+    <section class="setcat" id="setcat-nexus">
+      <h2>③ Nexus 账号 <span class="qm" title="登录方式与 API Key。登录后可免 Key 下载，Key 只用于提高接口配额。">?</span></h2>
     <div class="frm">
-      <h3>Nexus 账号</h3>
+      <h3>Nexus 账号 <span class="qm" title="设置项：Nexus 账号。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
         <label>登录状态</label>
         <span id="authLine" style="font-size:12px;color:var(--dim)">检测中…</span>
@@ -7861,8 +7878,12 @@ function renderSettings() {
       </div>
     </div>
 
+    </section>
+
+    <section class="setcat" id="setcat-dl">
+      <h2>④ 下载与安装 <span class="qm" title="下载授权、nxm 接管、压缩包安装、目录监听、翻译后端。">?</span></h2>
     <div class="frm">
-      <h3>下载</h3>
+      <h3>下载 <span class="qm" title="设置项：下载。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
         <label>下载授权</label>
         <select id="setAutoAuth" style="flex:none;min-width:190px">
@@ -7926,7 +7947,7 @@ function renderSettings() {
     </div>
 
     <div class="frm">
-      <h3>下载目录监听<span style="font-weight:400;font-size:12px;color:var(--dim2)">（手动下载的兜底）</span></h3>
+      <h3>下载目录监听<span style="font-weight:400;font-size:12px;color:var(--dim2)">（手动下载的兜底）</span> <span class="qm" title="设置项：下载目录监听（手动下载的兜底）。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
         <label>监听开关</label>
         <select id="setWatchEnabled" style="flex:none;min-width:130px">
@@ -7975,7 +7996,7 @@ function renderSettings() {
     </div>
 
     <div class="frm">
-      <h3>翻译</h3>
+      <h3>翻译 <span class="qm" title="设置项：翻译。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
         <label>翻译后端</label>
         <select id="setBackend">
@@ -7997,51 +8018,12 @@ function renderSettings() {
       </div>
     </div>
 
-    <div class="frm">
-      <h3>存储</h3>
-      <div class="f">
-        <label>数据目录</label>
-        <input type="text" id="setDataDir" value="${esc(state.dataDir || '')}" readonly>
-        <i class="tag gray" id="ddTag">默认位置</i>
-        <button class="btn sm" id="btnOpenData">打开</button>
-        <button class="btn sm" id="btnChangeData">更改位置…</button>
-        <button class="btn sm" id="btnRestoreData" hidden>恢复默认</button>
-      </div>
-      <div class="f">
-        <label></label>
-        <div class="hint" id="ddHint">数据目录可以改到别的盘（下载缓存与安装包会占用较多空间）。改完需要重启程序才生效。</div>
-      </div>
-      <div class="f">
-        <label>接口缓存</label>
-        <div class="hint">浏览结果的本地缓存，10 分钟后自动失效</div>
-        <button class="btn sm" id="btnClearNexus">清空</button>
-      </div>
-      <div class="f">
-        <label>配置</label>
-        <button class="btn sm d" id="btnResetCfg">恢复默认设置</button>
-      </div>
-    </div>
+    </section>
 
+    <section class="setcat" id="setcat-diag">
+      <h2>⑤ 诊断与回退 <span class="qm" title="崩溃排查：按时间回退 Mod 开关、扫描 CNS 冲突。">?</span></h2>
     <div class="frm">
-      <h3>运行日志</h3>
-      <div class="f">
-        <label>日志文件</label>
-        <div class="hint" id="logLine">读取中…</div>
-        <button class="btn sm p" id="btnViewLog">查看日志</button>
-        <button class="btn sm" id="btnOpenLogDir">打开目录</button>
-      </div>
-      <div class="f">
-        <label></label>
-        <div class="hint">
-          本程序是桌面应用，<b>没有终端</b> —— 出问题时日志是唯一能回溯的东西。
-          安装、下载、安装助手窗口的操作与报错都会记进去，保留最近 7 天。<br>
-          反馈问题时把日志里最后几十行贴出来，能省掉大半排查时间。
-        </div>
-      </div>
-    </div>
-
-    <div class="frm">
-      <h3>状态变化与回退<span style="font-weight:400;font-size:12px;color:var(--dim2)">（崩档排查）</span></h3>
+      <h3>状态变化与回退<span style="font-weight:400;font-size:12px;color:var(--dim2)">（崩档排查）</span> <span class="qm" title="设置项：状态变化与回退（崩档排查）。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
         <label>起始时间</label>
         <input type="datetime-local" id="rollSince" style="flex:none;width:210px">
@@ -8073,7 +8055,7 @@ function renderSettings() {
     </div>
 
     <div class="frm">
-      <h3>Mod 冲突扫描<span style="font-weight:400;font-size:12px;color:var(--dim2)">（重复替换同一套服装）</span></h3>
+      <h3>Mod 冲突扫描<span style="font-weight:400;font-size:12px;color:var(--dim2)">（重复替换同一套服装）</span> <span class="qm" title="设置项：Mod 冲突扫描（重复替换同一套服装）。下方有用途说明与操作建议。">?</span></h3>
       <div class="f">
         <label></label>
         <div class="hint">
@@ -8095,7 +8077,76 @@ function renderSettings() {
         <button class="btn sm p" id="btnConflictDisable">禁用勾选的</button>
         <button class="btn sm d" id="btnConflictUninstall">卸载勾选的</button>
       </div>
+    </div>    </section>
+
+    <section class="setcat" id="setcat-ui">
+      <h2>⑥ 界面与语言 <span class="qm" title="显示语言，以及是否记住筛选条件。">?</span></h2>
+    <div class="frm">
+      <h3>界面语言 <span class="qm" title="设置项：界面语言。下方有用途说明与操作建议。">?</span></h3>
+      <div class="f">
+        <label>显示语言</label>
+        <select id="setUiLang" style="flex:none;min-width:180px">
+          ${uiLangOptions()}
+        </select>
+        <div class="hint">切换后立即生效</div>
+      </div>
     </div>
+
+    <div class="frm">
+      <h3>浏览与筛选 <span class="qm" title="设置项：浏览与筛选。下方有用途说明与操作建议。">?</span></h3>
+      <div class="f">
+        <label>记住筛选条件</label>
+        <select id="setRememberFilters" style="flex:none;min-width:210px">
+          <option value="1" ${c.rememberFilters !== false ? 'selected' : ''}>记住（下次启动自动套用）</option>
+          <option value="0" ${c.rememberFilters === false ? 'selected' : ''}>不记住（每次都用默认筛选）</option>
+        </select>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">
+          记住浏览页与「已安装」页的筛选条件（排序、成人内容、只看未安装、黑名单、只看喜欢、分类、标签、内置脚本开关），下次启动自动套用。
+        </div>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">搜索关键词不记 —— 那是临时查询，留着上次的词只会让人以为列表坏了。</div>
+      </div>
+    </div>
+
+    </section>
+
+    <section class="setcat" id="setcat-tools">
+      <h2>⑦ 工具与日志 <span class="qm" title="批量解析工具与运行日志查看。">?</span></h2>
+    <div class="frm">
+      <h3>工具 <span class="qm" title="设置项：工具。下方有用途说明与操作建议。">?</span></h3>
+      <div class="f">
+        <label>批量解析</label>
+        <button class="btn" id="btnLinker" title="把手动放进 Mods 目录的 Mod 与 Nexus 上的条目对上号，自动补上名字、作者、版本和封面">批量解析</button>
+        <div class="hint">把手动放进 Mods 目录的 Mod 与 Nexus 上的条目对上号，自动补上名字、作者、版本和封面。</div>
+      </div>
+    </div>
+    <div class="frm">
+      <h3>运行日志 <span class="qm" title="设置项：运行日志。下方有用途说明与操作建议。">?</span></h3>
+      <div class="f">
+        <label>日志文件</label>
+        <div class="hint" id="logLine">读取中…</div>
+        <button class="btn sm p" id="btnViewLog">查看日志</button>
+        <button class="btn sm" id="btnOpenLogDir">打开目录</button>
+      </div>
+      <div class="f">
+        <label></label>
+        <div class="hint">
+          本程序是桌面应用，<b>没有终端</b> —— 出问题时日志是唯一能回溯的东西。
+          安装、下载、安装助手窗口的操作与报错都会记进去，保留最近 7 天。<br>
+          反馈问题时把日志里最后几十行贴出来，能省掉大半排查时间。
+        </div>
+      </div>
+    </div>
+
+    </section>
+    </div>
+    </div>
+
   `;
 
   renderAuthLine();

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置页 UI 改版设计（评审稿）</title>
+<style>
+  :root{
+    --text:#E6E9EF;--dim:#8C94A3;--dim2:#666E7C;--accent:#E8A33D;--red:#D9534F;
+    --ok:#3FB950;--blue:#4A9EFF;--panel:#1B1E24;--panel2:#22262E;--panel3:#2A2F38;
+    --border:#2C313A;--border2:#3A414D;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--panel);color:var(--text);font:13px/1.5 "Segoe UI",system-ui,sans-serif}
+  .review{background:#3a2a12;color:#ffd89b;border-bottom:1px solid #6a4d1c;padding:8px 16px;font-size:12px}
+  .wrap{display:flex;height:calc(100vh - 34px)}
+  /* 左侧分类导航 */
+  .nav{width:190px;flex:none;border-right:1px solid var(--border);padding:14px 10px;overflow:auto}
+  .nav h4{margin:14px 8px 6px;font-size:11px;color:var(--dim2);font-weight:600;letter-spacing:.5px}
+  .nav a{display:block;padding:7px 10px;margin:2px 0;border-radius:7px;color:var(--dim);text-decoration:none;font-size:12px}
+  .nav a:hover{background:var(--panel2);color:var(--text)}
+  .nav a.on{background:var(--panel3);color:var(--text);border-left:2px solid var(--accent)}
+  /* 右侧内容 */
+  .main{flex:1;min-width:0;overflow:auto;padding:18px 24px}
+  .main h1{font-size:18px;margin:0 0 4px}
+  .main .lead{color:var(--dim);font-size:12px;margin-bottom:16px}
+  .sec{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;scroll-margin-top:12px}
+  .sec h2{font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .sec h2 .q{display:inline-flex;width:16px;height:16px;border-radius:50%;border:1px solid var(--dim2);color:var(--dim);font-size:10px;align-items:center;justify-content:center;cursor:help}
+  .row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border)}
+  .row:first-of-type{border-top:none}
+  .row label{width:120px;flex:none;color:var(--text);font-size:12px}
+  .row .ctl{flex:0 1 300px;min-width:0}
+  .row .ctl input,.row .ctl select{width:100%;height:28px;background:var(--panel3);border:1px solid var(--border2);border-radius:7px;color:var(--text);padding:0 9px}
+  .row .btns{display:flex;gap:6px;flex-wrap:wrap}
+  .btn{height:26px;padding:0 11px;border-radius:7px;border:1px solid var(--border2);background:var(--panel3);color:var(--text);font-size:11.5px;cursor:pointer}
+  .btn.p{background:var(--accent);border-color:var(--accent);color:#1A1206}
+  .hint{color:var(--dim);font-size:11px;margin-top:4px}
+  .qm{display:inline-flex;width:14px;height:14px;border-radius:50%;border:1px solid var(--dim2);color:var(--dim);font-size:9px;align-items:center;justify-content:center;margin-left:5px;cursor:help}
+  .note{background:#1c2a1e;border:1px solid #2c4a30;color:#a8d8b0;border-radius:8px;padding:9px 12px;font-size:11.5px;margin-top:8px}
+  .tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10px;background:var(--panel3);color:var(--dim)}
+  .tag.move{background:#243447;color:#8fc3ff}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--dim);margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="review">设计评审稿 —— 仅演示新的「分类导航 + 说明问号 + 路径分区」布局，不是实际软件。左侧点分类可跳转到对应设置区；确认后再改代码。</div>
+<div class="wrap">
+  <nav class="nav">
+    <h4>快速导航</h4>
+    <a href="#s-game" class="on">① 游戏与目录</a>
+    <a href="#s-data">② 数据与存储</a>
+    <a href="#s-nexus">③ Nexus 账号</a>
+    <a href="#s-download">④ 下载与安装</a>
+    <a href="#s-detect">⑤ 诊断与回退</a>
+    <a href="#s-display">⑥ 界面与语言</a>
+    <a href="#s-tool">⑦ 工具与日志</a>
+  </nav>
+  <main class="main">
+    <h1>设置</h1>
+    <div class="lead">按用途分成 7 类，左侧一键跳转。每个选项后面的 <span class="qm">?</span> 点开有说明和建议。</div>
+    <div class="legend">
+      <span><span class="tag move">建议</span> 本次调整位置/文案</span>
+      <span><span class="tag">保留</span> 原位原功能</span>
+    </div>
+
+    <!-- 1 -->
+    <section class="sec" id="s-game">
+      <h2>① 游戏与目录 <span class="q" title="游戏在哪、Mod 装在哪、数据放哪。路径相关的都归到这一类，彼此挨着。">?</span></h2>
+      <div class="row"><label>游戏目录 <span class="qm" title="必须包含 SB\Binaries\Win64\SB-Win64-Shipping.exe。改完点“保存并校验”。">?</span></label>
+        <div class="ctl"><input value="C:\games\Star Blade" readonly></div>
+        <div class="btns"><button class="btn">自动探测</button><button class="btn">更改…</button><button class="btn">打开目录</button></div></div>
+      <div class="row"><label>游戏版本</label><div class="hint">1.4.1（自动识别，只读）</div></div>
+      <div class="row"><label>Mod 目录</label><div class="hint">~Mods（随游戏目录）</div><div class="btns"><button class="btn">打开 Mod 目录</button></div></div>
+      <div class="row"><label>安装包目录 <span class="qm" title="下载好的 .zip/.7z/.rar 放这里；现在默认随管理器安装目录（D:\Program Files\sbmodmanager\library）。">?</span></label>
+        <div class="ctl"><input value="D:\Program Files\sbmodmanager\library" readonly></div>
+        <div class="btns"><button class="btn">更改…</button><button class="btn">打开</button><button class="btn">恢复默认</button></div></div>
+      <div class="note">📌 游戏目录、Mod 目录、数据目录三者相邻放。改路径后需重启程序生效。</div>
+    </section>
+
+    <!-- 2 -->
+    <section class="sec" id="s-data">
+      <h2>② 数据与存储 <span class="q" title="跟随游戏的 .sbmod 数据 + 管理器自己的缓存。">?</span></h2>
+      <div class="row"><label>数据目录 <span class="qm" title="缓存、日志、图片、Nexus 目录、下载的安装包。体积大，留在管理器里，不跟游戏搬。">?</span></label>
+        <div class="ctl"><input value="D:\Program Files\sbmodmanager\data" readonly></div>
+        <div class="btns"><button class="btn">打开</button><button class="btn">更改位置…</button></div></div>
+      <div class="hint" style="padding-left:130px">💡 <b>多个游戏副本可以共用这里已下载好的 Mod 包</b>：安装包和缓存放在管理器数据目录、不跟单个游戏走，所以你装了第二个游戏（换盘/测试副本）时，这些包能直接拿去安装，不用重新下一遍。</div>
+      <div class="row"><label>游戏内数据 <span class="qm" title="强烈建议放在游戏目录的 .sbmod 里：这里的记录与实际安装情况一致，整个游戏文件夹搬走后记录跟着走，不会丢。">?</span></label>
+        <div class="ctl"><input value="C:\games\Star Blade\.sbmod" readonly></div>
+        <span class="tag move">建议：保持跟随游戏</span></div>
+      <div class="hint" style="padding-left:130px">config/mods/mod-links/blacklist/favorites 等记录与磁盘实际安装状态一致 —— 不要挪到别处，否则换盘/换机器时会对不上。手动移走会失去这个一致性。</div>
+      <div class="row"><label>账本维护</label><div class="btns">
+        <button class="btn">检查并修复路径</button><button class="btn">写入账本</button><button class="btn">从账本恢复</button><button class="btn">核对磁盘</button></div></div>
+      <div class="row"><label>接口缓存</label><div class="hint">浏览结果缓存，10 分钟失效</div><div class="btns"><button class="btn">清空</button></div></div>
+      <div class="row"><label>恢复默认</label><div class="btns"><button class="btn">恢复默认设置</button></div></div>
+    </section>
+
+    <!-- 3 -->
+    <section class="sec" id="s-nexus">
+      <h2>③ Nexus 账号 <span class="q" title="登录、API Key、nxm 接管都跟 Nexus 有关。">?</span></h2>
+      <div class="row"><label>登录状态</label><div class="hint">检测中…</div><div class="btns">
+        <button class="btn p">登录 Nexus</button><button class="btn">用系统浏览器登录</button><button class="btn">刷新</button><button class="btn">退出</button></div></div>
+      <div class="row"><label>API Key <span class="qm" title="可选。登录之后浏览下载都不需要 Key；填了配额更高。">?</span></label>
+        <div class="ctl"><input type="password" placeholder="可留空"></div><div class="btns"><button class="btn">保存</button><button class="btn">登录后自动获取</button></div></div>
+      <div class="row"><label>nxm:// 接管 <span class="qm" title="注册后，Nexus 网页点 Mod Manager Download 会自动调起本管理器并带上下载授权。">?</span></label>
+        <div class="hint">未注册</div><div class="btns"><button class="btn p">注册为默认</button><button class="btn">取消注册</button></div></div>
+      <div class="row"><label>粘贴链接安装</label><div class="ctl"><input placeholder="nxm://… 或 Nexus 页面地址"></div><div class="btns"><button class="btn p">解析并安装</button></div></div>
+    </section>
+
+    <!-- 4 -->
+    <section class="sec" id="s-download">
+      <h2>④ 下载与安装 <span class="q" title="下载授权、安装方式、目录监听、翻译都归这里。">?</span></h2>
+      <div class="row"><label>下载授权 <span class="qm" title="自动：加入队列即用已登录会话取授权下载；手动：每条点一次。">?</span></label>
+        <div class="ctl"><select><option>自动（推荐）</option><option>手动</option></select></div></div>
+      <div class="row"><label>本地压缩包安装</label><div class="btns"><button class="btn p">选择压缩包…</button></div><div class="hint">zip / 7z / rar，自动识别并解压</div></div>
+      <div class="row"><label>解压工具</label><div class="hint">自动检测</div><div class="btns"><button class="btn">重新检测</button></div></div>
+      <div class="row"><label>目录监听 <span class="qm" title="盯着指定目录，出现压缩包就自动导入下载队列；识别不出来源的包只进队列等你确认，不会乱装。">?</span></label>
+        <div class="ctl"><select><option>开启</option><option>关闭</option></select></div>
+        <div class="btns"><button class="btn">添加目录…</button><button class="btn">立即扫描</button></div></div>
+      <div class="row"><label>GitHub 镜像</label><div class="ctl"><input placeholder="留空 = 只用官方通路（推荐）"></div></div>
+      <div class="row"><label>翻译 <span class="qm" title="说明原文保留，翻译结果会缓存到本地，翻成功一次以后不再重翻。">?</span></label>
+        <div class="ctl"><select><option>MyMemory（免费）</option></select></div>
+        <div class="ctl"><select><option>简体中文</option></select></div>
+        <div class="btns"><button class="btn">清空译文缓存</button></div></div>
+    </section>
+
+    <!-- 5 -->
+    <section class="sec" id="s-detect">
+      <h2>⑤ 诊断与回退 <span class="q" title="崩溃排查、时间线回退、冲突扫描。">?</span></h2>
+      <div class="row"><label>状态变化与回退 <span class="qm" title="开启某 Mod 后崩了？选上次能玩到现在的时间段，列出这段新开的 Mod，勾选批量禁用即可回退。只禁用，不重装。">?</span></label>
+        <div class="ctl"><input placeholder="起始时间"></div><div class="ctl"><input placeholder="结束时间"></div>
+        <div class="btns"><button class="btn p">查询</button></div></div>
+      <div class="row"><label>冲突扫描 <span class="qm" title="对比所有已装 Mod 的 CNS 数据：UniqueFitID 撞车会选留哪个；共享网格多数可共存仅提示。">?</span></label>
+        <div class="btns"><button class="btn p">扫描全部已装 Mod</button></div></div>
+      <div class="hint" style="padding-left:130px">每次下载 / 安装 / 开启 / 禁用 / 卸载都记进档案（跟随游戏，删 Mod 不删记录），详情抽屉里能看到单个 Mod 的状态变更。</div>
+    </section>
+
+    <!-- 6 -->
+    <section class="sec" id="s-display">
+      <h2>⑥ 界面与语言 <span class="q" title="显示语言、筛选记忆。">?</span></h2>
+      <div class="row"><label>显示语言 <span class="qm" title="切换后立即生效。">?</span></label><div class="ctl"><select><option>简体中文</option></select></div></div>
+      <div class="row"><label>记住筛选 <span class="qm" title="记住排序/分类/标记/成人等筛选条件，下次启动自动套用。搜索关键词不记。">?</span></label>
+        <div class="ctl"><select><option>记住（推荐）</option><option>不记住</option></select></div></div>
+    </section>
+
+    <!-- 7 -->
+    <section class="sec" id="s-tool">
+      <h2>⑦ 工具与日志 <span class="q" title="批量解析、日志查看。">?</span></h2>
+      <div class="row"><label>批量解析 <span class="qm" title="把手动放进 Mods 目录、没登记的 Mod 与 Nexus 条目对上号，补名字/作者/版本/封面。">?</span></label>
+        <div class="btns"><button class="btn">批量解析</button></div></div>
+      <div class="row"><label>运行日志 <span class="qm" title="无终端桌面应用，出问题时日志是唯一能回溯的东西；保留最近 7 天。">?</span></label>
+        <div class="hint">最近 7 天</div><div class="btns"><button class="btn p">查看日志</button><button class="btn">打开目录</button></div></div>
+    </section>
+  </main>
+</div>
+<script>
+  // 演示：左侧导航高亮 + 平滑跳转（实际软件里点击会滚动到对应分区）
+  document.querySelectorAll('.nav a').forEach(function(a){
+    a.addEventListener('click',function(){
+      document.querySelectorAll('.nav a').forEach(function(x){x.classList.remove('on')});
+      a.classList.add('on');
+    });
+  });
+</script>
+</body>
+</html>

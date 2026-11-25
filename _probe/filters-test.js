@@ -457,7 +457,8 @@ function makeHarness(cfg) {
         || '缺失');
 
     t('设置页有「记住筛选条件」下拉', () => /id="setRememberFilters"/.test(code) || '缺失');
-    t('设置页分组标题是「浏览与筛选」', () => /<h3>浏览与筛选<\/h3>/.test(code) || '缺失');
+    // 0.9.17 设置页改版：h3 里多了 ? 说明图标 span，标题文字本身不变 → 容忍后续标签
+    t('设置页分组标题是「浏览与筛选」', () => /<h3>浏览与筛选(?:\s|<)/.test(code) || '缺失');
     t('开关写回 config.rememberFilters', () =>
       /e\.target\.id === 'setRememberFilters'[\s\S]{0,400}config\.set\(\{ rememberFilters: on \}\)/.test(code) || '缺失');
     t('关掉开关时不删已存快照（语义是「不套用」，不是「清空」）', () =>
