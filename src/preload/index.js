@@ -307,6 +307,16 @@ contextBridge.exposeInMainWorld('api', {
     libraryChoose: (opts) => invoke('library:choose', opts),
     /** 把安装包目录指到别处（传空 = 恢复默认），重启后生效 */
     librarySetDir: (dir) => invoke('library:setDir', dir),
+    /** 安装包目录搬家：预检 / 开始（或继续）/ 取消 */
+    migratePlan: (destDir) => invoke('library:migratePlan', destDir),
+    migrateStart: (opts) => invoke('library:migrateStart', opts),
+    migrateCancel: () => invoke('library:migrateCancel'),
+    /** 搬家进度事件（done/total/moved/skipped/failed/bytes/phase），返回取消订阅函数 */
+    onMigrateProgress: (cb) => {
+      const h = (_e, p) => cb(p);
+      ipcRenderer.on('library:migrateProgress', h);
+      return () => ipcRenderer.removeListener('library:migrateProgress', h);
+    },
     /** 把 library 里的某个包装进当前游戏目录 */
     installFromLibrary: (archivePath, meta, opts) => invoke('library:install', archivePath, meta, opts),
     /** 删掉管理器里的一份安装包（只动安装包目录里的压缩包，不碰已装进游戏的文件） */

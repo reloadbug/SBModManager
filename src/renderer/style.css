@@ -1058,3 +1058,8 @@ body.sel .card .cover .sw{display:none}
 .qm:hover{color:var(--accent);border-color:var(--accent)}
 .sh-share{margin-top:6px;padding:8px 10px;background:rgba(232,163,61,.08);border-left:2px solid var(--accent);border-radius:4px}
 @media(max-width:1000px){.settings-layout{flex-direction:column}.settings-nav{width:100%;position:static;display:flex;flex-wrap:wrap;gap:4px}.sn-title{width:100%}.sn-item{width:auto;flex:0 0 auto}}
+
+/* ===== 0.9.19 安装包目录搬家弹窗 ===== */
+.mgr-mode{display:block;padding:5px 0;font-size:12px;color:var(--text);cursor:pointer}
+.mgr-mode input{margin-right:8px;accent-color:var(--accent)}
+.mgr-progress{margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:7px;background:var(--panel2);font-size:12px;color:var(--text);min-height:36px;line-height:1.6}

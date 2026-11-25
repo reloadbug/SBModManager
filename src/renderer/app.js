@@ -7781,6 +7781,7 @@ function renderSettings() {
         <button class="btn sm" id="btnLibChoose">更改目录…</button>
         <button class="btn sm" id="btnLibOpen">打开目录</button>
         <button class="btn sm" id="btnLibReset">恢复默认</button>
+        <button class="btn sm" id="btnLibMigrate" title="把当前目录里的压缩包全部搬到另一个目录，支持断点续传">搬到新目录…</button>
       </div>
     </div>
 
@@ -10065,6 +10066,16 @@ function bindEvents() {
         }
       }
 
+      // ---- 安装包目录搬家 ----
+      else if (id === 'mgrStart') await runLibMigrate();
+      else if (id === 'mgrCancel') {
+        try { await window.api.download.migrateCancel(); } catch { /* 已提示 */ }
+        if (libMigrateUnsub) { try { libMigrateUnsub(); } catch {} libMigrateUnsub = null; }
+        libMigrateCtx = null;
+        closeModal();
+        await refreshLibDirBox();
+      }
+
       // ---- 数据目录搬运向导 ----
       else if (id === 'ddCancel') { ddPending = null; closeModal(); }
       else if (id === 'ddMove') await runDataMigrate('move', false);
@@ -10213,6 +10224,8 @@ function bindEvents() {
         if (!d) { toast('还读不到安装包目录', 'err'); return; }
         await call(window.api.openPath(d));
       } catch { /* 已提示 */ }
+    } else if (e.target.id === 'btnLibMigrate') {
+      await openLibMigrateModal();
     } else if (e.target.id === 'btnLibReset') {
       if (!confirm('把安装包目录恢复成默认（管理器数据目录下的 library）？\n\n已经下载的包不会删，只是不再看那个自定义目录。')) return;
       try {
@@ -10569,6 +10582,82 @@ async function refreshLibDirBox() {
   } catch (e) {
     dirLine.textContent = '读取失败：' + (e && e.message ? e.message : '');
     statLine.textContent = '';
+  }
+}
+
+/* ---------------- 安装包目录搬家（m17590）---------------- */
+/** 当前搬家弹窗的上下文（目标目录 / 冲突档 / 是否续传） */
+let libMigrateCtx = null;
+/** 搬家进度订阅的取消函数（弹窗关闭时退订） */
+let libMigrateUnsub = null;
+
+/**
+ * 「搬到新目录…」—— 选一个目标目录、预检、让用户挑冲突处理方式，然后开搬。
+ * 进度用 openModal 的正文就地更新（不另起窗口），完成后刷新设置页的安装包目录栏。
+ */
+async function openLibMigrateModal() {
+  const cur = state.libDir && state.libDir.dir;
+  if (!cur) { toast('还读不到当前安装包目录', 'err'); return; }
+  let dest = null;
+  try { dest = await call(window.api.download.libraryChoose({ defaultPath: cur })); } catch { return; }
+  if (!dest) return;
+  let plan;
+  try { plan = await call(window.api.download.migratePlan(dest)); }
+  catch (e) { toast('预检失败：' + (e && e.message ? e.message : e), 'err'); return; }
+  if (!plan || !plan.count) { toast('当前目录里没有可搬的压缩包', 'warn'); return; }
+
+  libMigrateCtx = { dest, resume: !!plan.resumable };
+  const mb = plan.totalBytes ? fmtSize(plan.totalBytes) : '0 B';
+  const resumeTip = plan.resumable
+    ? '<div class="hint" style="color:var(--accent)">检测到上次没搬完的进度，继续时会跳过已经搬好的文件。</div>' : '';
+  const body = `
+    <div class="cmp-kv" style="display:block">
+      <div>从：<code>${esc(plan.src)}</code></div>
+      <div>到：<code>${esc(plan.dest)}</code></div>
+      <div>${fmtNum(plan.count)} 个压缩包 · ${mb} · 同名 ${fmtNum(plan.conflicts)} 个</div>
+      ${resumeTip}
+      <div class="hint" style="margin-top:8px">同名文件怎么处理：</div>
+      <label class="mgr-mode"><input type="radio" name="mgrMode" value="skip-same" checked> 同名同大小跳过（推荐，最安全）</label>
+      <label class="mgr-mode"><input type="radio" name="mgrMode" value="skip-all"> 全部跳过同名</label>
+      <label class="mgr-mode"><input type="radio" name="mgrMode" value="overwrite"> 全部覆盖同名</label>
+      <div id="mgrProgress" class="mgr-progress">准备就绪，点「开始搬运」。</div>
+    </div>`;
+  openModal('搬运安装包目录', body, [
+    { id: 'mgrStart', label: plan.resumable ? '继续上次搬运' : '开始搬运', primary: true },
+    { id: 'mgrCancel', label: '取消' }
+  ]);
+}
+
+/** 点「开始搬运」：读取冲突档 → 订阅进度 → 调主进程 */
+async function runLibMigrate() {
+  if (!libMigrateCtx) return;
+  const checked = document.querySelector('#mBody input[name="mgrMode"]:checked');
+  const mode = checked ? checked.value : 'skip-same';
+  const box = $('#mgrProgress');
+  const setBox = (txt) => { if (box) box.textContent = txt; };
+  setBox('正在搬运…');
+  // 进度事件：就地更新文字 + 让「取消」按钮可用
+  try { if (libMigrateUnsub) libMigrateUnsub(); } catch {}
+  libMigrateUnsub = (window.api.download.onMigrateProgress || (() => () => {}))((p) => {
+    if (!p) return;
+    const pct = p.total ? Math.round((p.done || 0) * 100 / p.total) : 0;
+    setBox(`已处理 ${p.done || 0}/${p.total || 0}（${pct}%） · 搬走 ${p.moved || 0} · 跳过 ${p.skipped || 0} · 失败 ${p.failed || 0}${p.phase === 'done' ? ' · 完成' : ''}${p.phase === 'aborted' ? ' · 已取消' : ''}`);
+  });
+  const btn = $('#mFoot [data-mbtn="mgrStart"]');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await call(window.api.download.migrateStart({ destDir: libMigrateCtx.dest, mode, resume: libMigrateCtx.resume }));
+    if (r && r.aborted) toast('已取消搬运，已搬好的文件保留在目标目录', 'warn');
+    else if (r && r.failed) toast(`搬完了，但有 ${r.failed} 个失败（详见进度）`, 'warn');
+    else toast('搬运完成！安装包目录已指向新位置，重启管理器后生效', 'ok');
+    setBox(`完成：搬走 ${r.moved} · 跳过 ${r.skipped} · 失败 ${r.failed}`);
+    await refreshLibDirBox();
+  } catch (e) {
+    toast('搬运失败：' + (e && e.message ? e.message : e), 'err');
+    setBox('失败：' + (e && e.message ? e.message : e));
+  } finally {
+    if (btn) btn.disabled = false;
+    libMigrateCtx = null;
   }
 }
 

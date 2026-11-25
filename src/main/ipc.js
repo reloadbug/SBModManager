@@ -47,12 +47,16 @@ const dataMigrate = require('./dataMigrate');
 const gameHome = require('./gameHome');
 const { createModInfo, fromCatalog } = require('./modInfo');
 const modConflicts = require('./modConflicts');
+const libraryMigrate = require('./libraryMigrate');
 const { readJson, writeJson, setMirror } = require('./store');
 
 let config, registry, nexus, translator, engine, watcher, gallery, blacklist, favorites, bugFlags, verifiedFlags, modHistory, fileOwner;
 
 /** UE4SS 最新 Release 的短时缓存（避免每次进前置组件页都打 GitHub API） */
 let ue4ssReleaseCache = { at: 0, release: null };
+
+/** 安装包目录搬家：当前正在跑的任务（含取消信号），同一时刻只允许一个 */
+let migrateJob = null;
 
 /** 图片缓存单例：图集归并与「多尺寸只留一张」的逻辑都在里面，别每次调用新建 */
 let imageCacheSingleton = null;
@@ -3118,6 +3122,52 @@ function register() {
     const r = paths.setLibraryDir(dir);
     logger.event('data:libraryDir', { dir: r.dir, custom: r.custom });
     return { ...r, restart: true };
+  });
+
+  // ===== 安装包目录搬家（m17590）=====
+  // 只搬压缩包、真搬家（删源）、同名冲突三档、进度事件、断点续传。核心在 libraryMigrate.js。
+  /** 预检：列要搬的包、算体积/冲突，看看目标目录有没有可续传的旧清单 */
+  handle('library:migratePlan', (destDir) => {
+    const p = libraryMigrate.plan(paths.LIBRARY, destDir);
+    return p;
+  });
+  /** 开始/继续搬家。异步跑，进度用 library:migrateProgress 事件推给界面。 */
+  handle('library:migrateStart', async (opts) => {
+    const o = opts || {};
+    if (migrateJob && migrateJob.running) throw new Error('已经有一个搬家任务在跑了');
+    const controller = { aborted: false };
+    const job = { running: true, controller };
+    migrateJob = job;
+    const onProgress = (p) => sendToMain('library:migrateProgress', p || {});
+    try {
+      const r = await libraryMigrate.migrate({
+        srcDir: paths.LIBRARY,
+        destDir: o.destDir,
+        mode: o.mode || 'skip-same',
+        resume: !!o.resume,
+        signal: controller,
+        onProgress
+      });
+      // 搬完：把安装包目录指针指向新位置（重启后生效），源目录的空壳留着不删（用户可自行清理）
+      if (!r.aborted && r.failed === 0) {
+        try {
+          const set = paths.setLibraryDir(path.resolve(o.destDir));
+          logger.event('data:libraryMigrated', { from: paths.LIBRARY, to: set.dir, ...r });
+        } catch (e) { logger.write('[搬家] 写安装包目录指针失败：' + e.message); }
+      } else {
+        logger.event('data:libraryMigrateIncomplete', { aborted: r.aborted, failed: r.failed });
+      }
+      return r;
+    } finally {
+      job.running = false;
+      if (migrateJob === job) migrateJob = null;
+    }
+  });
+  /** 取消当前搬家（下一个文件边界停下，已搬的不回滚） */
+  handle('library:migrateCancel', () => {
+    if (!migrateJob || !migrateJob.running) return { ok: false, message: '当前没有在跑的搬家任务' };
+    migrateJob.controller.aborted = true;
+    return { ok: true };
   });
 
   /**
