@@ -60,3 +60,6 @@ _tmp-*.js
 SBModManager-*-portable.exe
 SBModManager-*-setup.exe
 _probe/patch_*.py
+
+# Nexus 发布素材包（生成产物，不进仓库）
+docs/nexus/*.zip
