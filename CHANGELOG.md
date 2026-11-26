@@ -1,5 +1,12 @@
 # 更新日志
 
+## [0.9.20] - 2026-11-26
+
+### 修改
+
+- **打包后自动只保留最新版本**：`build/dist.js` 打包成功后自动清理 `dist/` 里的历史版本 `SBModManager-*.exe/.blockmap`，只留 `package.json` 当前版本；`latest.yml`/`builder-debug.yml`/`build.log`/`win-unpacked/` 等配置文件一律不动（用户明确要求「新版本打包时不要清除或修改上一轮的配置文件」）。打包失败时跳过清理、保留现场便于排查。
+- **发布包禁止携带 library**：打包后校验 `dist/win-unpacked/library` 不存在，存在则直接失败——安装包是运行时用户数据，不随程序发布（现有 `build.files` 只打 `src/**/*`，本就是如此，加这道闸防将来误配）。
+
 ## [0.9.19] - 2026-11-26
 
 ### 新增
