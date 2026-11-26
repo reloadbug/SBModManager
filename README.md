@@ -14,6 +14,18 @@
 > 仓库名 / 包名 / 安装包文件名是 **SBModManager**；程序内显示的标题仍是「剑星 Mod 管理器」
 > （保留显示名是为了不改 `userData` 目录名 —— 改了老用户的设置与 Nexus 登录态就会「消失」）。
 
+## 界面
+
+![Mod 库](https://github.com/reloadbug/SBModManager/releases/download/v0.9.20/01-mod-library.png)
+
+| 页面 | 预览 |
+|---|---|
+| Mod 库（已安装 / 已下载 / 未下载 三态合一，七类筛选、排序、批量操作） | [大图](https://github.com/reloadbug/SBModManager/releases/download/v0.9.20/01-mod-library.png) |
+| 已安装 Mod（分组卡片、开关、详情抽屉、生命周期时间线） | [大图](https://github.com/reloadbug/SBModManager/releases/download/v0.9.20/02-installed.png) |
+| 下载队列（自动授权、暂停续传、安装状态） | [大图](https://github.com/reloadbug/SBModManager/releases/download/v0.9.20/03-download-queue.png) |
+| 前置组件（UE4SS / CNS / ATOOL 一键安装与状态） | [大图](https://github.com/reloadbug/SBModManager/releases/download/v0.9.20/04-prereqs.png) |
+| 设置（七类快速导航、问号说明、路径集中） | [大图](https://github.com/reloadbug/SBModManager/releases/download/v0.9.20/05-settings.png) |
+
 ## 界面语言（14 种）
 
 简体中文是原文语言，其余 13 种提供完整语言包，跟随系统语言自动选择，也可在设置页手动切换：
@@ -31,12 +43,31 @@
 语言包位于 `src/renderer/locales/*.js`，以 `<script>` 形式加载（受 CSP `script-src 'self'` 约束，
 `file://` 下无法用 `fetch` 读本地 JSON）。术语与键表以 `_probe/i18n-keys.json` 为唯一真源。
 
-## 现在能做什么（v0.2.11）
+## 现在能做什么（v0.9.20）
+
+> 完整逐版本改动见下方 [更新改动列表](#更新改动列表) 与 [`CHANGELOG.md`](CHANGELOG.md)。
+
+### 0.9.x 新增能力
+
+| 功能 | 状态 |
+|---|---|
+| **Mod 库三态合一**：已安装 / 已下载 / 未下载在同一页，按状态 + 标记 + 分类 + 排序四组筛选；排序支持开启时间 / 禁用时间 / 安装时间 / 名称**正反双向**，负面标记（不喜欢 / 有 bug）支持「包含 / 排除」两态 | ✅ |
+| **生命周期档案**：下载 / 安装 / 开启 / 禁用 / 卸载全程记 `mod-history.json`（跟游戏走、删 Mod 不删记录），每次开关精确到毫秒；详情里有「状态变更记录」时间线 | ✅ |
+| **崩溃回退**：崩溃后按起止时间查出「这段时间新开启的 Mod」，勾选批量禁用或全部禁用（只禁不重装、已卸载的自动跳过） | ✅ |
+| **Mod 冲突检测**：安装前预检 + 全局扫描，按 CNS `UniqueFitID` 撞车判强冲突、左右两列封面对比选留哪个；共享网格只提示不拦截 | ✅ |
+| **CNS 游戏内名称**：解析 `.dekcns.json` 的 `DisplayName`（游戏里显示的名字）存进本地档案，进详情、可按游戏内名搜索；`UniqueFitID` / 替换网格同步可见 | ✅ |
+| **三状态详情合一**：已安装 / 已下载 / 在线共用一套详情模板，固定字段表（23 项）、不适用的灰色占位；图集 / 逐文件操作 / Nexus 文件三个专属段按状态显示 | ✅ |
+| **安装包目录搬家**：设置里选新目录，把已下载压缩包整批搬过去，进度条 + 断点续传 + 同名冲突三选一 | ✅ |
+| **安装包库随程序走**：安装版固定装 `D:\Program Files\sbmodmanager`，下载包默认放安装目录 `library\`；升级覆盖**绝不删库** | ✅ |
+| **左侧导航可折叠**：212px → 60px 只留图标，状态存本地；设置页按 7 类重排 + 快速导航 + 问号说明 | ✅ |
+| **打包只留最新版**：`dist/` 每次打包自动清历史版本 exe，配置文件不动；发布包不携带 library | ✅ |
+
+### 完整功能清单（历史累积）
 
 | 功能 | 状态 |
 |---|---|
 | **数据目录可以改到别的盘**：设置 → 存储 →「更改位置…」，已有数据支持**一键搬运**（移动 / 复制，带进度条，中途失败不删源） | ✅ |
-| **安装位置自己选**：一键安装脚本在交互式终端会**先问一次**装到哪里（`-NoPrompt` 可跳过、`-InstallDir` 直接给定） | ✅ |
+| **安装位置**：安装版自 0.9.16 起固定装到 `D:\Program Files\sbmodmanager`（安装包库随安装目录走、在 `library\`）；便携版可用 `-InstallDir` 指定放置位置 | ✅ |
 | 游戏目录自动探测与校验 | ✅ |
 | UE4SS（Mod 加载器）状态检测 | ✅ |
 | CNS（服装框架）按**特征文件**确定性检测（不再是猜测） | ✅ |
@@ -104,6 +135,34 @@
 | 运行日志落盘（`data/logs/`，按天轮转），设置页可直接查看 | ✅ |
 | **打包成 exe**：安装版 + 便携版，带应用图标 | ✅ |
 
+## 更新改动列表
+
+> 逐条详情见 [`CHANGELOG.md`](CHANGELOG.md)。这里按版本列要点。
+
+| 版本 | 日期 | 主要改动 |
+|---|---|---|
+| **0.9.20** | 11-26 | 打包后自动只留最新版本 exe、配置文件不动；发布包禁止携带 library（加发布闸） |
+| **0.9.19** | 11-26 | 安装包目录「搬到新目录」：进度条 + 断点续传 + 同名冲突三选一 |
+| **0.9.18** | 11-26 | 解析 CNS 游戏内名称进详情/搜索；隐藏共享网格诊断 |
+| **0.9.17** | 11-26 | 设置页按 7 类重排 + 快速导航 + 问号说明（仅外观，不改功能） |
+| **0.9.16** | 11-25 | 固定装 D 盘、library 随安装目录；升级覆盖绝不删库（血泪教训，已写铁律） |
+| **0.9.15** | 11-25 | 崩溃诊断认得「排他全屏」坑：检测到 FullscreenMode=0 + D3D12 报错就建议改无边框全屏 |
+| **0.9.14** | 11-25 | Mod 冲突检测（安装前预检 + 全局扫描），UniqueFitID 强冲突两图对比选留 |
+| **0.9.13** | 11-25 | 修启用/禁用时间不更新（两套 id 按 modId 聚合）、全部时间精确到毫秒 |
+| **0.9.12** | 11-25 | 修库压缩包并发安装撞临时目录、零写入却记成功；空壳记录重装即恢复 |
+| **0.9.11** | 11-24 | CNS 数据文件归属表（补挂 59 个数据文件回 47 个 Mod）；左侧导航可折叠 |
+| **0.9.10** | 11-24 | 详情页按钮统一尺码左对齐；子 Mod 装卸当场有反馈 |
+| **0.9.9** | 11-24 | 子 Mod：一个包里多套各自单独装/卸；逐文件记账改用 fileKey |
+| **0.9.8** | 11-24 | 安装账本（逐文件）+ 详情「包内文件」表（四状态、类型着色） |
+| **0.9.7** | 11-24 | 详情信息整合、筛选区改版（五行对齐、排序正反一颗按钮） |
+| **0.9.6** | 11-24 | 三状态详情整合为唯一界面；翻译结果持久化；CNS 三来源判定 |
+| **0.9.5** | 11-24 | Mod 生命周期档案 + 崩溃回退 + 日志搜索 |
+| **0.9.4 ~ 0.9.1** | 11-23 | 已下载档恢复显示未装包、CNS 分类、前置组件移出列表、筛选组件修整 |
+| **0.9.0** | 11-23 | Mod 库三视图合并为一个页面；筛选区整体改版 |
+| **0.5 ~ 0.8** | 11-22~23 | 统一 Mod 页、多选标记、生命周期时间线、崩溃诊断、游戏根目录纠错 |
+| **0.4.x** | 11-07~24 | 批量解析关联 Nexus、文件名标识、安装 EPERM 修复、图集本地化、启动闪退修复 |
+| **0.3.x** | 11-06~07 | 批量解析（本地 Mod ↔ Nexus 关联 + IDF 打分）、搬移账本、批量授权 |
+
 ## 安装
 
 ### 系统要求
@@ -121,8 +180,10 @@
 
 仓库里有 `install.ps1`（配一个双击入口 **`安装.bat`**）：自动去 GitHub 取最新版安装包 → 校验大小 → 静默安装 → 装完直接启动。
 
-**双击 `安装.bat` 就行**（会弹一个控制台窗口，装完之前别关它）。
-运行后会**先问一次安装目录** —— 直接回车用默认位置，也可以输入别的目录（例如 `D:\Games\剑星 Mod 管理器`）。
+**双击 `安装.bat` 就行**（会弹一个控制台窗口，装完之前别关它）。脚本会取最新版并静默安装。
+
+> 安装版自 0.9.16 起**固定装到 `D:\Program Files\sbmodmanager`**（D 盘需有约 400 MB 空间）。
+> 位置由安装包本身决定，脚本不再询问；要换位置请用便携版（`-Portable -InstallDir <目录>`）。
 
 想在命令行里用或加参数：
 
@@ -133,31 +194,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
 # 免安装的便携版
 powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Portable
 
-# 指定版本 + 指定安装目录
-powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Version 0.2.11 -InstallDir "D:\Tools\SBModManager"
+# 指定版本（装版固定 D 盘；便携版用 -InstallDir 指定位置）
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -Version 0.9.20
 
 # 只看它会干什么，不下载、不安装
 powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -DryRun
 
 # 用本地已经下好的 exe（完全不联网）
-powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\下载\SBModManager-0.2.11-setup.exe"
+powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\下载\SBModManager-0.9.20-setup.exe"
 ```
 
 | 参数 | 作用 |
 |---|---|
-| `-Version <版本>` | 指定版本（`0.2.11` 或 `v0.2.11`），默认取最新 |
+| `-Version <版本>` | 指定版本（`0.9.20` 或 `v0.9.20`），默认取最新 |
 | `-Portable` | 下载便携版而不是安装版 |
-| `-InstallDir <目录>` | 安装目录。不指定会**问一次**（回车 = 默认）；装了就到这个位置，不再问 |
+| `-InstallDir <目录>` | **便携版**放置位置（安装版位置由安装包固定，此参数对安装版无效） |
 | `-LocalFile <文件>` | 用本地已有的 exe，不联网 |
 | `-Mirror <前缀>` | 下载加速前缀，例如 `-Mirror https://ghfast.top/` |
 | `-NoLaunch` | 装完不自动启动 |
-| `-NoPrompt` | 不询问安装目录，一律用默认（批处理 / 无人值守） |
+| `-NoPrompt` | 不询问安装目录（批处理 / 无人值守）；安装版本就不需要问 |
 | `-DryRun` | 只显示计划，不做任何改动（也不会询问） |
 
-> 默认安装位置：安装版在 `%LOCALAPPDATA%\Programs\sbmodmanager`（桌面会留「剑星 Mod 管理器」快捷方式），
-> 便携版在 `%LOCALAPPDATA%\Programs\SBModManager`。
-> `-InstallDir` 支持相对路径、`%LOCALAPPDATA%` 这类环境变量，以及带空格 / 中文的路径。
-> `-InstallDir` 支持相对路径、`%LOCALAPPDATA%` 这类环境变量，以及带空格 / 中文的路径。
+> 安装版位置：自 0.9.16 起固定 `D:\Program Files\sbmodmanager`，桌面 / 开始菜单快捷方式自动指向它。
+> 便携版默认在 `%LOCALAPPDATA%\Programs\SBModManager`，可用 `-InstallDir` 改（支持相对路径、环境变量、带空格 / 中文的路径）。
 
 > **中国大陆网络**：直连 `github.com` 下 release 往往很慢甚至超时，三种办法 ——
 > ① 加 `-Mirror <加速前缀>`（这类加速服务的地址常变，用前先确认它能打开）；
@@ -169,11 +228,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 -LocalFile "D:\�
 
 ### 方式二：手动下载安装版
 
-到 [Releases 页](https://github.com/reloadbug/SBModManager/releases/latest) 下载 `SBModManager-<版本>-setup.exe`（约 106 MB），双击安装。
+到 [Releases 页](https://github.com/reloadbug/SBModManager/releases/latest) 下载 `SBModManager-<版本>-setup.exe`（约 107 MB），双击安装。
 
-- 可以**自选安装目录**（默认 `%LOCALAPPDATA%\Programs\剑星 Mod 管理器`）
-- 装完有桌面 / 开始菜单快捷方式
-- **不需要管理员权限**
+- **固定安装到 `D:\Program Files\sbmodmanager`**（不可自选；D 盘需有空间）
+- 安装包库就放在安装目录的 `library\`，升级覆盖**不会删库**
+- 装完有桌面 / 开始菜单快捷方式，不需要管理员权限
 
 ### 方式三：便携版（免安装）
 
@@ -233,7 +292,7 @@ npm start
 
 ```bash
 npm test              # 主进程模块自检（游戏探测 / 扫描 / Nexus / 翻译）
-npm run test:all      # 全部探针套件（39 套 / 3099 断言，见下）
+npm run test:all      # 全部探针套件（68 套，见下）
 npm run test:atool    # ATOOL（LogicMod 框架）自检（落点规则 / 特征判定 / **装好后进「已安装」列表** / 同 Mod 多版本去重）
 npm run test:datadir  # 数据目录可配置（pickDataDir 各分支 / 路径改写边界 / 搬运的复制·移动·跳过不删源 / 设置页与向导接线 / 安装脚本参数）
 npm run test:engine   # 下载引擎自检（状态机 / 自动安装 / 授权不落盘 / 取消 / 复用记录）
@@ -320,12 +379,17 @@ tests/           自检脚本
 | 运行方式 | 数据目录 |
 |---|---|
 | 源码（`npm start`） | `<项目>/data/` |
-| 打包版（exe） | `%APPDATA%\剑星 Mod 管理器\data` |
+| 打包版（exe，默认） | `%APPDATA%\剑星 Mod 管理器\data` |
+| 打包版（跟随游戏，推荐） | `<游戏根目录>\.sbmod` |
 
 打包版之所以换地方，是因为 `__dirname` 在 `app.asar` 里是只读归档，写不进去。
 放到 `%APPDATA%` 还有个好处：**卸载程序不会删你的数据**（`deleteAppDataOnUninstall: false`）。
 
-**位置可以在设置里改**（设置 → 存储，v0.2.11 起）：
+**「数据跟着游戏走」是推荐模式**：设置 → 数据目录里把位置指到游戏根目录（例如 `C:\games\Star Blade`），
+数据就进它下面的 `.sbmod\`。这样换机器 / 换盘时，配置、已装 Mod 注册表、开关时间线、黑名单等
+**跟游戏一起搬**，与实际安装情况始终一致。检测到游戏目录里已有 `.sbmod\config.json` 时会自动用这个模式。
+
+**数据目录可以改位置**（设置 → 数据与存储）：
 
 - 「**更改位置…**」选一个新目录 → 已有数据可以**一键搬过去**：先统计文件数，再选**移动**
   （搬完删掉旧目录，推荐）或**复制**（旧目录留一份）。搬运带进度条，**中途失败不会删源目录**。
