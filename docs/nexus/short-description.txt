@@ -1,1 +1,2 @@
-剑星 / Stellar Blade 桌面 Mod 管理器：Nexus 登录一次即可全自动下载安装，Mod 库三态合一，支持启停卸载、崩溃回退、UniqueFitID 冲突检测、CNS 游戏内名称搜索、逐文件账本、14 种语言。
+剑星 / Stellar Blade 桌面 Mod 管理器：Nexus 登录一次即可全自动下载安装，Mod 库三态合一、崩溃回退、UniqueFitID 冲突检测、CNS 游戏内名称搜索、逐文件账本、14 种语言。
+Stellar Blade desktop mod manager: sign in to Nexus once for fully automatic download & install, unified mod library, crash rollback, UniqueFitID conflict detection, in-game CNS name search, per-file ledger, 14 languages.
